@@ -1,0 +1,5 @@
+allowBuilds:
+  msw: set this to true or false
+  sharp: set this to true or false
+minimumReleaseAgeExclude:
+  - resend@6.17.1
