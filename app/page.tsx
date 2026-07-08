@@ -1,108 +1,124 @@
-import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
-import { AuthForm } from "@/components/auth/auth-form"
-import { Logo, ShuttleIcon } from "@/components/brand"
-import { CalendarDays, Trophy, Megaphone, ShoppingBag } from "lucide-react"
+"use client"
 
-async function getSessionRedirect() {
-  if (
-    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  ) {
-    return null
+import { useState } from "react"
+import { createClient } from "@/lib/supabase/client"
+import { useRouter } from "next/navigation"
+import { Card } from "@/components/ui/primitives"
+import { Button } from "@/components/ui/primitives"
+import { Trophy, Mail, Lock, Loader2 } from "lucide-react"
+
+export default function LoginPage() {
+  const router = useRouter()
+  const supabase = createClient()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      setError(error.message)
+      setLoading(false)
+    } else {
+      router.push("/dashboard")
+    }
   }
-  try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) return null
-    const { data } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single()
-    return data?.role === "staff" ? "/staff-dashboard" : "/member-dashboard"
-  } catch {
-    return null
-  }
-}
-
-const highlights = [
-  { icon: CalendarDays, title: "Weekly schedule", desc: "See coached sessions and open play by skill level." },
-  { icon: Trophy, title: "Track your level", desc: "Get coach feedback and watch your game improve." },
-  { icon: Megaphone, title: "Club announcements", desc: "Never miss tournaments, tryouts, and events." },
-  { icon: ShoppingBag, title: "Gear shop", desc: "Rackets, shuttles, and club apparel in one place." },
-]
-
-export default async function Page() {
-  const target = await getSessionRedirect()
-  if (target) redirect(target)
 
   return (
-    <main className="flex min-h-screen flex-col lg:flex-row">
-      {/* Brand / hero panel */}
-      <section className="relative flex flex-col justify-between overflow-hidden bg-sidebar px-6 py-10 text-sidebar-foreground lg:w-[46%] lg:px-12 lg:py-14">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-primary/25 blur-3xl"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-primary/15 blur-3xl"
-        />
+    <div className="flex min-h-screen w-full items-center justify-center bg-[#0B0B0C] px-4 font-sans antialiased selection:bg-[#E2AC28]/30 selection:text-[#E2AC28]">
+      {/* Background Subtle Gradient Glow */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(226,172,40,0.03)_0%,transparent_65%)] pointer-events-none" />
 
-        <Logo onDark />
-
-        <div className="relative z-10 my-10 lg:my-0">
-          <span className="inline-flex items-center gap-2 rounded-full border border-sidebar-border bg-sidebar-accent px-3 py-1 text-xs font-medium text-sidebar-foreground/80">
-            <ShuttleIcon className="h-3.5 w-3.5" /> YRDSB students only
-          </span>
-          <h1 className="mt-5 text-pretty text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
-            Your home court for everything badminton.
-          </h1>
-          <p className="mt-4 max-w-md text-pretty text-sm leading-relaxed text-sidebar-foreground/70 sm:text-base">
-            Book sessions, follow your progress, and stay in the loop with the
-            Westmount Badminton Club — all in one member portal.
-          </p>
-
-          <ul className="mt-8 grid max-w-lg grid-cols-1 gap-3 sm:grid-cols-2">
-            {highlights.map((h) => (
-              <li
-                key={h.title}
-                className="flex items-start gap-3 rounded-xl border border-sidebar-border bg-sidebar-accent/50 p-3"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/20 text-primary-foreground">
-                  <h.icon className="h-4 w-4 text-primary" />
-                </span>
-                <div>
-                  <p className="text-sm font-medium">{h.title}</p>
-                  <p className="text-xs text-sidebar-foreground/60">{h.desc}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <p className="relative z-10 text-xs text-sidebar-foreground/50">
-          Westmount Secondary School · Athletics Department
-        </p>
-      </section>
-
-      {/* Auth panel */}
-      <section className="flex flex-1 items-center justify-center px-6 py-12 sm:px-10">
-        <div className="w-full max-w-md">
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">
-              Welcome to the club
-            </h2>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              Sign in or register with your YRDSB school account to continue.
-            </p>
+      <Card className="relative w-full max-w-md overflow-hidden border border-zinc-800/80 bg-zinc-900/40 p-8 backdrop-blur-md rounded-sm">
+        {/* Top Header Section */}
+        <div className="flex flex-col items-center text-center mb-8">
+          <div className="flex h-12 w-12 items-center justify-center rounded-sm bg-zinc-900 border border-zinc-800 text-[#E2AC28] mb-4">
+            <Trophy className="h-6 w-6 fill-[#E2AC28]/10" />
           </div>
-          <AuthForm />
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#E2AC28]">
+            WESTMOUNT BADMINTON CLUB
+          </p>
+          <h1 className="text-2xl font-extrabold text-white uppercase tracking-tight mt-1">
+            Portal Access
+          </h1>
+          <p className="text-xs text-zinc-400 mt-1">
+            YRDSB students only · Sign in to manage your court matrix
+          </p>
         </div>
-      </section>
-    </main>
+
+        {/* Input Form */}
+        <form onSubmit={handleLogin} className="flex flex-col gap-4">
+          {error && (
+            <div className="rounded-sm border border-red-900/50 bg-red-950/30 px-3 py-2 text-center font-mono text-[11px] uppercase tracking-wide text-red-400">
+              {error}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 font-mono">
+              School Email
+            </label>
+            <div className="relative flex items-center">
+              <Mail className="absolute left-3 h-4 w-4 text-zinc-500" />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@gapps.yrdsb.ca"
+                className="w-full bg-zinc-950 text-white border border-zinc-800 outline-none rounded-sm py-2 pl-10 pr-3 text-xs font-mono transition-all focus:border-[#E2AC28]"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 font-mono">
+              Password
+            </label>
+            <div className="relative flex items-center">
+              <Lock className="absolute left-3 h-4 w-4 text-zinc-500" />
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-zinc-950 text-white border border-zinc-800 outline-none rounded-sm py-2 pl-10 pr-3 text-xs font-mono transition-all focus:border-[#E2AC28]"
+              />
+            </div>
+          </div>
+
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full mt-2 bg-[#E2AC28] text-black hover:bg-[#D9A224] disabled:bg-zinc-800 disabled:text-zinc-500 font-extrabold font-mono text-xs uppercase tracking-widest py-2.5 rounded-sm transition-colors cursor-pointer"
+          >
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="h-3 w-3 animate-spin" /> Authorizing...
+              </span>
+            ) : (
+              "Initialize Session"
+            )}
+          </Button>
+        </form>
+
+        {/* Footer info line */}
+        <div className="mt-8 text-center border-t border-zinc-800/60 pt-4">
+          <p className="text-[9px] font-mono uppercase tracking-wider text-zinc-500">
+            Athletics Department · Westmount Secondary School
+          </p>
+        </div>
+      </Card>
+    </div>
   )
 }
