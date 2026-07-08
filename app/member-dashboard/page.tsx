@@ -26,6 +26,8 @@ export default async function MemberDashboardPage() {
     .eq("id", user.id)
     .single<Profile>()
 
+  // 💡 FIX: If the profile doesn't exist, do NOT redirect to "/"!
+  // Instead, redirect to login with an error message or handle gracefully.
   if (!profile) {
     redirect("/login?error=Profile+not+found.+Please+register+again.")
   }
