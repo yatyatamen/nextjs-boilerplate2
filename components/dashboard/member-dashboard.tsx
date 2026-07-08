@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
 import { Badge, Button, Card } from "@/components/ui/primitives"
@@ -31,7 +31,6 @@ import {
   Settings,
 } from "lucide-react"
 
-// Added Settings to the sidebar navigation list directly
 const NAV: NavItem[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "schedule", label: "Schedule", icon: CalendarDays },
@@ -76,10 +75,19 @@ export function MemberDashboard({
   const [bookings, setBookings] = useState<Booking[]>(initialBookings)
   const [pendingId, setPendingId] = useState<string | null>(null)
   
-  // Theme and custom display name configurations state variables
   const [isDarkMode, setIsDarkMode] = useState(true)
   const [customName, setCustomName] = useState((profile as any).full_name || "")
   const [isSavingName, setIsSavingName] = useState(false)
+
+  // FIX: Sync state switches dynamically to the HTML document container to eliminate the white border
+  useEffect(() => {
+    const root = window.document.documentElement
+    if (isDarkMode) {
+      root.classList.add("dark")
+    } else {
+      root.classList.remove("dark")
+    }
+  }, [isDarkMode])
 
   const displayName = customName.trim() || profile.email || "Member"
 
@@ -134,7 +142,6 @@ export function MemberDashboard({
     setPendingId(null)
   }
 
-  // Coordinated semantic theme palette configuration tokens
   const theme = {
     bg: isDarkMode ? "bg-[#0B0B0C]" : "bg-zinc-50",
     textPrimary: isDarkMode ? "text-zinc-100" : "text-zinc-900",
@@ -166,7 +173,6 @@ export function MemberDashboard({
   }
 
   return (
-    /* Force complete backdrop overrides to destroy underlying layout white leak parameters */
     <div className={`w-full min-h-screen ${theme.bg} ${theme.textPrimary} transition-colors duration-200 [--dashboard-bg:#0B0B0C]`}>
       <DashboardShell
         navItems={NAV}
@@ -176,7 +182,6 @@ export function MemberDashboard({
         subtitle={profile.email ?? ""}
         badgeLabel={`Tier: ${profile.level ?? "For Fun"}`}
       >
-        {/* Anti-leak internal panel boundary layer */}
         <div className={`w-full min-h-screen ${theme.bg} p-6 -m-6 box-border`}>
           
           {active === "overview" && (
@@ -340,7 +345,6 @@ export function MemberDashboard({
             </div>
           )}
 
-          {/* DEDICATED NEW SETTINGS NAVIGATION WINDOW */}
           {active === "settings" && (
             <div className="max-w-2xl flex flex-col gap-6">
               <div>
@@ -348,7 +352,6 @@ export function MemberDashboard({
                 <p className={`text-xs ${theme.textMuted} mt-0.5`}>Manage visual layout choices and identity labels</p>
               </div>
 
-              {/* Identity Name Setting Block */}
               <Card className={`p-5 border ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col gap-4`}>
                 <div>
                   <h3 className={`text-xs font-bold uppercase tracking-wider ${theme.headingColor}`}>Display Name</h3>
@@ -374,7 +377,6 @@ export function MemberDashboard({
                 </div>
               </Card>
 
-              {/* Visual Appearance / Theme Choice Setting Block */}
               <Card className={`p-5 border ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col gap-4`}>
                 <div>
                   <h3 className={`text-xs font-bold uppercase tracking-wider ${theme.headingColor}`}>Interface Theme</h3>
@@ -406,7 +408,6 @@ export function MemberDashboard({
             </div>
           )}
 
-          {/* Simple Fallbacks for other placeholder views */}
           {["announcements", "shop", "posts", "progress"].includes(active) && (
             <div>
               <LocalSectionHeader title={`${active.toUpperCase()} Panel`} desc="Display logs match your dynamic configurations." />
