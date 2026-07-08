@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
 import { Badge, Button, Card } from "@/components/ui/primitives"
@@ -78,16 +78,6 @@ export function MemberDashboard({
   const [isDarkMode, setIsDarkMode] = useState(true)
   const [customName, setCustomName] = useState((profile as any).full_name || "")
   const [isSavingName, setIsSavingName] = useState(false)
-
-  // FIX: Sync state switches dynamically to the HTML document container to eliminate the white border
-  useEffect(() => {
-    const root = window.document.documentElement
-    if (isDarkMode) {
-      root.classList.add("dark")
-    } else {
-      root.classList.remove("dark")
-    }
-  }, [isDarkMode])
 
   const displayName = customName.trim() || profile.email || "Member"
 

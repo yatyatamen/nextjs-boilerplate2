@@ -19,11 +19,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    /* OPTIMIZED: Keep min-h-screen to prevent background leaks, but let 
-       the client component's useEffect handle adding/removing the 'dark' class dynamically!
-    */
-    <html lang="en" className="min-h-screen">
-      <body className="font-sans antialiased min-h-screen">
+    <html lang="en">
+      <body className="font-sans antialiased">
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
