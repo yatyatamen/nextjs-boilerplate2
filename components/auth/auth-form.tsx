@@ -39,13 +39,20 @@ export function AuthForm() {
     supabase: ReturnType<typeof createClient>,
     userId: string,
   ) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", userId)
       .single()
 
-    if (data?.role === "staff") {
+    if (error || !data) {
+      console.error("Failed to fetch profile role:", error)
+      router.push("/member-dashboard")
+      return
+    }
+
+    // Explicitly navigate based on the validated database string
+    if (data.role === "staff") {
       router.push("/staff-dashboard")
     } else {
       router.push("/member-dashboard")
@@ -88,7 +95,6 @@ export function AuthForm() {
         })
 
         if (error) {
-          // 🛡️ Safe check if email already exists in Supabase Auth
           if (error.message.toLowerCase().includes("already registered") || error.status === 422) {
             setFormError("An account with this email already exists. Please sign in instead.")
           } else {
@@ -99,16 +105,13 @@ export function AuthForm() {
 
         const user = data.user
         if (user) {
-          // 🛡️ Safe check when email confirmation is active.
-          // If identities is an empty array, Supabase is telling us the email is taken without leaking data.
           if (user.identities && user.identities.length === 0) {
             setFormError("An account with this email already exists. Please sign in instead.")
             return
           }
 
           if (data.session) {
-            router.push("/member-dashboard")
-            router.refresh()
+            await routeByRole(supabase, user.id)
           } else {
             setFormError(
               "Account created! Please check your email inbox to confirm your verification link, then sign in.",
@@ -193,7 +196,6 @@ export function AuthForm() {
               type="email"
               value={email}
               onChange={(e) => handleEmailChange(e.target.value)}
-              onKeyUp={(e) => handleEmailChange((e.target as HTMLInputElement).value)}
               placeholder={`you${ALLOWED_DOMAIN}`}
               autoComplete="email"
               aria-invalid={!emailValid}

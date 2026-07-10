@@ -12,14 +12,13 @@ import {
   Select,
   Textarea,
 } from "@/components/ui/primitives"
-import { LEVELS } from "@/lib/types"
 import type {
   Profile,
   ScheduleSession,
   Announcement,
   ShopItem,
-  BlogPost,
   Assessment,
+  BlogPost,
 } from "@/lib/types"
 import {
   LayoutDashboard,
@@ -33,15 +32,21 @@ import {
   Plus,
   Trophy,
   Clock,
+  CheckCircle2,
+  UserPlus,
+  BookOpen,
 } from "lucide-react"
+
+const ALL_6_TIERS = ["For Fun", "Bronze", "Silver", "Gold", "Diamond", "Diamond II"]
 
 const NAV: NavItem[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "members", label: "Members", icon: Users },
   { key: "schedule", label: "Schedule", icon: CalendarDays },
   { key: "announcements", label: "Announcements", icon: Megaphone },
-  { key: "blog", label: "Blog", icon: Newspaper },
-  { key: "shop", label: "Shop", icon: ShoppingBag },
+  { key: "profiles", label: "Post Coach Bio", icon: UserPlus },
+  { key: "shop", label: "Wolves Shop Items", icon: ShoppingBag },
+  { key: "gear", label: "Equipment Guides", icon: BookOpen },
   { key: "assessments", label: "Assessments", icon: ClipboardList },
 ]
 
@@ -70,7 +75,6 @@ export function StaffDashboard({
   initialMembers,
   initialSchedule,
   initialAnnouncements,
-  initialBlogPosts,
   initialShopItems,
   initialAssessments,
 }: {
@@ -87,27 +91,11 @@ export function StaffDashboard({
 
   const [members, setMembers] = useState<Profile[]>(initialMembers)
   const [schedule, setSchedule] = useState<ScheduleSession[]>(initialSchedule)
-  const [announcements, setAnnouncements] =
-    useState<Announcement[]>(initialAnnouncements)
-  const [blogPosts, setBlogPosts] = useState<BlogPost[]>(initialBlogPosts)
+  const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
   const [shopItems, setShopItems] = useState<ShopItem[]>(initialShopItems)
-  const [assessments, setAssessments] =
-    useState<Assessment[]>(initialAssessments)
+  const [assessments, setAssessments] = useState<Assessment[]>(initialAssessments)
 
-  const displayName =
-    `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() ||
-    profile.email ||
-    "Staff"
-
-  const memberName = (id: string | null) => {
-    const m = members.find((x) => x.id === id)
-    return m ? `${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() : "Unknown"
-  }
-
-  const memberCount = useMemo(
-    () => members.filter((m) => m.role === "member").length,
-    [members],
-  )
+  const displayName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || profile.email || "Staff"
 
   return (
     <DashboardShell
@@ -125,114 +113,73 @@ export function StaffDashboard({
               <p className="text-sm text-sidebar-foreground/70">Staff console</p>
               <h2 className="text-2xl font-bold">Welcome, {displayName}</h2>
               <p className="mt-1 text-sm text-sidebar-foreground/70">
-                Manage members, sessions, and club content.
+                Manage your multi-tier schedules, post gear guides, and upload inventory live onto the Wolves platform.
               </p>
             </div>
           </Card>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatCard icon={Users} label="Members" value={memberCount} />
-            <StatCard
-              icon={CalendarDays}
-              label="Sessions"
-              value={schedule.length}
-            />
-            <StatCard
-              icon={Megaphone}
-              label="Announcements"
-              value={announcements.length}
-            />
-            <StatCard
-              icon={ClipboardList}
-              label="Assessments"
-              value={assessments.length}
-            />
+            <StatCard icon={Users} label="Members" value={members.filter((m) => m.role === "member").length} />
+            <StatCard icon={CalendarDays} label="Sessions" value={schedule.length} />
+            <StatCard icon={Megaphone} label="Announcements" value={announcements.length} />
+            <StatCard icon={ClipboardList} label="Assessments" value={assessments.length} />
           </div>
         </div>
       )}
 
       {active === "members" && (
         <div>
-          <SectionHeader
-            title="Members"
-            desc="View members and update their skill level."
-          />
-          {members.length === 0 ? (
-            <Card className="p-10 text-center text-sm text-muted-foreground">
-              No members yet.
-            </Card>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {members.map((m) => (
-                <Card
-                  key={m.id}
-                  className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                      {`${m.first_name?.[0] ?? ""}${m.last_name?.[0] ?? ""}`.toUpperCase() ||
-                        "M"}
-                    </span>
-                    <div>
-                      <p className="font-medium text-foreground">
-                        {`${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() ||
-                          "Member"}
-                        {m.role === "staff" && (
-                          <Badge variant="accent" className="ml-2">
-                            Staff
-                          </Badge>
-                        )}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{m.email}</p>
-                    </div>
+          <SectionHeader title="Members" desc="View members and update their skill level." />
+          <div className="flex flex-col gap-3">
+            {members.map((m) => (
+              <Card key={m.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                    {`${m.first_name?.[0] ?? ""}${m.last_name?.[0] ?? ""}`.toUpperCase() || "M"}
+                  </span>
+                  <div>
+                    <p className="font-medium text-foreground">
+                      {`${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() || "Member"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{m.email}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-muted-foreground">
-                      Level
-                    </Label>
-                    <Select
-                      value={m.level ?? "Beginner"}
-                      onChange={async (e) => {
-                        const level = e.target.value
-                        setMembers((prev) =>
-                          prev.map((x) =>
-                            x.id === m.id ? { ...x, level } : x,
-                          ),
-                        )
-                        await supabase
-                          .from("profiles")
-                          .update({ level })
-                          .eq("id", m.id)
-                      }}
-                      className="h-9 w-40"
-                    >
-                      {LEVELS.map((l) => (
-                        <option key={l} value={l}>
-                          {l}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs text-muted-foreground">Level</Label>
+                  <Select
+                    value={m.level ?? ALL_6_TIERS[0]}
+                    onChange={async (e) => {
+                      const level = e.target.value
+                      setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, level } : x)))
+                      await supabase.from("profiles").update({ level }).eq("id", m.id)
+                    }}
+                    className="h-9 w-40"
+                  >
+                    {ALL_6_TIERS.map((l) => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </Select>
+                </div>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
 
       {active === "schedule" && (
         <div>
-          <SectionHeader
-            title="Schedule"
-            desc="Create and manage sessions."
-          />
+          <SectionHeader title="Schedule Management" desc="Create structured, multi-tier crossing sessions visible only to qualifying members." />
           <ScheduleForm
             onCreate={async (payload) => {
-              const { data } = await supabase
+              const { data, error } = await supabase
                 .from("schedule")
                 .insert(payload)
                 .select()
-                .single()
-              if (data) setSchedule((prev) => [...prev, data as ScheduleSession])
+              if (error) {
+                alert(`Schedule DB Error: ${error.message} (${error.code})\nDetail: ${error.details}`)
+                console.error("Full Error Details:", error)
+                return
+              }
+              if (data && data[0]) setSchedule((prev) => [...prev, data[0] as ScheduleSession])
             }}
           />
           <div className="mt-6 flex flex-col gap-3">
@@ -242,21 +189,10 @@ export function StaffDashboard({
                   <CalendarDays className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="font-medium text-foreground">
-                    {formatDate(s.date)}{" "}
-                    <span className="text-muted-foreground">
-                      · {s.time ?? "TBD"}
-                    </span>
+                  <h4 className="font-semibold text-foreground">{s.title ?? "Untitled Session"}</h4>
+                  <p className="text-sm font-medium text-muted-foreground mt-0.5">
+                    {formatDate(s.date)} · <span>{s.time ?? "TBD"}</span>
                   </p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <Badge>{s.level ?? "All levels"}</Badge>
-                    {s.coach && <span>Coach: {s.coach}</span>}
-                  </div>
-                  {s.notes && (
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {s.notes}
-                    </p>
-                  )}
                 </div>
               </Card>
             ))}
@@ -266,173 +202,92 @@ export function StaffDashboard({
 
       {active === "announcements" && (
         <div>
-          <SectionHeader
-            title="Announcements"
-            desc="Post updates for members."
-          />
+          <SectionHeader title="Announcements" desc="Post global updates for your student body dashboard." />
           <TitleContentForm
             titleLabel="Title"
             contentLabel="Content"
-            submitLabel="Post announcement"
+            submitLabel="Post Announcement"
             onCreate={async (title, content) => {
-              const { data } = await supabase
+              const { data, error } = await supabase
                 .from("announcements")
                 .insert({ title, content })
                 .select()
-                .single()
-              if (data)
-                setAnnouncements((prev) => [data as Announcement, ...prev])
+              if (error) {
+                alert(`Announcement DB Error: ${error.message} (${error.code})`)
+                console.error("Full Error Details:", error)
+                return
+              }
+              if (data && data[0]) setAnnouncements((prev) => [data[0] as Announcement, ...prev])
             }}
           />
-          <div className="mt-6 flex flex-col gap-3">
-            {announcements.map((a) => (
-              <Card key={a.id} className="p-5">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Clock className="h-3.5 w-3.5" />
-                  {formatDate(a.created_at)}
-                </div>
-                <h3 className="mt-1 font-semibold text-foreground">{a.title}</h3>
-                <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">
-                  {a.content}
-                </p>
-              </Card>
-            ))}
-          </div>
         </div>
       )}
 
-      {active === "blog" && (
+      {active === "profiles" && (
         <div>
-          <SectionHeader title="Blog" desc="Publish club stories and recaps." />
-          <TitleContentForm
-            titleLabel="Post title"
-            contentLabel="Body"
-            submitLabel="Publish post"
-            onCreate={async (title, content) => {
-              const { data } = await supabase
-                .from("blog_posts")
-                .insert({ title, content })
-                .select()
-                .single()
-              if (data) setBlogPosts((prev) => [data as BlogPost, ...prev])
+          <SectionHeader title="Insert Leader / Coach Profile" desc="Publish biographical profile cards onto the Club About directory." />
+          <CoachProfileForm
+            onCreate={async (payload) => {
+              const { error } = await supabase.from("leader_profiles").insert(payload)
+              if (error) alert(`Profiles DB Error: ${error.message}`)
             }}
           />
-          <div className="mt-6 flex flex-col gap-3">
-            {blogPosts.map((p) => (
-              <Card key={p.id} className="p-5">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Newspaper className="h-3.5 w-3.5" />
-                  {formatDate(p.created_at)}
-                </div>
-                <h3 className="mt-1 font-semibold text-foreground">{p.title}</h3>
-                <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">
-                  {p.content}
-                </p>
-              </Card>
-            ))}
-          </div>
         </div>
       )}
 
       {active === "shop" && (
         <div>
-          <SectionHeader title="Shop" desc="Manage store items." />
-          <ShopForm
+          <SectionHeader title="Wolves Shop Item Pipeline" desc="List available products into the e-commerce inventory platform matrix." />
+          <ShopPostingForm
             onCreate={async (payload) => {
-              const { data } = await supabase
-                .from("shop_items")
-                .insert(payload)
-                .select()
-                .single()
-              if (data) setShopItems((prev) => [...prev, data as ShopItem])
+              const { data, error } = await supabase.from("shop_items").insert(payload).select()
+              if (error) alert(`Shop DB Error: ${error.message}`)
+              if (data && data[0]) setShopItems((prev) => [...prev, data[0] as ShopItem])
             }}
           />
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {shopItems.map((item) => (
-              <Card key={item.id} className="flex flex-col p-5">
-                <Badge className="mb-2 self-start">
-                  {item.category ?? "Gear"}
-                </Badge>
-                <h3 className="font-semibold text-foreground">{item.name}</h3>
-                <p className="mt-1 flex-1 text-sm text-muted-foreground">
-                  {item.description}
-                </p>
-                <p className="mt-3 text-lg font-bold text-primary">
-                  ${Number(item.price ?? 0).toFixed(2)}
-                </p>
-              </Card>
-            ))}
-          </div>
+        </div>
+      )}
+
+      {active === "gear" && (
+        <div>
+          <SectionHeader title="Equipment Guide Publisher" desc="Upload technical equipment descriptions layout profiles." />
+          <EquipmentGuideForm
+            onCreate={async (payload) => {
+              const { error } = await supabase.from("equipment_guides").insert(payload)
+              if (error) alert(`Guides DB Error: ${error.message}`)
+            }}
+          />
         </div>
       )}
 
       {active === "assessments" && (
         <div>
-          <SectionHeader
-            title="Assessments"
-            desc="Give feedback and set a member's level."
-          />
+          <SectionHeader title="Assessments" desc="Give feedback and instantly record a user's promotional tier." />
           <AssessmentForm
             members={members.filter((m) => m.role === "member")}
             onCreate={async ({ userId, level, feedback, date }) => {
-              const { data } = await supabase
+              const { data, error } = await supabase
                 .from("assessments")
-                .insert({
-                  user_id: userId,
-                  level,
-                  feedback,
-                  date,
-                })
+                .insert({ user_id: userId, level, feedback, date })
                 .select()
-                .single()
-              if (data) {
-                setAssessments((prev) => [data as Assessment, ...prev])
-                // Keep the member's profile level in sync.
-                await supabase
-                  .from("profiles")
-                  .update({ level })
-                  .eq("id", userId)
-                setMembers((prev) =>
-                  prev.map((m) => (m.id === userId ? { ...m, level } : m)),
-                )
+              if (error) {
+                alert(`Assessment DB Error: ${error.message}`)
+                return
+              }
+              if (data && data[0]) {
+                setAssessments((prev) => [data[0] as Assessment, ...prev])
+                await supabase.from("profiles").update({ level }).eq("id", userId)
+                setMembers((prev) => prev.map((m) => (m.id === userId ? { ...m, level } : m)))
               }
             }}
           />
-          <div className="mt-6 flex flex-col gap-3">
-            {assessments.map((a) => (
-              <Card key={a.id} className="p-5">
-                <div className="flex items-center justify-between">
-                  <p className="font-medium text-foreground">
-                    {memberName(a.user_id)}
-                  </p>
-                  <span className="text-xs text-muted-foreground">
-                    {formatDate(a.date)}
-                  </span>
-                </div>
-                <Badge variant="accent" className="mt-1">
-                  {a.level}
-                </Badge>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {a.feedback}
-                </p>
-              </Card>
-            ))}
-          </div>
         </div>
       )}
     </DashboardShell>
   )
 }
 
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof Users
-  label: string
-  value: number
-}) {
+function StatCard({ icon: Icon, label, value }: { icon: typeof Users; label: string; value: number }) {
   return (
     <Card className="flex items-center gap-3 p-4">
       <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -455,19 +310,27 @@ function ScheduleForm({
   onCreate,
 }: {
   onCreate: (payload: {
+    title: string
     date: string
     time: string
-    level: string
+    visibility_tiers: string[]
     coach: string
     notes: string
   }) => Promise<void>
 }) {
   const { loading, setLoading } = useSubmitting()
+  const [title, setTitle] = useState("")
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
-  const [level, setLevel] = useState<string>(LEVELS[0])
+  const [selectedTiers, setSelectedTiers] = useState<string[]>(ALL_6_TIERS)
   const [coach, setCoach] = useState("")
   const [notes, setNotes] = useState("")
+
+  const toggleTier = (tier: string) => {
+    setSelectedTiers((prev) =>
+      prev.includes(tier) ? prev.filter((t) => t !== tier) : [...prev, tier]
+    )
+  }
 
   return (
     <Card className="p-5">
@@ -477,7 +340,15 @@ function ScheduleForm({
           e.preventDefault()
           if (!date) return
           setLoading(true)
-          await onCreate({ date, time, level, coach, notes })
+          await onCreate({
+            title,
+            date,
+            time,
+            visibility_tiers: selectedTiers,
+            coach,
+            notes,
+          })
+          setTitle("")
           setDate("")
           setTime("")
           setCoach("")
@@ -485,6 +356,10 @@ function ScheduleForm({
           setLoading(false)
         }}
       >
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <Label htmlFor="s-title">Session Title</Label>
+          <Input id="s-title" placeholder="e.g., Free play section" value={title} onChange={(e) => setTitle(e.target.value)} required />
+        </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="s-date">Date</Label>
           <Input
@@ -492,58 +367,41 @@ function ScheduleForm({
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
+            className="text-amber-500 font-mono bg-background"
             required
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="s-time">Time</Label>
-          <Input
-            id="s-time"
-            placeholder="6:00 - 8:00 PM"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-          />
+          <Label htmlFor="s-time">Time Span</Label>
+          <Input id="s-time" placeholder="3:20 - 4:30 PM" value={time} onChange={(e) => setTime(e.target.value)} required />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="s-level">Level</Label>
-          <Select
-            id="s-level"
-            value={level}
-            onChange={(e) => setLevel(e.target.value)}
-          >
-            {LEVELS.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
+        <div className="flex flex-col gap-2 sm:col-span-2 border border-zinc-800 p-3 rounded bg-zinc-950/40">
+          <Label className="text-[#E2AC28] font-bold">Select Visible Ranks</Label>
+          <div className="flex flex-wrap gap-4">
+            {ALL_6_TIERS.map((tier) => (
+              <label key={tier} className="flex items-center gap-2 text-xs font-mono text-zinc-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedTiers.includes(tier)}
+                  onChange={() => toggleTier(tier)}
+                  className="accent-[#E2AC28] h-4 w-4"
+                />
+                {tier}
+              </label>
             ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="s-coach">Coach</Label>
-          <Input
-            id="s-coach"
-            placeholder="Coach name"
-            value={coach}
-            onChange={(e) => setCoach(e.target.value)}
-          />
+          </div>
         </div>
         <div className="flex flex-col gap-1.5 sm:col-span-2">
-          <Label htmlFor="s-notes">Notes</Label>
-          <Textarea
-            id="s-notes"
-            placeholder="Focus, court info, etc."
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
+          <Label htmlFor="s-coach">Assigned Lead / Coach</Label>
+          <Input id="s-coach" placeholder="Name" value={coach} onChange={(e) => setCoach(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <Label htmlFor="s-notes">Session Notes</Label>
+          <Textarea id="s-notes" placeholder="Constraints description..." value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         <div className="sm:col-span-2">
-          <Button type="submit" disabled={loading}>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
-            Add session
+          <Button type="submit" disabled={loading} className="bg-[#E2AC28] text-black font-bold">
+            Inject Active Session Slot
           </Button>
         </div>
       </form>
@@ -586,19 +444,10 @@ function TitleContentForm({
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>{contentLabel}</Label>
-          <Textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="min-h-28"
-          />
+          <Textarea value={content} onChange={(e) => setContent(e.target.value)} className="min-h-28" required />
         </div>
         <div>
-          <Button type="submit" disabled={loading}>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
+          <Button type="submit" disabled={loading} className="bg-[#E2AC28] text-black font-bold">
             {submitLabel}
           </Button>
         </div>
@@ -607,21 +456,59 @@ function TitleContentForm({
   )
 }
 
-function ShopForm({
-  onCreate,
-}: {
-  onCreate: (payload: {
-    name: string
-    category: string
-    price: number
-    description: string
-  }) => Promise<void>
-}) {
+function CoachProfileForm({ onCreate }: { onCreate: (payload: { name: string; description: string; pic_url: string }) => Promise<void> }) {
   const { loading, setLoading } = useSubmitting()
   const [name, setName] = useState("")
-  const [category, setCategory] = useState("")
+  const [description, setDescription] = useState("")
+  const [picUrl, setPicUrl] = useState("")
+  const [success, setSuccess] = useState(false)
+
+  return (
+    <Card className="p-5">
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={async (e) => {
+          e.preventDefault()
+          setLoading(true)
+          await onCreate({ name, description, pic_url: picUrl })
+          setName("")
+          setDescription("")
+          setPicUrl("")
+          setLoading(false)
+          setSuccess(true)
+          setTimeout(() => setSuccess(false), 3000)
+        }}
+      >
+        <div className="flex flex-col gap-1.5">
+          <Label>Coach / Leader Name</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} required />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>Profile Picture URL</Label>
+          <Input value={picUrl} onChange={(e) => setPicUrl(e.target.value)} required />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>Biography & Credentials</Label>
+          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} required />
+        </div>
+        <div className="flex items-center gap-4">
+          <Button type="submit" disabled={loading} className="bg-[#E2AC28] text-black font-bold">
+            Post Leader Profile Card
+          </Button>
+          {success && <span className="text-sm text-emerald-500">Profile online!</span>}
+        </div>
+      </form>
+    </Card>
+  )
+}
+
+function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; category: string; price: number; description: string; pic_url: string }) => Promise<void> }) {
+  const { loading, setLoading } = useSubmitting()
+  const [name, setName] = useState("")
+  const [category, setCategory] = useState("Rackets")
   const [price, setPrice] = useState("")
   const [description, setDescription] = useState("")
+  const [picUrl, setPicUrl] = useState("")
 
   return (
     <Card className="p-5">
@@ -629,60 +516,72 @@ function ShopForm({
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
         onSubmit={async (e) => {
           e.preventDefault()
-          if (!name.trim()) return
           setLoading(true)
-          await onCreate({
-            name: name.trim(),
-            category: category.trim(),
-            price: Number(price) || 0,
-            description: description.trim(),
-          })
+          await onCreate({ name, category, price: Number(price) || 0, description, pic_url: picUrl })
           setName("")
-          setCategory("")
           setPrice("")
           setDescription("")
+          setPicUrl("")
+          setLoading(false)
+                }}
+      >
+        <div className="flex flex-col gap-1.5"><Label>Product Title</Label><Input value={name} onChange={(e) => setName(e.target.value)} required /></div>
+        <div className="flex flex-col gap-1.5">
+          <Label>Category</Label>
+          <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="Rackets">Rackets</option>
+            <option value="Strings">Strings</option>
+            <option value="Grips">Grips</option>
+            <option value="Birdies">Birdies</option>
+            <option value="Others">Others</option>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5"><Label>Price ($)</Label><Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required /></div>
+        <div className="flex flex-col gap-1.5"><Label>Display Picture URL</Label><Input value={picUrl} onChange={(e) => setPicUrl(e.target.value)} required /></div>
+        <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Specification Overview</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></div>
+        <Button type="submit" disabled={loading} className="sm:col-span-2 bg-[#E2AC28] text-black font-bold">List Product Stock</Button>
+      </form>
+    </Card>
+  )
+}
+
+function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string; category: string; description: string; pic_url: string }) => Promise<void> }) {
+  const { loading, setLoading } = useSubmitting()
+  const [title, setTitle] = useState("")
+  const [category, setCategory] = useState("Rackets")
+  const [description, setDescription] = useState("")
+  const [picUrl, setPicUrl] = useState("")
+
+  return (
+    <Card className="p-5">
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={async (e) => {
+          e.preventDefault()
+          setLoading(true)
+          await onCreate({ title, category, description, pic_url: picUrl })
+          setTitle("")
+          setDescription("")
+          setPicUrl("")
           setLoading(false)
         }}
       >
-        <div className="flex flex-col gap-1.5">
-          <Label>Name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} required />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5"><Label>Gear Title</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} required /></div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Guide Category Target</Label>
+            <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="Rackets">Rackets</option>
+              <option value="Strings">Strings</option>
+              <option value="Grips">Grips</option>
+              <option value="Birdies">Birdies</option>
+              <option value="Others">Others</option>
+            </Select>
+          </div>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label>Category</Label>
-          <Input
-            placeholder="Racket, Apparel, Shuttles"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label>Price</Label>
-          <Input
-            type="number"
-            step="0.01"
-            min="0"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5 sm:col-span-2">
-          <Label>Description</Label>
-          <Textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <Button type="submit" disabled={loading}>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
-            Add item
-          </Button>
-        </div>
+        <div className="flex flex-col gap-1.5"><Label>Image URL Reference</Label><Input value={picUrl} onChange={(e) => setPicUrl(e.target.value)} required /></div>
+        <div className="flex flex-col gap-1.5"><Label>Technical Recommendation Summary</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required /></div>
+        <Button type="submit" disabled={loading} className="bg-[#E2AC28] text-black font-bold">Publish Review Guide</Button>
       </form>
     </Card>
   )
@@ -693,16 +592,12 @@ function AssessmentForm({
   onCreate,
 }: {
   members: Profile[]
-  onCreate: (payload: {
-    userId: string
-    level: string
-    feedback: string
-    date: string
-  }) => Promise<void>
+  onCreate: (payload: { userId: string; level: string; feedback: string; date: string }) => Promise<void>
 }) {
   const { loading, setLoading } = useSubmitting()
+  const [success, setSuccess] = useState(false)
   const [userId, setUserId] = useState("")
-  const [level, setLevel] = useState<string>(LEVELS[0])
+  const [level, setLevel] = useState<string>(ALL_6_TIERS[0])
   const [feedback, setFeedback] = useState("")
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
 
@@ -714,9 +609,12 @@ function AssessmentForm({
           e.preventDefault()
           if (!userId) return
           setLoading(true)
+          setSuccess(false)
           await onCreate({ userId, level, feedback: feedback.trim(), date })
           setFeedback("")
           setLoading(false)
+          setSuccess(true)
+          setTimeout(() => setSuccess(false), 5000)
         }}
       >
         <div className="flex flex-col gap-1.5">
@@ -733,10 +631,8 @@ function AssessmentForm({
         <div className="flex flex-col gap-1.5">
           <Label>Level</Label>
           <Select value={level} onChange={(e) => setLevel(e.target.value)}>
-            {LEVELS.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
+            {ALL_6_TIERS.map((l) => (
+              <option key={l} value={l}>{l}</option>
             ))}
           </Select>
         </div>
@@ -746,26 +642,23 @@ function AssessmentForm({
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
+            className="text-amber-500 font-mono"
           />
         </div>
         <div className="flex flex-col gap-1.5 sm:col-span-2">
           <Label>Feedback</Label>
-          <Textarea
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            placeholder="Strengths, areas to improve, next steps..."
-            className="min-h-28"
-          />
+          <Textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Feedback..." className="min-h-28" required />
         </div>
-        <div className="sm:col-span-2">
-          <Button type="submit" disabled={loading}>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trophy className="h-4 w-4" />
-            )}
-            Save assessment
+        <div className="sm:col-span-2 flex items-center gap-3">
+          <Button type="submit" disabled={loading} className="bg-[#E2AC28] text-black font-bold">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trophy className="h-4 w-4" />}
+            Save Assessment Record
           </Button>
+          {success && (
+            <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-500">
+              <CheckCircle2 className="h-4 w-4" /> Grade Record Dispatched!
+            </span>
+          )}
         </div>
       </form>
     </Card>
