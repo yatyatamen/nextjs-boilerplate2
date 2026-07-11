@@ -69,6 +69,11 @@ export default async function MemberDashboardPage() {
     avatar_url: c.pic_url,
   }))
 
+  // Log errors for debugging
+  if (schedule.error) console.error("❌ Schedule Fetch Error:", schedule.error.message)
+  if (bookings.error) console.error("❌ Bookings Fetch Error:", bookings.error.message)
+  if (announcements.error) console.error("❌ Announcements Fetch Error:", announcements.error.message)
+
   return (
     <MemberDashboard
       profile={activeProfile}

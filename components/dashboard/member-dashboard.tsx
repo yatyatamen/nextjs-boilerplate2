@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
 import { Badge, Button, Card } from "@/components/ui/primitives"
@@ -73,7 +73,15 @@ const PLAYER_TIERS = [
 
 function formatDate(date: string | null) {
   if (!date) return "TBD"
-  const d = new Date(date)
+  // Handle date strings in YYYY-MM-DD format by parsing them in local timezone
+  const dateMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  let d: Date
+  if (dateMatch) {
+    const [, year, month, day] = dateMatch
+    d = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+  } else {
+    d = new Date(date)
+  }
   if (Number.isNaN(d.getTime())) return date
   return d.toLocaleDateString(undefined, {
     weekday: "short",
@@ -148,6 +156,11 @@ export function MemberDashboard({
   const [supportCategory, setSupportCategory] = useState("Technical Help")
   const [supportMessage, setSupportMessage] = useState("")
   const [supportStatus, setSupportStatus] = useState<string | null>(null)
+
+  // Confirmation & Toast Hooks
+  const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
+  const { toast, showToast } = useToast()
+  const [confirmLoading, setConfirmLoading] = useState(false)
 
   const displayName = customName.trim() || profile.email || "Member"
   const isStaff = profile.role === "staff"
@@ -284,20 +297,57 @@ export function MemberDashboard({
 
   async function book(session: ScheduleSession) {
     setPendingId(session.id)
-    const { data, error } = await supabase
-      .from("bookings")
-      .insert({ user_id: profile.id, session_id: session.id, status: "confirmed" })
-      .select()
-      .single()
-    if (!error && data) setBookings((prev) => [...prev, data as Booking])
-    setPendingId(null)
+    try {
+      const { data, error } = await supabase
+        .from("bookings")
+        .insert({ user_id: profile.id, session_id: session.id, status: "confirmed" })
+        .select()
+        .single()
+      
+      if (error) {
+        console.error("❌ Booking Error:", error.message)
+        alert(`Error joining session: ${error.message}`)
+        setPendingId(null)
+        return
+      }
+      
+      if (data) {
+        setBookings((prev) => [...prev, data as Booking])
+        alert("✓ You've successfully joined the session!")
+      }
+    } catch (err) {
+      console.error("❌ Booking Exception:", err)
+      alert(`Failed to join session: ${err instanceof Error ? err.message : "Unknown error"}`)
+    } finally {
+      setPendingId(null)
+    }
   }
 
   async function cancel(booking: Booking) {
-    setPendingId(booking.id)
-    const { error } = await supabase.from("bookings").delete().eq("id", booking.id)
-    if (!error) setBookings((prev) => prev.filter((b) => b.id !== booking.id))
-    setPendingId(null)
+    const sessionDetail = booking.session_id ? scheduleById.get(booking.session_id) : null
+    const sessionInfo = sessionDetail ? `${formatDate(sessionDetail.date)} at ${sessionDetail.time || "TBD"}` : "this session"
+    
+    showConfirmation(
+      "Retract Spot?",
+      `Remove your booking from ${sessionInfo}?`,
+      async () => {
+        setConfirmLoading(true)
+        try {
+          const { error } = await supabase.from("bookings").delete().eq("id", booking.id)
+          if (error) {
+            console.error("❌ Cancel Booking Error:", error.message)
+            alert(`Error retracting booking: ${error.message}`)
+            setConfirmLoading(false)
+            return
+          }
+          setBookings((prev) => prev.filter((b) => b.id !== booking.id))
+          closeConfirmation()
+          showToast("✓ Booking retracted successfully")
+        } finally {
+          setConfirmLoading(false)
+        }
+      }
+    )
   }
 
   async function toggleAttendance(id: string, nextStatus: "present" | "absent" | "late") {
@@ -306,6 +356,64 @@ export function MemberDashboard({
       setAttendanceList((prev) => prev.map((item) => (item.id === id ? { ...item, status: nextStatus } : item)))
     }
   }
+
+  // Function to check and cleanup expired bookings
+function isSessionExpired(session: ScheduleSession | undefined): boolean {
+  if (!session || !session.date || !session.time) return false
+  
+  // Parse date in local timezone
+  const dateMatch = session.date.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!dateMatch) return false
+  
+  const [, year, month, day] = dateMatch
+  const sessionDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+  
+  // Parse end time from format like "3:20-4:30 PM"
+  const timeMatch = session.time.match(/(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
+  if (!timeMatch) return false
+  
+  const [, , , endHour, endMin, period] = timeMatch
+  let hour = parseInt(endHour)
+  const min = parseInt(endMin)
+  
+  // Convert to 24-hour format if PM
+  if (period?.toUpperCase() === "PM" && hour !== 12) {
+    hour += 12
+  } else if (period?.toUpperCase() === "AM" && hour === 12) {
+    hour = 0
+  }
+  
+  const sessionEndTime = new Date(sessionDate)
+  sessionEndTime.setHours(hour, min, 0, 0)
+  
+  // Compare with current time
+  const now = new Date()
+  return now > sessionEndTime
+}
+
+async function cleanupExpiredBookings() {
+  const expiredBookingIds: string[] = []
+  
+  bookings.forEach((booking) => {
+    // Convert to string safely to match Map<string, ScheduleSession>
+    const sessionIdStr = booking.session_id ? booking.session_id.toString() : ""
+    const session = sessionIdStr ? scheduleById.get(sessionIdStr) : undefined
+    
+    // If the session doesn't exist at all, or if it's expired, mark it for cleanup
+    if (!session || isSessionExpired(session)) {
+      expiredBookingIds.push(booking.id)
+    }
+  })
+  
+  if (expiredBookingIds.length > 0) {
+    // Delete expired bookings from database
+    for (const bookingId of expiredBookingIds) {
+      await supabase.from("bookings").delete().eq("id", bookingId)
+    }
+    // Update local state
+    setBookings((prev) => prev.filter((b) => !expiredBookingIds.includes(b.id)))
+  }
+}
 
   const theme = {
     bg: isDarkMode ? "bg-[#0B0B0C]" : "bg-zinc-50",
@@ -318,6 +426,13 @@ export function MemberDashboard({
     headingColor: isDarkMode ? "text-white" : "text-zinc-900",
     inputBg: isDarkMode ? "bg-zinc-950 text-white border-zinc-800" : "bg-white text-zinc-900 border-zinc-300",
   }
+
+  // Auto-cleanup expired bookings every minute
+  useEffect(() => {
+    cleanupExpiredBookings()
+    const interval = setInterval(cleanupExpiredBookings, 60000) // Check every 60 seconds
+    return () => clearInterval(interval)
+  }, [bookings, schedule])
 
   return (
     <div className={`w-full min-h-screen ${theme.bg} ${theme.textPrimary} transition-colors duration-200`}>
@@ -380,8 +495,28 @@ export function MemberDashboard({
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <StatCard icon={Ticket} label="Active Bookings" value={bookings.length} theme={theme} />
                 <StatCard icon={CalendarDays} label="Upcoming Sessions" value={schedule.length} theme={theme} />
-                <StatCard icon={Megaphone} label="Announcements" value={announcements.length} theme={theme} />
+                <StatCard icon={Users} label="Club Leaders" value={initialCoaches.length} theme={theme} />
               </div>
+
+              {announcements.length > 0 && (
+                <Card className={`p-6 bg-gradient-to-br from-[#E2AC28]/10 to-[#E2AC28]/5 border border-[#E2AC28]/30 rounded-sm`}>
+                  <div className="flex items-start gap-4">
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-lg bg-[#E2AC28]/20`}>
+                      <Megaphone className="h-6 w-6 text-[#E2AC28]" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-[#E2AC28] uppercase tracking-wide">Latest Announcement</p>
+                      <h3 className={`mt-2 text-2xl font-bold ${theme.headingColor}`}>{announcements[0].title}</h3>
+                      <p className={`mt-3 text-base leading-relaxed ${theme.textPrimary} whitespace-pre-line`}>
+                        {announcements[0].content}
+                      </p>
+                      <p className={`mt-3 text-xs ${theme.textSecondary}`}>
+                        Posted {formatDate(announcements[0].created_at)}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              )}
             </div>
           )}
 
@@ -950,6 +1085,18 @@ export function MemberDashboard({
 
         </div>
       </DashboardShell>
+      <ConfirmationDialog
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        onConfirm={confirmState.onConfirm}
+        onCancel={closeConfirmation}
+        isLoading={confirmLoading}
+      />
+      <Toast
+        isOpen={toast.isOpen}
+        message={toast.message}
+      />
     </div>
   )
 }
@@ -965,5 +1112,118 @@ function StatCard({ icon: Icon, label, value, theme }: { icon: any, label: strin
         <p className="text-2xl font-black font-mono tracking-tight text-white mt-0.5">{value}</p>
       </div>
     </Card>
+  )
+}
+
+function useConfirmation() {
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean
+    title: string
+    message: string
+    onConfirm: () => Promise<void>
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: async () => {},
+  })
+
+  const showConfirmation = (title: string, message: string, onConfirm: () => Promise<void>) => {
+    setConfirmState({ isOpen: true, title, message, onConfirm })
+  }
+
+  const closeConfirmation = () => {
+    setConfirmState((prev) => ({ ...prev, isOpen: false }))
+  }
+
+  return { confirmState, showConfirmation, closeConfirmation }
+}
+
+function ConfirmationDialog({
+  isOpen,
+  title,
+  message,
+  onConfirm,
+  onCancel,
+  isLoading,
+}: {
+  isOpen: boolean
+  title: string
+  message: string
+  onConfirm: () => void
+  onCancel: () => void
+  isLoading: boolean
+}) {
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <Card className="w-full max-w-md mx-4 p-6 shadow-xl">
+        <h2 className="text-lg font-bold text-foreground">{title}</h2>
+        <p className="mt-3 text-sm text-muted-foreground">{message}</p>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+            className="px-4"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={onConfirm}
+            disabled={isLoading}
+            className="px-4"
+          >
+            {isLoading ? (
+              <CheckCircle className="h-4 w-4 animate-spin mr-2" />
+            ) : null}
+            Confirm
+          </Button>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+function useToast() {
+  const [toast, setToast] = useState<{
+    isOpen: boolean
+    message: string
+  }>({
+    isOpen: false,
+    message: "",
+  })
+
+  const showToast = (message: string) => {
+    setToast({ isOpen: true, message })
+    setTimeout(() => {
+      setToast({ isOpen: false, message: "" })
+    }, 3000)
+  }
+
+  return { toast, showToast }
+}
+
+function Toast({
+  isOpen,
+  message,
+}: {
+  isOpen: boolean
+  message: string
+}) {
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 animate-in fade-in slide-in-from-bottom-2">
+      <div className="flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-3 text-white shadow-lg">
+        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+        </svg>
+        <span className="font-medium">{message}</span>
+      </div>
+    </div>
   )
 }

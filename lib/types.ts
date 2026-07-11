@@ -44,6 +44,7 @@ export type Booking = {
   user_id: string | null
   session_id: string | null
   status: string | null
+  created_at?: string | null
 }
 
 export type Announcement = {

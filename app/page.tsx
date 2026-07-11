@@ -70,7 +70,7 @@ export default function LoginPage() {
         <div className="lg:col-span-7 flex flex-col gap-6">
           <div>
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider bg-zinc-900 text-[#14B8A6] border border-zinc-800">
-              🐺 #BeWolves · YRDSB Students Only
+              🐺 #BeWolves · Westmount Students Only
             </span>
           </div>
           <h2 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight uppercase leading-none">
