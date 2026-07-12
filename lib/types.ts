@@ -61,6 +61,9 @@ export type ShopItem = {
   price: number | null
   description: string | null
   stock: number | null
+  image_url?: string | null
+  pic_url?: string | null
+  unit?: string | null
 }
 
 export type Assessment = {
@@ -95,6 +98,7 @@ export type EquipmentRecommendation = {
   id: string
   title: string
   brand: string
+  category: string | null
   specs: string 
   why_recommend: string
   recommended_for_tier: string 

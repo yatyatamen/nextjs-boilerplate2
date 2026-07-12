@@ -11,7 +11,12 @@ export default async function MemberDashboardPage() {
   }
 
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data, error } = await supabase.auth.getUser()
+  const user = data?.user
+
+  if (error) {
+    console.error("❌ Auth getUser error:", error.message)
+  }
 
   if (!user) {
     redirect("/")

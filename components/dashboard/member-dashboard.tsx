@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
+import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
 import { Badge, Button, Card } from "@/components/ui/primitives"
@@ -51,6 +52,7 @@ const NAV: NavItem[] = [
   { key: "coaches", label: "Our Leaders", icon: Users },
   { key: "gear", label: "Equipment Guides", icon: Award },
   { key: "shop", label: "Wolves Shop", icon: ShoppingBag },
+  { key: "messages", label: "Messages", icon: Mail },
   { key: "club-info", label: "About Wolves", icon: Info },
   { key: "support", label: "Contact & Support", icon: LifeBuoy },
   { key: "settings", label: "Settings", icon: Settings },
@@ -124,6 +126,9 @@ export function MemberDashboard({
   const [coaches, setCoaches] = useState<StaffProfile[]>(initialCoaches)
   const [gearGuides, setGearGuides] = useState<EquipmentRecommendation[]>(initialGearGuides)
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(initialTickets)
+  const [messagesList, setMessagesList] = useState<SupportTicket[]>([])
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
+  const [chatInput, setChatInput] = useState("")
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [isDarkMode, setIsDarkMode] = useState(true)
   const [customName, setCustomName] = useState(profile.full_name || "")
@@ -157,6 +162,14 @@ export function MemberDashboard({
   const [supportMessage, setSupportMessage] = useState("")
   const [supportStatus, setSupportStatus] = useState<string | null>(null)
 
+  const [gearFilter, setGearFilter] = useState("All")
+  const [gearTierFilter, setGearTierFilter] = useState("All")
+  const [gearSearch, setGearSearch] = useState("")
+  const [shopFilter, setShopFilter] = useState("All")
+  const [shopSearch, setShopSearch] = useState("")
+  const [shopPriceMin, setShopPriceMin] = useState<number | "">("")
+  const [shopPriceMax, setShopPriceMax] = useState<number | "">("")
+
   // Confirmation & Toast Hooks
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
@@ -165,12 +178,96 @@ export function MemberDashboard({
   const displayName = customName.trim() || profile.email || "Member"
   const isStaff = profile.role === "staff"
 
-  const bookedSessionIds = useMemo(() => new Set(bookings.map((b) => b.session_id)), [bookings])
   const scheduleById = useMemo(() => {
     const map = new Map<string, ScheduleSession>()
-    schedule.forEach((s) => map.set(s.id, s))
+    schedule.forEach((s) => map.set(String(s.id), s))
     return map
   }, [schedule])
+
+  // Determine if a session has already ended (date + end time)
+  function isSessionExpired(session: ScheduleSession | undefined): boolean {
+    if (!session || !session.date || !session.time) return false
+
+    const dateMatch = session.date.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (!dateMatch) return false
+    const [, year, month, day] = dateMatch
+    const sessionDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+
+    const timeMatch = session.time.match(/(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
+    if (!timeMatch) return false
+
+    const [, , , endHour, endMin, period] = timeMatch
+    let hour = parseInt(endHour)
+    const min = parseInt(endMin)
+    if (period?.toUpperCase() === "PM" && hour !== 12) {
+      hour += 12
+    } else if (period?.toUpperCase() === "AM" && hour === 12) {
+      hour = 0
+    }
+
+    const sessionEndTime = new Date(sessionDate)
+    sessionEndTime.setHours(hour, min, 0, 0)
+
+    return new Date() > sessionEndTime
+  }
+
+  const visibleSchedule = useMemo(() => schedule.filter((s) => !isSessionExpired(s)), [schedule])
+
+  const visibleBookings = useMemo(() => bookings.filter((b) => {
+    const session = b.session_id ? scheduleById.get(String(b.session_id)) : undefined
+    return !isSessionExpired(session)
+  }), [bookings, scheduleById])
+
+  const gearCategories = useMemo(
+    () => ["All", ...Array.from(new Set(gearGuides.map((g) => g.category || "Other")))],
+    [gearGuides],
+  )
+  const gearTierOptions = ["All", "Beginner", "Intermediate", "Advanced"]
+  const tierGroup = (tier?: string | null) => {
+    const normalized = (tier || "").toLowerCase()
+    if (/(for fun|bronze|silver)/i.test(normalized)) return "Beginner"
+    if (/gold/i.test(normalized)) return "Intermediate"
+    if (/diamond/i.test(normalized)) return "Advanced"
+    return "Intermediate"
+  }
+  const filteredGearGuides = useMemo(() => {
+    return gearGuides.filter((g) => {
+      const categoryMatch = gearFilter === "All" || (g.category || "Other") === gearFilter
+      const tierMatch =
+        gearTierFilter === "All" || tierGroup(g.recommended_for_tier) === gearTierFilter
+      const searchValue = gearSearch.trim().toLowerCase()
+      const searchMatch =
+        !searchValue ||
+        [g.title, g.brand, g.specs, g.why_recommend, g.category, g.recommended_for_tier]
+          .map((v) => (v || "").toLowerCase())
+          .some((text) => text.includes(searchValue))
+      return categoryMatch && tierMatch && searchMatch
+    })
+  }, [gearGuides, gearFilter, gearTierFilter, gearSearch])
+
+  const shopCategories = useMemo(
+    () => ["All", ...Array.from(new Set(shopItems.map((item) => item.category || "Other")))],
+    [shopItems],
+  )
+  const filteredShopItems = useMemo(() => {
+    return shopItems.filter((item) => {
+      const categoryMatch = shopFilter === "All" || (item.category || "Other") === shopFilter
+      const searchValue = shopSearch.trim().toLowerCase()
+      const searchMatch =
+        !searchValue ||
+        [item.name, item.category, item.description, item.unit]
+          .map((v) => (v || "").toLowerCase())
+          .some((text) => text.includes(searchValue))
+      const minPrice = typeof shopPriceMin === "number" ? shopPriceMin : undefined
+      const maxPrice = typeof shopPriceMax === "number" ? shopPriceMax : undefined
+      const priceValue = typeof item.price === "number" ? item.price : undefined
+      const minMatch = minPrice === undefined || (priceValue !== undefined && priceValue >= minPrice)
+      const maxMatch = maxPrice === undefined || (priceValue !== undefined && priceValue <= maxPrice)
+      return categoryMatch && searchMatch && minMatch && maxMatch
+    })
+  }, [shopItems, shopFilter, shopSearch, shopPriceMin, shopPriceMax])
+
+  const bookedSessionIds = useMemo(() => new Set(visibleBookings.map((b) => String(b.session_id))), [visibleBookings])
 
   // Computed filtration pipeline for attendance records
   const filteredAttendance = useMemo(() => {
@@ -262,6 +359,69 @@ export function MemberDashboard({
     setIsSubmittingGrade(false)
   }
 
+  async function handleJsonResponse(response: Response) {
+    const text = await response.text()
+    if (!text) {
+      return { error: response.ok ? null : `Empty response body (${response.status})` }
+    }
+
+    try {
+      return JSON.parse(text)
+    } catch (error) {
+      console.error("Failed to parse JSON response:", text, error)
+      return { error: `Invalid JSON response (${response.status})` }
+    }
+  }
+
+  useEffect(() => {
+    if (active !== "messages") return
+    let mounted = true
+    ;(async () => {
+      try {
+        const response = await fetch("/api/support", { credentials: "same-origin" })
+        const result = await handleJsonResponse(response)
+        if (!mounted) return
+        if (response.ok && result.data) {
+          setMessagesList(result.data)
+          if (!selectedMessageId && Array.isArray(result.data) && result.data.length > 0) {
+            setSelectedMessageId(String(result.data[0].id))
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load messages:", err)
+      }
+    })()
+    return () => { mounted = false }
+  }, [active, selectedMessageId])
+
+  const selectedMessage = messagesList.find((m) => String(m.id) === selectedMessageId) ?? messagesList[0] ?? null
+
+  async function sendChatMessage(e: React.FormEvent) {
+    e.preventDefault()
+    if (!chatInput.trim()) return
+
+    const subject = selectedMessage ? `Re: ${selectedMessage.subject || "Member message"}` : "Member message"
+    const response = await fetch("/api/support", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subject, message: chatInput.trim() }),
+    })
+
+    const result = await handleJsonResponse(response)
+    if (!response.ok) {
+      alert(result.error || "Unable to send message.")
+      return
+    }
+
+    const inserted = Array.isArray(result.data) ? result.data[0] : result.data
+    if (inserted) {
+      setMessagesList((prev) => [...prev, inserted])
+      setSelectedMessageId(String(inserted.id))
+      setChatInput("")
+    }
+  }
+
   async function handleUpdateAssetLink(table: "staff_profiles" | "equipment_recommendations", id: string, field: string, url: string) {
     const { error } = await supabase.from(table).update({ [field]: url }).eq("id", id)
     if (!error) {
@@ -276,44 +436,78 @@ export function MemberDashboard({
   async function submitSupportTicket(e: React.FormEvent) {
     e.preventDefault()
     if (!supportMessage.trim()) return
-    
-    const { data, error } = await supabase.from("support_tickets").insert({
-      user_id: profile.id,
-      user_email: profile.email || "unknown@gapps.yrdsb.ca",
-      subject: supportCategory,
-      message: supportMessage,
-      status: "open",
-      created_at: new Date().toISOString()
-    }).select().single()
 
-    if (!error && data) {
-      setSupportStatus("Success! System routing confirmation generated.")
-      setSupportTickets(prev => [data as SupportTicket, ...prev])
-      setSupportMessage("")
-    } else {
-      setSupportStatus("Failsafe warning: network dropped operational package.");
+    try {
+      const response = await fetch("/api/support", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: supportCategory,
+          message: supportMessage,
+        }),
+      })
+
+      const result = await handleJsonResponse(response)
+      if (!response.ok) {
+        console.error("❌ Support Ticket Error:", result)
+        setSupportStatus(result.error || "Failed to submit ticket. Please try again.")
+        return
+      }
+
+      const inserted = Array.isArray(result.data) ? result.data[0] : result.data
+      if (inserted) {
+        setSupportStatus("Success! System routing confirmation generated.")
+        setSupportTickets((prev) => [inserted as SupportTicket, ...prev])
+        setSupportMessage("")
+      }
+    } catch (err) {
+      console.error("❌ Support Ticket Exception:", err)
+      setSupportStatus(err instanceof Error ? err.message : "Network error submitting ticket.")
     }
   }
 
   async function book(session: ScheduleSession) {
     setPendingId(session.id)
     try {
-      const { data, error } = await supabase
-        .from("bookings")
-        .insert({ user_id: profile.id, session_id: session.id, status: "confirmed" })
-        .select()
-        .single()
-      
-      if (error) {
-        console.error("❌ Booking Error:", error.message)
-        alert(`Error joining session: ${error.message}`)
-        setPendingId(null)
+      const response = await fetch("/api/bookings", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: session.id }),
+      })
+
+      const result = await handleJsonResponse(response)
+      if (!response.ok) {
+        console.error("❌ Booking Error:", result)
+        alert(`Error joining session: ${result.error || "Unknown error"}`)
         return
       }
-      
-      if (data) {
-        setBookings((prev) => [...prev, data as Booking])
+
+      let inserted = Array.isArray(result.data) ? result.data[0] : result.data
+      if (inserted) {
+        setBookings((prev) => [...prev, inserted as Booking])
         alert("✓ You've successfully joined the session!")
+      } else {
+        // Fallback: attempt direct client-side insert if API didn't return the inserted row
+        try {
+          const { data: clientInserted, error: clientError } = await supabase
+            .from("bookings")
+            .insert({ user_id: profile.id, session_id: session.id, status: "confirmed" })
+            .select()
+            .single()
+
+          if (!clientError && clientInserted) {
+            setBookings((prev) => [...prev, clientInserted as Booking])
+            alert("✓ You've successfully joined the session!")
+          } else {
+            // As a last resort refresh the bookings list
+            const { data: refreshed, error: refreshError } = await supabase.from("bookings").select("*").eq("user_id", profile.id)
+            if (!refreshError && refreshed) setBookings(refreshed as Booking[])
+          }
+        } catch (refreshErr) {
+          console.error("❌ Booking fallback failed:", refreshErr)
+        }
       }
     } catch (err) {
       console.error("❌ Booking Exception:", err)
@@ -323,8 +517,41 @@ export function MemberDashboard({
     }
   }
 
+  async function handlePurchaseRequest(item: ShopItem) {
+    showConfirmation(
+      "Purchase Request",
+      `Send a request for \"${item.name}\" to the team leader? Instagram will also be opened for direct DM.`,
+      async () => {
+        setConfirmLoading(true)
+        try {
+          const response = await fetch("/api/support", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              subject: `Purchase Request: ${item.name}`,
+              message: `Member ${displayName} requests to purchase ${item.name} (${item.category}). Please follow up via Instagram.`,
+            }),
+          })
+
+          const result = await handleJsonResponse(response)
+          if (!response.ok) {
+            console.error("❌ Purchase Request Error:", result)
+            alert(result.error || "Unable to send purchase request. Try again later.")
+            return
+          }
+
+          showToast("✓ Purchase request sent. Opening Instagram...")
+          window.open("https://instagram.com/wolvesbadminton", "_blank")
+        } finally {
+          setConfirmLoading(false)
+        }
+      },
+    )
+  }
+
   async function cancel(booking: Booking) {
-    const sessionDetail = booking.session_id ? scheduleById.get(booking.session_id) : null
+    const sessionDetail = booking.session_id ? scheduleById.get(String(booking.session_id)) : null
     const sessionInfo = sessionDetail ? `${formatDate(sessionDetail.date)} at ${sessionDetail.time || "TBD"}` : "this session"
     
     showConfirmation(
@@ -333,13 +560,20 @@ export function MemberDashboard({
       async () => {
         setConfirmLoading(true)
         try {
-          const { error } = await supabase.from("bookings").delete().eq("id", booking.id)
-          if (error) {
-            console.error("❌ Cancel Booking Error:", error.message)
-            alert(`Error retracting booking: ${error.message}`)
-            setConfirmLoading(false)
+          const response = await fetch("/api/bookings", {
+            method: "DELETE",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ booking_id: booking.id }),
+          })
+
+          const result = await handleJsonResponse(response)
+          if (!response.ok) {
+            console.error("❌ Cancel Booking Error:", result)
+            alert(`Error retracting booking: ${result.error || "Unknown error"}`)
             return
           }
+
           setBookings((prev) => prev.filter((b) => b.id !== booking.id))
           closeConfirmation()
           showToast("✓ Booking retracted successfully")
@@ -357,39 +591,7 @@ export function MemberDashboard({
     }
   }
 
-  // Function to check and cleanup expired bookings
-function isSessionExpired(session: ScheduleSession | undefined): boolean {
-  if (!session || !session.date || !session.time) return false
   
-  // Parse date in local timezone
-  const dateMatch = session.date.match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (!dateMatch) return false
-  
-  const [, year, month, day] = dateMatch
-  const sessionDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-  
-  // Parse end time from format like "3:20-4:30 PM"
-  const timeMatch = session.time.match(/(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
-  if (!timeMatch) return false
-  
-  const [, , , endHour, endMin, period] = timeMatch
-  let hour = parseInt(endHour)
-  const min = parseInt(endMin)
-  
-  // Convert to 24-hour format if PM
-  if (period?.toUpperCase() === "PM" && hour !== 12) {
-    hour += 12
-  } else if (period?.toUpperCase() === "AM" && hour === 12) {
-    hour = 0
-  }
-  
-  const sessionEndTime = new Date(sessionDate)
-  sessionEndTime.setHours(hour, min, 0, 0)
-  
-  // Compare with current time
-  const now = new Date()
-  return now > sessionEndTime
-}
 
 async function cleanupExpiredBookings() {
   const expiredBookingIds: string[] = []
@@ -493,8 +695,8 @@ async function cleanupExpiredBookings() {
               )}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <StatCard icon={Ticket} label="Active Bookings" value={bookings.length} theme={theme} />
-                <StatCard icon={CalendarDays} label="Upcoming Sessions" value={schedule.length} theme={theme} />
+                <StatCard icon={Ticket} label="Active Bookings" value={visibleBookings.length} theme={theme} />
+                <StatCard icon={CalendarDays} label="Upcoming Sessions" value={visibleSchedule.length} theme={theme} />
                 <StatCard icon={Users} label="Club Leaders" value={initialCoaches.length} theme={theme} />
               </div>
 
@@ -570,8 +772,8 @@ async function cleanupExpiredBookings() {
                   )}
 
                   <div className="flex flex-col gap-3">
-                    {schedule.map((s) => {
-  const booked = bookedSessionIds.has(s.id)
+                    {visibleSchedule.map((s) => {
+  const booked = bookedSessionIds.has(String(s.id))
   return (
     <Card key={s.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
       <div>
@@ -585,7 +787,8 @@ async function cleanupExpiredBookings() {
       </div>
       <Button
         size="sm"
-        disabled={booked || pendingId === s.id}
+        type="button"
+        disabled={booked || pendingId === String(s.id)}
         onClick={() => setConfirmingSession(s)}
         className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${booked ? "bg-zinc-700 text-zinc-300" : "bg-[#E2AC28] text-black font-bold"}`}
       >
@@ -637,6 +840,7 @@ async function cleanupExpiredBookings() {
 
                     <div className="flex items-center justify-end gap-3 mt-2 pt-4 border-t border-zinc-800/40">
                       <button
+                        type="button"
                         disabled={pendingId !== null}
                         onClick={() => setConfirmingSession(null)}
                         className="px-4 py-2 text-xs font-mono uppercase tracking-wide text-zinc-400 hover:text-white transition-colors"
@@ -644,6 +848,7 @@ async function cleanupExpiredBookings() {
                         Cancel
                       </button>
                       <Button
+                        type="button"
                         size="sm"
                         disabled={pendingId !== null}
                         onClick={async () => {
@@ -670,14 +875,14 @@ async function cleanupExpiredBookings() {
               ) : (
                 <div className="flex flex-col gap-3">
                   {bookings.map((b) => {
-                    const s = b.session_id ? scheduleById.get(b.session_id) : null
+                    const s = b.session_id ? scheduleById.get(String(b.session_id)) : null
                     return (
                       <Card key={b.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
                         <div>
                           <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>{s ? formatDate(s.date) : "Training Interval"} {s?.time && `· ${s.time}`}</p>
                           {s?.title && <p className="text-xs font-mono text-zinc-400 mt-0.5">Focus: {s.title}</p>}
                         </div>
-                        <Button size="sm" onClick={() => cancel(b)} className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400 font-mono rounded-sm">Retract Spot</Button>
+                        <Button type="button" size="sm" onClick={() => cancel(b)} className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400 font-mono rounded-sm">Retract Spot</Button>
                       </Card>
                     )
                   })}
@@ -699,7 +904,7 @@ async function cleanupExpiredBookings() {
                       <div className="flex justify-between items-center border-b border-zinc-800/20 pb-2 mb-2">
                         <div className="flex flex-col">
                           <span className="text-xs font-mono font-bold text-[#E2AC28]">Assigned Level Tier: {as.level}</span>
-                          {as.score && <span className="text-[11px] font-mono text-zinc-300 mt-0.5">Rating Evaluation Score: {as.score}/100</span>}
+                          {as.score != null && <span className="text-[11px] font-mono text-zinc-300 mt-0.5">Rating Evaluation Score: {as.score}/100</span>}
                         </div>
                         <span className={`text-[10px] font-mono ${theme.textMuted}`}>{formatDate(as.date)}</span>
                       </div>
@@ -897,61 +1102,204 @@ async function cleanupExpiredBookings() {
           {/* GEAR RECOMMENDATIONS */}
           {active === "gear" && (
             <div>
-              <div className="mb-4"><h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Pro Recommended Equipment</h2></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {gearGuides.map((g) => (
-                  <Card key={g.id} className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col justify-between gap-3`}>
-                    <div className="flex gap-3">
-                      {g.image_url && <img src={g.image_url} alt={g.title} className="h-16 w-16 object-contain rounded-sm bg-zinc-900 border border-zinc-800 p-1 shrink-0" />}
-                      <div className="flex-1">
-                        <div className="flex justify-between items-start gap-2">
-                          <h4 className={`text-sm font-bold uppercase tracking-wide ${theme.headingColor}`}>{g.title}</h4>
-                          <Badge className="bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 text-[9px] font-mono px-1 rounded-sm">{g.recommended_for_tier}</Badge>
-                        </div>
-                        <p className={`text-xs font-mono text-[#E2AC28] mt-0.5`}>{g.brand} · <span className="text-zinc-400 font-sans">{g.specs}</span></p>
-                        <p className={`text-xs ${theme.textSecondary} mt-2 leading-relaxed`}>{g.why_recommend}</p>
-                      </div>
-                    </div>
-                    {isStaff && (
-                      <div className="mt-2 pt-2 border-t border-zinc-800/40 flex items-center gap-2">
-                        <Image className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
-                        <input 
-                          type="text" 
-                          placeholder="Update Gear Image Link URL..." 
-                          defaultValue={g.image_url || ""}
-                          onBlur={(e) => handleUpdateAssetLink("equipment_recommendations", g.id, "image_url", e.target.value)}
-                          className={`w-full px-2 py-0.5 text-[10px] font-mono rounded-sm border outline-none ${theme.inputBg}`}
-                        />
-                      </div>
-                    )}
-                  </Card>
-                ))}
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Pro Recommended Equipment</h2>
+                  <p className="text-[11px] text-zinc-500 mt-1">Filter by category or search text to find the right gear faster.</p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <select
+                    value={gearFilter}
+                    onChange={(e) => setGearFilter(e.target.value)}
+                    className={`rounded-sm border px-3 py-2 text-xs ${theme.inputBg}`}
+                  >
+                    {gearCategories.map((category) => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={gearTierFilter}
+                    onChange={(e) => setGearTierFilter(e.target.value)}
+                    className={`rounded-sm border px-3 py-2 text-xs ${theme.inputBg}`}
+                  >
+                    {gearTierOptions.map((level) => (
+                      <option key={level} value={level}>{level}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="search"
+                    value={gearSearch}
+                    onChange={(e) => setGearSearch(e.target.value)}
+                    placeholder="Search equipment..."
+                    className={`rounded-sm border px-3 py-2 text-xs ${theme.inputBg}`}
+                  />
+                </div>
               </div>
+              {filteredGearGuides.length === 0 ? (
+                <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg}`}>
+                  <p className={`text-sm ${theme.textSecondary}`}>No equipment guides match that filter.</p>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredGearGuides.map((g) => {
+                    const imageUrl = g.image_url || (g as any).pic_url || null
+                    return (
+                      <Card key={g.id} className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col justify-between gap-4`}>
+                        <div>
+                          <div className="flex items-start gap-4">
+                            <div className="h-32 w-32 overflow-hidden rounded-sm border border-zinc-800 bg-zinc-950">
+                              {imageUrl ? (
+                                <img src={imageUrl} alt={g.title} className="h-full w-full object-cover" />
+                              ) : (
+                                <div className="flex h-full items-center justify-center text-[12px] text-zinc-500">No image</div>
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <h4 className={`text-base font-bold ${theme.headingColor}`}>{g.title}</h4>
+                                  <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mt-1">{g.category || "Gear"}</p>
+                                </div>
+                                <Badge className="bg-[#E2AC28]/10 text-[#E2AC28] text-[10px] px-2 py-1 rounded-sm uppercase">{g.recommended_for_tier}</Badge>
+                              </div>
+                              <p className="text-xs text-zinc-400 mt-2">{g.brand}</p>
+                            </div>
+                          </div>
+                          <div className="mt-4 space-y-2 text-sm">
+                            <p className={`font-semibold ${theme.headingColor}`}>Specs</p>
+                            <p className={`text-xs ${theme.textSecondary}`}>{g.specs}</p>
+                            <p className={`font-semibold ${theme.headingColor}`}>Why we recommend it</p>
+                            <p className={`text-xs ${theme.textSecondary} leading-relaxed`}>{g.why_recommend}</p>
+                          </div>
+                        </div>
+                        {g.external_link && (
+                          <a href={g.external_link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#E2AC28] hover:underline">
+                            View product page
+                          </a>
+                        )}
+                        {isStaff && (
+                          <div className="mt-2 pt-3 border-t border-zinc-800/40">
+                            <div className="flex items-center gap-2">
+                              <Image className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                              <input
+                                type="text"
+                                placeholder="Update Gear Image Link URL..."
+                                defaultValue={g.image_url || ""}
+                                onBlur={(e) => handleUpdateAssetLink("equipment_recommendations", g.id, "image_url", e.target.value)}
+                                className={`w-full px-2 py-0.5 text-[10px] font-mono rounded-sm border outline-none ${theme.inputBg}`}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </Card>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
 
           {/* WOLVES SHOP MODULE */}
           {active === "shop" && (
             <div>
-              <div className="mb-4"><h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Wolves Merch & Equipment Store</h2></div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {shopItems.map((item) => (
-                  <Card key={item.id} className={`p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col justify-between gap-3`}>
-                    <div>
-                      <div className="flex justify-between items-start">
-                        <h4 className={`text-sm font-bold ${theme.headingColor}`}>{item.name}</h4>
-                        <span className="text-xs font-mono font-bold text-[#E2AC28]">${item.price}</span>
-                      </div>
-                      <p className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider mt-0.5">{item.category}</p>
-                      <p className={`text-xs ${theme.textSecondary} mt-2`}>{item.description}</p>
-                    </div>
-                    <div className="flex items-center justify-between border-t border-zinc-800/30 pt-2 mt-1">
-                      <span className="text-[10px] font-mono text-zinc-400">Stock: {item.stock ?? 0} units</span>
-                      <Button size="sm" disabled className="bg-zinc-800 text-zinc-500 text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none">Purchase in Club</Button>
-                    </div>
-                  </Card>
-                ))}
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Wolves Merch & Equipment Store</h2>
+                  <p className="text-[11px] text-zinc-500 mt-1">Filter by category or name to find the right item quickly.</p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <select
+                    value={shopFilter}
+                    onChange={(e) => setShopFilter(e.target.value)}
+                    className={`rounded-sm border px-3 py-2 text-xs ${theme.inputBg}`}
+                  >
+                    {shopCategories.map((category) => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="search"
+                    value={shopSearch}
+                    onChange={(e) => setShopSearch(e.target.value)}
+                    placeholder="Search shop items..."
+                    className={`rounded-sm border px-3 py-2 text-xs ${theme.inputBg}`}
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      value={shopPriceMin}
+                      onChange={(e) => setShopPriceMin(e.target.value === "" ? "" : Number(e.target.value))}
+                      placeholder="Min $"
+                      className={`rounded-sm border px-3 py-2 text-xs ${theme.inputBg} w-24`}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      value={shopPriceMax}
+                      onChange={(e) => setShopPriceMax(e.target.value === "" ? "" : Number(e.target.value))}
+                      placeholder="Max $"
+                      className={`rounded-sm border px-3 py-2 text-xs ${theme.inputBg} w-24`}
+                    />
+                  </div>
+                </div>
               </div>
+              {filteredShopItems.length === 0 ? (
+                <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg}`}>
+                  <p className={`text-sm ${theme.textSecondary}`}>No shop items match that filter.</p>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {filteredShopItems.map((item) => {
+                    const img = item.image_url || (item as any).pic_url || (item as any).picUrl || null
+                    const unit = item.unit || (item as any).unit || "units"
+                    return (
+                      <Card key={item.id} className={`p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col justify-between gap-3`}>
+                        <div className="flex gap-3">
+                          {img ? (
+                            <div className="h-32 w-32 shrink-0 bg-zinc-950/30 rounded-sm overflow-hidden border border-zinc-800">
+                              <img src={img} alt={item.name || "product"} className="w-full h-full object-cover" />
+                            </div>
+                          ) : (
+                            <div className="h-32 w-32 shrink-0 bg-zinc-950/30 rounded-sm flex items-center justify-center border border-zinc-800">
+                              <span className="text-[12px] text-zinc-500">No image</span>
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <div className="flex justify-between items-start gap-2">
+                              <div>
+                                <h4 className={`text-sm font-bold ${theme.headingColor}`}>{item.name}</h4>
+                                <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mt-1">{item.category || "Item"}</p>
+                              </div>
+                              <span className="text-xs font-mono font-bold text-[#E2AC28]">${item.price ?? 0}</span>
+                            </div>
+                            <p className={`text-xs ${theme.textSecondary} mt-2 leading-relaxed`}>{item.description || "No description available."}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-zinc-800/30 pt-2 mt-1 text-[10px] text-zinc-400">
+                          <span>Stock: {item.stock ?? 0} {unit}</span>
+                          <span>{unit}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          <Button
+                            size="sm"
+                            onClick={() => handlePurchaseRequest(item)}
+                            className="bg-[#E2AC28] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                          >
+                            Request Purchase
+                          </Button>
+                          <Link
+                            href="/messages"
+                            className="inline-flex items-center justify-center rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1 text-[10px] font-mono uppercase text-zinc-100"
+                          >
+                            Message Club
+                          </Link>
+                        </div>
+                      </Card>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -968,6 +1316,84 @@ async function cleanupExpiredBookings() {
           )}
 
           {/* CONTACT & SUPPORT HUB */}
+          {active === "messages" && (
+            <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
+              <div className="space-y-3">
+                <div className="mb-4">
+                  <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Inbox</h2>
+                  <p className="text-[11px] text-zinc-500">Conversation threads with the club support team.</p>
+                </div>
+                {messagesList.length === 0 ? (
+                  <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}><p className={`text-xs ${theme.textMuted}`}>No messages yet. Use the form below to create a new conversation.</p></Card>
+                ) : (
+                  <div className="space-y-2">
+                    {messagesList.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setSelectedMessageId(String(m.id))}
+                        className={`w-full rounded-md border p-3 text-left ${selectedMessageId === String(m.id) ? "border-[#E2AC28] bg-zinc-900" : "border-zinc-800 bg-zinc-950/70 hover:bg-zinc-900"}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-white truncate">{m.subject || "Member request"}</p>
+                          <Badge className={`text-[10px] px-2 py-1 ${m.status === 'open' ? 'bg-yellow-600/20 text-yellow-500' : 'bg-green-600/20 text-green-500'}`}>{m.status}</Badge>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 mt-1 truncate">{m.message}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <div className={`rounded-2xl border ${theme.cardBorder} ${theme.cardBg} p-5 flex flex-col gap-4`}>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">{selectedMessage ? selectedMessage.subject : "Start a new conversation"}</h3>
+                    <p className="text-[11px] text-zinc-500 mt-1">{selectedMessage ? `Started ${new Date(selectedMessage.created_at).toLocaleString()}` : "Send a message to the club support team."}</p>
+                  </div>
+
+                  {selectedMessage ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-end">
+                        <Link href={`/staff-dashboard?ticketId=${selectedMessage.id}`} target="_blank" className="text-xs text-zinc-400 hover:underline">View in staff console</Link>
+                      </div>
+                      <div className="rounded-2xl bg-zinc-950 p-4 text-sm text-zinc-100">
+                        <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mb-2">You</div>
+                        <p className="whitespace-pre-line">{selectedMessage.message}</p>
+                      </div>
+                      <div className="rounded-2xl bg-zinc-900 p-4 text-sm text-zinc-200">
+                        <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mb-2">Club support</div>
+                        <p>{selectedMessage.status === 'resolved' ? 'Your issue has been resolved. If you need help again, send a new message below.' : 'A club representative will reply here as soon as possible.'}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl bg-zinc-950 p-4 text-sm text-zinc-100">
+                      <p>Tell us what you need help with and we’ll get back to you through this thread.</p>
+                    </div>
+                  )}
+                </div>
+
+                <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-2xl`}>
+                  <form onSubmit={sendChatMessage} className="space-y-3">
+                    <div>
+                      <label className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Write a message</label>
+                      <textarea
+                        rows={4}
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        className={`mt-2 w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none ${theme.inputBg}`}
+                        placeholder="Type your question, booking issue, or support request..."
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[11px] text-zinc-500">Your message will open a new thread if no conversation is selected.</span>
+                      <Button type="submit" size="sm" className="bg-[#E2AC28] text-black font-bold">Send message</Button>
+                    </div>
+                  </form>
+                </Card>
+              </div>
+            </div>
+          )}
           {active === "support" && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="md:col-span-2 flex flex-col gap-4">
