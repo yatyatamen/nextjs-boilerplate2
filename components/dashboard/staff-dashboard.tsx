@@ -92,6 +92,31 @@ function SectionHeader({ title, desc }: { title: string; desc: string }) {
   )
 }
 
+function sortSessions(sessions: ScheduleSession[]) {
+  const now = new Date()
+  const startOfToday = new Date(now.toDateString())
+  const upcoming: ScheduleSession[] = []
+  const past: ScheduleSession[] = []
+  sessions.forEach((s) => {
+    const d = s?.date ? new Date(s.date) : null
+    if (!d) {
+      upcoming.push(s)
+    } else if (d >= startOfToday) {
+      upcoming.push(s)
+    } else {
+      past.push(s)
+    }
+  })
+  upcoming.sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
+  past.sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
+  return [...upcoming, ...past]
+}
+
+function getMemberDisplayName(member: Profile | null | undefined) {
+  if (!member) return "Member"
+  return `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || member.full_name || member.email || "Member"
+}
+
 export function StaffDashboard({
   profile,
   initialMembers,
@@ -118,13 +143,14 @@ export function StaffDashboard({
   const [active, setActive] = useState("overview")
 
   const [members, setMembers] = useState<Profile[]>(initialMembers)
-  const [schedule, setSchedule] = useState<ScheduleSession[]>(initialSchedule)
+  const [schedule, setSchedule] = useState<ScheduleSession[]>(() => sortSessions(initialSchedule || []))
   const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
   const [shopItems, setShopItems] = useState<ShopItem[]>(initialShopItems)
   const [assessments, setAssessments] = useState<Assessment[]>(initialAssessments)
   const [bookings, setBookings] = useState<Booking[]>(initialBookings)
   const [gearGuides, setGearGuides] = useState<EquipmentRecommendation[]>(initialGearGuides)
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(initialAttendanceRecords ?? [])
+  const [attendanceSelection, setAttendanceSelection] = useState<Record<string, "present" | "late" | "absent">>({})
   const [attendanceFilter, setAttendanceFilter] = useState<"all" | "present" | "absent" | "late">("all")
   const [selectedAttendanceMemberId, setSelectedAttendanceMemberId] = useState<string | null>(null)
   const [pendingAttendance, setPendingAttendance] = useState<Record<string, boolean>>({})
@@ -140,6 +166,22 @@ export function StaffDashboard({
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
+
+  // initialize attendanceSelection defaults when bookings or attendanceRecords change
+  useEffect(() => {
+    const next: Record<string, "present" | "late" | "absent"> = { ...attendanceSelection }
+    bookings.forEach((b) => {
+      if (!next[b.id]) {
+        const record = attendanceRecords.find((r) => r.session_id === b.session_id && r.user_id === b.user_id)
+        next[b.id] = (record?.status as any) ?? "present"
+      }
+    })
+    // only update if there are additions
+    if (Object.keys(next).length !== Object.keys(attendanceSelection).length) {
+      setAttendanceSelection(next)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings, attendanceRecords])
 
   const displayName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || profile.email || "Staff"
 
@@ -310,21 +352,40 @@ export function StaffDashboard({
     }
   }, [selectedMessageId])
 
+  async function updateMemberProfile(memberId: string, updates: { fullName?: string; level?: string }) {
+    const response = await fetch("/api/profiles", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberId, ...(updates.fullName ? { fullName: updates.fullName } : {}), ...(updates.level ? { level: updates.level } : {}) }),
+    })
+
+    const result = await response.json().catch(() => ({ error: "Unable to update profile." }))
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to update profile.")
+    }
+
+    return result.data as Profile | undefined
+  }
+
   async function saveMemberFullName(memberId: string) {
-    // Use the edited name if provided, otherwise derive the current display name
     const edit = membersNameEdits[memberId]
     const member = members.find((m) => m.id === memberId)
-    const derived = member ? (member.full_name ?? `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim()) : ""
+    const derived = getMemberDisplayName(member)
     const fullName = (typeof edit === "string" && edit.trim().length > 0) ? edit.trim() : derived
     if (!fullName) return
 
-    const updated = members.map((member) => (member.id === memberId ? { ...member, full_name: fullName } : member))
-    setMembers(updated)
+    const previousMembers = members
+    setMembers((prev) => prev.map((item) => (item.id === memberId ? { ...item, full_name: fullName } : item)))
 
-    const { error } = await supabase.from("profiles").update({ full_name: fullName }).eq("id", memberId)
-    if (error) {
+    try {
+      const updatedProfile = await updateMemberProfile(memberId, { fullName })
+      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, full_name: updatedProfile?.full_name ?? fullName } : m)))
+      setMembersNameEdits((prev) => ({ ...prev, [memberId]: "" }))
+      showToast("Display name updated")
+    } catch (error) {
       console.error("Failed to update member name:", error)
-      alert(`Unable to update member name: ${error.message}`)
+      setMembers(previousMembers)
+      showToast(error instanceof Error ? error.message : "Unable to update member name")
     }
   }
 
@@ -490,7 +551,7 @@ export function StaffDashboard({
           <SectionHeader title="Members" desc="View members and update account names and skill levels." />
           <div className="flex flex-col gap-3">
             {members.map((m) => {
-              const currentName = membersNameEdits[m.id] ?? m.full_name ?? `${m.first_name ?? ""} ${m.last_name ?? ""}`.trim()
+              const currentName = (membersNameEdits[m.id] ?? getMemberDisplayName(m)).trim()
               return (
                 <Card key={m.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -516,8 +577,17 @@ export function StaffDashboard({
                         value={m.level ?? ALL_6_TIERS[0]}
                         onChange={async (e) => {
                           const level = e.target.value
+                          const prevMembers = members
                           setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, level } : x)))
-                          await supabase.from("profiles").update({ level }).eq("id", m.id)
+                          try {
+                            const updatedProfile = await updateMemberProfile(m.id, { level })
+                            setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, level: updatedProfile?.level ?? level } : x)))
+                            showToast("Member level updated")
+                          } catch (err) {
+                            console.error("Failed to update member level:", err)
+                            setMembers(prevMembers)
+                            showToast(err instanceof Error ? err.message : "Unable to update level")
+                          }
                         }}
                         className="h-9 w-40"
                       >
@@ -556,7 +626,7 @@ export function StaffDashboard({
                 console.error("Full Error Details:", error)
                 return
               }
-              if (data && data[0]) setSchedule((prev) => [...prev, data[0] as ScheduleSession])
+              if (data && data[0]) setSchedule((prev) => sortSessions([...prev, data[0] as ScheduleSession]))
             }}
           />
           <div className="mt-6 flex flex-col gap-3">
@@ -739,13 +809,14 @@ export function StaffDashboard({
                 ).values(),
               )
 
-              const rows = uniqueBookings
+                  const rows = uniqueBookings
                 .map((booking) => {
                   const member = members.find((m) => m.id === booking.user_id)
                   const attendance = attendanceRecords.find(
                     (record) => record.session_id === booking.session_id && record.user_id === booking.user_id,
                   )
                   const status = attendance?.status ?? "not marked"
+                      // default selection handled by initialization effect
                   return { booking, member, attendance, status }
                 })
                 .filter((row) => attendanceFilter === "all" || row.status === attendanceFilter)
@@ -757,6 +828,26 @@ export function StaffDashboard({
                     <p className="text-sm text-muted-foreground mt-1">
                       {formatDate(session.date)} · {session.time ?? "TBD"}
                     </p>
+                  </div>
+                  <div className="mb-3 flex items-center justify-end">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={async () => {
+                        const toSave = rows
+                        for (const row of toSave) {
+                          const booking = row.booking
+                          const desired = attendanceSelection[booking.id] ?? "present"
+                          const current = row.attendance?.status ?? "not marked"
+                          if (desired !== current) {
+                            await markAttendance(booking, desired)
+                          }
+                        }
+                        showToast("Attendance saved")
+                      }}
+                    >
+                      Save Attendance
+                    </Button>
                   </div>
                   {rows.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No matching attendance rows for this filter.</p>
@@ -776,7 +867,7 @@ export function StaffDashboard({
                           {rows.map(({ booking, member, attendance, status }) => (
                             <tr key={booking.id} className="hover:bg-zinc-900">
                               <td className="px-4 py-3 align-top">
-                                <p className="font-medium text-foreground">
+                                <p className="font-medium text-zinc-100">
                                   <button
                                     type="button"
                                     onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
@@ -785,24 +876,27 @@ export function StaffDashboard({
                                     {member?.full_name || member?.email || "Unknown Member"}
                                   </button>
                                 </p>
-                                <p className="text-xs text-muted-foreground">{booking.user_id}</p>
+                                <p className="text-xs text-zinc-400">{booking.user_id}</p>
                               </td>
-                              <td className="px-4 py-3 align-top text-xs text-muted-foreground">{member?.level || "N/A"}</td>
-                              <td className="px-4 py-3 align-top text-xs text-muted-foreground uppercase tracking-[0.08em]">{status}</td>
-                              <td className="px-4 py-3 align-top text-xs text-muted-foreground">
+                              <td className="px-4 py-3 align-top text-xs text-zinc-400">{member?.level || "N/A"}</td>
+                              <td className="px-4 py-3 align-top text-xs text-zinc-200 uppercase tracking-[0.08em]">{status}</td>
+                              <td className="px-4 py-3 align-top text-xs text-zinc-400">
                                 {attendance?.marked_at ? new Date(attendance.marked_at).toLocaleString() : "—"}
                               </td>
                               <td className="px-4 py-3 align-top">
-                                <div className="flex flex-wrap gap-2">
-                                  <Button type="button" size="sm" variant="outline" className="h-8 px-3 text-xs pointer-events-auto relative z-10 cursor-pointer" onClick={() => markAttendance(booking, "present")} disabled={!!pendingAttendance[booking.id]}>
-                                    {pendingAttendance[booking.id] ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : null}Present
-                                  </Button>
-                                  <Button type="button" size="sm" variant="outline" className="h-8 px-3 text-xs pointer-events-auto relative z-10 cursor-pointer" onClick={() => markAttendance(booking, "late")} disabled={!!pendingAttendance[booking.id]}>
-                                    {pendingAttendance[booking.id] ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : null}Late
-                                  </Button>
-                                  <Button type="button" size="sm" variant="outline" className="h-8 px-3 text-xs pointer-events-auto relative z-10 cursor-pointer" onClick={() => markAttendance(booking, "absent")} disabled={!!pendingAttendance[booking.id]}>
-                                    {pendingAttendance[booking.id] ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : null}Miss
-                                  </Button>
+                                <div className="flex items-center gap-3">
+                                  {(["present", "late", "absent"] as const).map((opt) => (
+                                    <label key={opt} className="inline-flex items-center gap-2">
+                                      <input
+                                        type="radio"
+                                        name={`attendance-${booking.id}`}
+                                        value={opt}
+                                        checked={(attendanceSelection[booking.id] ?? "present") === opt}
+                                        onChange={() => setAttendanceSelection((prev) => ({ ...prev, [booking.id]: opt }))}
+                                      />
+                                      <span className={`text-xs ${opt === "present" ? "text-emerald-400" : opt === "late" ? "text-amber-400" : "text-rose-400"}`}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</span>
+                                    </label>
+                                  ))}
                                 </div>
                               </td>
                             </tr>

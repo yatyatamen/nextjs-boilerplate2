@@ -361,15 +361,19 @@ export function MemberDashboard({
 
   async function handleJsonResponse(response: Response) {
     const text = await response.text()
-    if (!text) {
-      return { error: response.ok ? null : `Empty response body (${response.status})` }
+    if (!text.trim()) {
+      return response.ok ? { data: null } : { error: response.statusText || `Request failed (${response.status})` }
     }
 
     try {
       return JSON.parse(text)
-    } catch (error) {
-      console.error("Failed to parse JSON response:", text, error)
-      return { error: `Invalid JSON response (${response.status})` }
+    } catch {
+      const normalizedText = text.trim()
+      return {
+        error: normalizedText.includes("<html") || normalizedText.includes("<!DOCTYPE")
+          ? `Request failed (${response.status})`
+          : normalizedText || `Invalid JSON response (${response.status})`,
+      }
     }
   }
 
@@ -467,6 +471,31 @@ export function MemberDashboard({
     }
   }
 
+  async function insertBookingRecord(sessionId: string | number) {
+    const { data, error } = await supabase
+      .from("bookings")
+      .insert({ user_id: profile.id, session_id: sessionId, status: "confirmed" })
+      .select()
+      .single()
+
+    if (error) {
+      if (error.code === "23505" || error.message?.toLowerCase().includes("duplicate")) {
+        const { data: existingBooking, error: lookupError } = await supabase
+          .from("bookings")
+          .select("*")
+          .eq("user_id", profile.id)
+          .eq("session_id", sessionId)
+          .maybeSingle()
+
+        if (!lookupError && existingBooking) return existingBooking
+      }
+
+      throw error
+    }
+
+    return data
+  }
+
   async function book(session: ScheduleSession) {
     setPendingId(session.id)
     try {
@@ -478,37 +507,31 @@ export function MemberDashboard({
       })
 
       const result = await handleJsonResponse(response)
-      if (!response.ok) {
-        console.error("❌ Booking Error:", result)
-        alert(`Error joining session: ${result.error || "Unknown error"}`)
+      let inserted = Array.isArray(result.data) ? result.data[0] : result.data
+
+      if (response.ok && inserted) {
+        setBookings((prev) => [...prev, inserted as Booking])
+        alert("✓ You've successfully joined the session!")
         return
       }
 
-      let inserted = Array.isArray(result.data) ? result.data[0] : result.data
-      if (inserted) {
-        setBookings((prev) => [...prev, inserted as Booking])
-        alert("✓ You've successfully joined the session!")
-      } else {
-        // Fallback: attempt direct client-side insert if API didn't return the inserted row
-        try {
-          const { data: clientInserted, error: clientError } = await supabase
-            .from("bookings")
-            .insert({ user_id: profile.id, session_id: session.id, status: "confirmed" })
-            .select()
-            .single()
+      console.warn("⚠️ Booking API failed; attempting client-side fallback", { status: response.status, result })
 
-          if (!clientError && clientInserted) {
-            setBookings((prev) => [...prev, clientInserted as Booking])
-            alert("✓ You've successfully joined the session!")
-          } else {
-            // As a last resort refresh the bookings list
-            const { data: refreshed, error: refreshError } = await supabase.from("bookings").select("*").eq("user_id", profile.id)
-            if (!refreshError && refreshed) setBookings(refreshed as Booking[])
-          }
-        } catch (refreshErr) {
-          console.error("❌ Booking fallback failed:", refreshErr)
+      try {
+        const clientInserted = await insertBookingRecord(session.id)
+        if (clientInserted) {
+          setBookings((prev) => [...prev, clientInserted as Booking])
+          alert("✓ You've successfully joined the session!")
+          return
         }
+
+        const { data: refreshed, error: refreshError } = await supabase.from("bookings").select("*").eq("user_id", profile.id)
+        if (!refreshError && refreshed) setBookings(refreshed as Booking[])
+      } catch (fallbackErr) {
+        console.error("❌ Booking fallback failed:", fallbackErr)
       }
+
+      alert(`Error joining session: ${result.error || "Unknown error"}`)
     } catch (err) {
       console.error("❌ Booking Exception:", err)
       alert(`Failed to join session: ${err instanceof Error ? err.message : "Unknown error"}`)
@@ -550,6 +573,62 @@ export function MemberDashboard({
     )
   }
 
+  async function deleteBookingRemotely(booking: Booking) {
+    const payload = {
+      booking_id: booking.id,
+      session_id: booking.session_id,
+      user_id: profile.id,
+    }
+
+    const response = await fetch("/api/bookings", {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+
+    const result = await handleJsonResponse(response)
+    if (response.ok) {
+      return { ok: true as const, result }
+    }
+
+    return { ok: false as const, result, status: response.status }
+  }
+
+  async function deleteBookingDirectly(booking: Booking) {
+    if (!booking.id && !booking.session_id) {
+      return { ok: false as const, error: "Booking details unavailable" }
+    }
+
+    const attempts = [] as Array<() => Promise<{ data: unknown; error: unknown }>>
+
+    if (booking.id) {
+      attempts.push(async () => {
+        const { data, error } = await supabase.from("bookings").delete().eq("id", booking.id).select()
+        return { data, error }
+      })
+    }
+
+    if (booking.session_id && profile.id) {
+      attempts.push(async () => {
+        const { data, error } = await supabase.from("bookings").delete().eq("session_id", booking.session_id).eq("user_id", profile.id).select()
+        return { data, error }
+      })
+    }
+
+    for (const attempt of attempts) {
+      const { data, error } = await attempt()
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return { ok: true as const, data }
+      }
+      if (error) {
+        console.error("Direct booking delete failed:", error)
+      }
+    }
+
+    return { ok: false as const, error: "Unable to retract booking from the database" }
+  }
+
   async function cancel(booking: Booking) {
     const sessionDetail = booking.session_id ? scheduleById.get(String(booking.session_id)) : null
     const sessionInfo = sessionDetail ? `${formatDate(sessionDetail.date)} at ${sessionDetail.time || "TBD"}` : "this session"
@@ -560,23 +639,24 @@ export function MemberDashboard({
       async () => {
         setConfirmLoading(true)
         try {
-          const response = await fetch("/api/bookings", {
-            method: "DELETE",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ booking_id: booking.id }),
-          })
-
-          const result = await handleJsonResponse(response)
-          if (!response.ok) {
-            console.error("❌ Cancel Booking Error:", result)
-            alert(`Error retracting booking: ${result.error || "Unknown error"}`)
+          const apiResult = await deleteBookingRemotely(booking)
+          if (apiResult.ok) {
+            setBookings((prev) => prev.filter((b) => b.id !== booking.id))
+            closeConfirmation()
+            showToast("✓ Booking retracted successfully")
             return
           }
 
-          setBookings((prev) => prev.filter((b) => b.id !== booking.id))
-          closeConfirmation()
-          showToast("✓ Booking retracted successfully")
+          const directResult = await deleteBookingDirectly(booking)
+          if (directResult.ok) {
+            setBookings((prev) => prev.filter((b) => b.id !== booking.id))
+            closeConfirmation()
+            showToast("✓ Booking retracted successfully")
+            return
+          }
+
+          console.error("❌ Cancel Booking Error:", apiResult.result)
+          alert(`Error retracting booking: ${apiResult.result?.error || directResult.error || "Unknown error"}`)
         } finally {
           setConfirmLoading(false)
         }
@@ -697,7 +777,22 @@ async function cleanupExpiredBookings() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <StatCard icon={Ticket} label="Active Bookings" value={visibleBookings.length} theme={theme} />
                 <StatCard icon={CalendarDays} label="Upcoming Sessions" value={visibleSchedule.length} theme={theme} />
-                <StatCard icon={Users} label="Club Leaders" value={initialCoaches.length} theme={theme} />
+                <Card className={`p-4 border ${theme.cardBorder} ${theme.cardBg} rounded-sm flex items-start gap-4`}>
+                  <div className="p-2.5 rounded-sm bg-[#E2AC28]/10 text-[#E2AC28]">
+                    <CalendarDays className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className={`text-[10px] font-mono uppercase tracking-wider ${theme.textMuted}`}>Next Session</p>
+                    {visibleSchedule.length > 0 ? (
+                      <>
+                        <p className="text-sm font-semibold mt-1">{visibleSchedule[0].title || "Untitled Session"}</p>
+                        <p className="text-xs text-zinc-400">{formatDate(visibleSchedule[0].date)} · {visibleSchedule[0].time || "TBD"}</p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-zinc-400 mt-1">No upcoming sessions</p>
+                    )}
+                  </div>
+                </Card>
               </div>
 
               {announcements.length > 0 && (
