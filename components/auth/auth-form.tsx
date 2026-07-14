@@ -9,7 +9,7 @@ import { AlertCircle, Loader2, Mail } from "lucide-react"
 
 type Mode = "login" | "register"
 
-const DOMAIN_ERROR = `Only YRDSB school email addresses (${ALLOWED_DOMAIN}) are allowed to register.`
+const DOMAIN_ERROR = `Only YRDSB school email addresses (${ALLOWED_DOMAIN}) are allowed.`
 
 export function AuthForm() {
   const router = useRouter()
@@ -23,17 +23,17 @@ export function AuthForm() {
   const [formError, setFormError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const emailValid = email.length === 0 || mode !== "register" || isValidSchoolEmail(email)
+  const emailValid = email.length === 0 || isValidSchoolEmail(email)
   const canSubmit =
     email.trim().length > 0 &&
     password.length >= 6 &&
     (mode === "register"
       ? isValidSchoolEmail(email) && fullName.trim().length > 0 && password === confirmPassword
-      : true)
+      : isValidSchoolEmail(email))
 
   function handleEmailChange(value: string) {
     setEmail(value)
-    if (mode === "register" && value.length > 0 && !isValidSchoolEmail(value)) {
+    if (value.length > 0 && !isValidSchoolEmail(value)) {
       setEmailError(DOMAIN_ERROR)
     } else {
       setEmailError(null)
@@ -72,12 +72,15 @@ export function AuthForm() {
     setLoading(true)
     try {
       const supabase = createClient()
+      const normalizedEmail = email.trim()
+
+      if (!isValidSchoolEmail(normalizedEmail)) {
+        setEmailError(DOMAIN_ERROR)
+        setLoading(false)
+        return
+      }
+
       if (mode === "register") {
-        if (!isValidSchoolEmail(email)) {
-          setEmailError(DOMAIN_ERROR)
-          setLoading(false)
-          return
-        }
 
         if (!fullName.trim()) {
           setFormError("Please enter your full name.")
@@ -91,7 +94,7 @@ export function AuthForm() {
         }
 
         const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
+          email: normalizedEmail,
           password,
           options: {
             data: {
@@ -127,7 +130,7 @@ export function AuthForm() {
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
+          email: normalizedEmail,
           password,
         })
         if (error) {

@@ -4,7 +4,10 @@ import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { Card, Button } from "@/components/ui/primitives"
+import { isValidSchoolEmail, ALLOWED_DOMAIN } from "@/lib/types"
 import { CalendarDays, Trophy, Megaphone, ShoppingBag, Mail, Lock, Loader2 } from "lucide-react"
+
+const DOMAIN_ERROR = `Only YRDSB school email addresses (${ALLOWED_DOMAIN}) are allowed.`
 
 export default function LoginPage() {
   const router = useRouter()
@@ -20,8 +23,16 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
 
+    const normalizedEmail = email.trim()
+
+    if (!isValidSchoolEmail(normalizedEmail)) {
+      setError(DOMAIN_ERROR)
+      setLoading(false)
+      return
+    }
+
     if (isRegister) {
-      const { error } = await supabase.auth.signUp({ email, password })
+      const { error } = await supabase.auth.signUp({ email: normalizedEmail, password })
       if (error) {
         setError(error.message)
         setLoading(false)
@@ -30,7 +41,7 @@ export default function LoginPage() {
         setLoading(false)
       }
     } else {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
       if (error) {
         setError(error.message)
         setLoading(false)
