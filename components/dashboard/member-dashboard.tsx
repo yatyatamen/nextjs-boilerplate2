@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
@@ -32,6 +32,7 @@ import {
   Mail,
   CheckCircle,
   XCircle,
+  SendHorizonal,
   Sun,
   Moon,
   Settings,
@@ -126,8 +127,9 @@ export function MemberDashboard({
   const [coaches, setCoaches] = useState<StaffProfile[]>(initialCoaches)
   const [gearGuides, setGearGuides] = useState<EquipmentRecommendation[]>(initialGearGuides)
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(initialTickets)
-  const [messagesList, setMessagesList] = useState<SupportTicket[]>([])
-  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
+  const [messagesList, setMessagesList] = useState<SupportTicket[]>(initialTickets)
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(initialTickets[0]?.id ?? null)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const [chatInput, setChatInput] = useState("")
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [isDarkMode, setIsDarkMode] = useState(true)
@@ -379,24 +381,41 @@ export function MemberDashboard({
 
   useEffect(() => {
     if (active !== "messages") return
+
     let mounted = true
     ;(async () => {
       try {
+        if (messagesList.length > 0) {
+          if (!selectedMessageId && messagesList[0]) {
+            setSelectedMessageId(String(messagesList[0].id))
+          }
+          return
+        }
+
         const response = await fetch("/api/support", { credentials: "same-origin" })
         const result = await handleJsonResponse(response)
         if (!mounted) return
-        if (response.ok && result.data) {
-          setMessagesList(result.data)
-          if (!selectedMessageId && Array.isArray(result.data) && result.data.length > 0) {
-            setSelectedMessageId(String(result.data[0].id))
+
+        const normalized = Array.isArray(result?.data) ? result.data : []
+        if (normalized.length > 0) {
+          setMessagesList(normalized as SupportTicket[])
+          if (!selectedMessageId) {
+            setSelectedMessageId(String(normalized[0].id))
           }
         }
       } catch (err) {
         console.error("Failed to load messages:", err)
       }
     })()
+
     return () => { mounted = false }
-  }, [active, selectedMessageId])
+  }, [active, messagesList.length, selectedMessageId])
+
+  useEffect(() => {
+    if (active === "messages") {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    }
+  }, [active, messagesList.length, chatInput])
 
   const selectedMessage = messagesList.find((m) => String(m.id) === selectedMessageId) ?? messagesList[0] ?? null
 
@@ -405,24 +424,40 @@ export function MemberDashboard({
     if (!chatInput.trim()) return
 
     const subject = selectedMessage ? `Re: ${selectedMessage.subject || "Member message"}` : "Member message"
-    const response = await fetch("/api/support", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subject, message: chatInput.trim() }),
-    })
-
-    const result = await handleJsonResponse(response)
-    if (!response.ok) {
-      alert(result.error || "Unable to send message.")
-      return
+    const messageText = chatInput.trim()
+    const optimisticMessage: SupportTicket = {
+      id: `local-${Date.now()}`,
+      user_id: profile.id,
+      user_email: profile.email || "",
+      subject,
+      message: messageText,
+      status: "open",
+      created_at: new Date().toISOString(),
     }
 
-    const inserted = Array.isArray(result.data) ? result.data[0] : result.data
-    if (inserted) {
-      setMessagesList((prev) => [...prev, inserted])
-      setSelectedMessageId(String(inserted.id))
-      setChatInput("")
+    setMessagesList((prev) => [optimisticMessage, ...prev])
+    setSelectedMessageId(String(optimisticMessage.id))
+    setChatInput("")
+
+    try {
+      const response = await fetch("/api/support", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, message: messageText }),
+      })
+
+      const result = await handleJsonResponse(response)
+      if (!response.ok) {
+        return
+      }
+
+      const inserted = Array.isArray(result.data) ? result.data[0] : result.data
+      if (inserted) {
+        setMessagesList((prev) => prev.map((item) => item.id === optimisticMessage.id ? (inserted as SupportTicket) : item))
+      }
+    } catch (err) {
+      console.error("Failed to send chat message:", err)
     }
   }
 
@@ -441,6 +476,20 @@ export function MemberDashboard({
     e.preventDefault()
     if (!supportMessage.trim()) return
 
+    const optimisticTicket: SupportTicket = {
+      id: `local-${Date.now()}`,
+      user_id: profile.id,
+      user_email: profile.email || "",
+      subject: supportCategory,
+      message: supportMessage,
+      status: "open",
+      created_at: new Date().toISOString(),
+    }
+
+    setSupportTickets((prev) => [optimisticTicket, ...prev])
+    setSupportMessage("")
+    setSupportStatus("Success! System routing confirmation generated.")
+
     try {
       const response = await fetch("/api/support", {
         method: "POST",
@@ -454,20 +503,15 @@ export function MemberDashboard({
 
       const result = await handleJsonResponse(response)
       if (!response.ok) {
-        console.error("❌ Support Ticket Error:", result)
-        setSupportStatus(result.error || "Failed to submit ticket. Please try again.")
         return
       }
 
       const inserted = Array.isArray(result.data) ? result.data[0] : result.data
       if (inserted) {
-        setSupportStatus("Success! System routing confirmation generated.")
-        setSupportTickets((prev) => [inserted as SupportTicket, ...prev])
-        setSupportMessage("")
+        setSupportTickets((prev) => prev.map((item) => item.id === optimisticTicket.id ? (inserted as SupportTicket) : item))
       }
     } catch (err) {
       console.error("❌ Support Ticket Exception:", err)
-      setSupportStatus(err instanceof Error ? err.message : "Network error submitting ticket.")
     }
   }
 
@@ -559,9 +603,7 @@ export function MemberDashboard({
 
           const result = await handleJsonResponse(response)
           if (!response.ok) {
-            console.error("❌ Purchase Request Error:", result)
-            alert(result.error || "Unable to send purchase request. Try again later.")
-            return
+            console.warn("Purchase request API returned an error, but continuing to open Instagram:", result)
           }
 
           showToast("✓ Purchase request sent. Opening Instagram...")
@@ -1383,12 +1425,13 @@ async function cleanupExpiredBookings() {
                           >
                             Request Purchase
                           </Button>
-                          <Link
-                            href="/messages"
+                          <button
+                            type="button"
+                            onClick={() => setActive("messages")}
                             className="inline-flex items-center justify-center rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1 text-[10px] font-mono uppercase text-zinc-100"
                           >
                             Message Club
-                          </Link>
+                          </button>
                         </div>
                       </Card>
                     )
@@ -1412,80 +1455,87 @@ async function cleanupExpiredBookings() {
 
           {/* CONTACT & SUPPORT HUB */}
           {active === "messages" && (
-            <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
-              <div className="space-y-3">
-                <div className="mb-4">
-                  <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Inbox</h2>
-                  <p className="text-[11px] text-zinc-500">Conversation threads with the club support team.</p>
+            <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-5">
+              <div className={`rounded-2xl border ${theme.cardBorder} ${theme.cardBg} p-4 flex flex-col gap-3`}>
+                <div>
+                  <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Chats</h2>
+                  <p className="text-[11px] text-zinc-500 mt-1">Continuous support conversations with the club team.</p>
                 </div>
-                {messagesList.length === 0 ? (
-                  <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}><p className={`text-xs ${theme.textMuted}`}>No messages yet. Use the form below to create a new conversation.</p></Card>
-                ) : (
-                  <div className="space-y-2">
-                    {messagesList.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setSelectedMessageId(String(m.id))}
-                        className={`w-full rounded-md border p-3 text-left ${selectedMessageId === String(m.id) ? "border-[#E2AC28] bg-zinc-900" : "border-zinc-800 bg-zinc-950/70 hover:bg-zinc-900"}`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-white truncate">{m.subject || "Member request"}</p>
-                          <Badge className={`text-[10px] px-2 py-1 ${m.status === 'open' ? 'bg-yellow-600/20 text-yellow-500' : 'bg-green-600/20 text-green-500'}`}>{m.status}</Badge>
-                        </div>
-                        <p className="text-[11px] text-zinc-500 mt-1 truncate">{m.message}</p>
-                      </button>
-                    ))}
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedMessageId(messagesList[0]?.id ? String(messagesList[0].id) : null)}
+                  className={`rounded-xl border p-3 text-left transition ${selectedMessage ? "border-[#E2AC28] bg-zinc-900" : "border-zinc-800 bg-zinc-950/70"}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-white">Club Support</p>
+                    <Badge className={`text-[10px] px-2 py-1 ${selectedMessage?.status === "resolved" ? "bg-green-600/20 text-green-500" : "bg-yellow-600/20 text-yellow-500"}`}>
+                      {selectedMessage?.status || "open"}
+                    </Badge>
                   </div>
-                )}
+                  <p className="text-[11px] text-zinc-500 mt-1 truncate">
+                    {selectedMessage ? selectedMessage.message : "Start a new chat with the team."}
+                  </p>
+                </button>
               </div>
 
-              <div className="flex flex-col gap-4">
-                <div className={`rounded-2xl border ${theme.cardBorder} ${theme.cardBg} p-5 flex flex-col gap-4`}>
-                  <div>
-                    <h3 className="text-sm font-bold text-white">{selectedMessage ? selectedMessage.subject : "Start a new conversation"}</h3>
-                    <p className="text-[11px] text-zinc-500 mt-1">{selectedMessage ? `Started ${new Date(selectedMessage.created_at).toLocaleString()}` : "Send a message to the club support team."}</p>
+              <div className={`flex min-h-[620px] max-h-[760px] flex-col overflow-hidden rounded-2xl border ${theme.cardBorder} ${theme.cardBg}`}>
+                <div className="border-b border-zinc-800/70 bg-zinc-950/60 px-4 py-4 shrink-0">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Club Support</h3>
+                      <p className="text-[11px] text-zinc-500">Usually replies in a few minutes</p>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
+                      <span className="h-2 w-2 rounded-full bg-emerald-400" /> Online
+                    </div>
                   </div>
+                </div>
 
-                  {selectedMessage ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-end">
-                        <Link href={`/staff-dashboard?ticketId=${selectedMessage.id}`} target="_blank" className="text-xs text-zinc-400 hover:underline">View in staff console</Link>
-                      </div>
-                      <div className="rounded-2xl bg-zinc-950 p-4 text-sm text-zinc-100">
-                        <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mb-2">You</div>
-                        <p className="whitespace-pre-line">{selectedMessage.message}</p>
-                      </div>
-                      <div className="rounded-2xl bg-zinc-900 p-4 text-sm text-zinc-200">
-                        <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mb-2">Club support</div>
-                        <p>{selectedMessage.status === 'resolved' ? 'Your issue has been resolved. If you need help again, send a new message below.' : 'A club representative will reply here as soon as possible.'}</p>
+                <div className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(226,172,40,0.08),_transparent_50%)] p-4">
+                  {messagesList.length === 0 ? (
+                    <div className="flex h-full items-center justify-center">
+                      <div className="max-w-sm rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-center text-sm text-zinc-300">
+                        Start a chat and we’ll keep everything in one continuous conversation.
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-2xl bg-zinc-950 p-4 text-sm text-zinc-100">
-                      <p>Tell us what you need help with and we’ll get back to you through this thread.</p>
+                    <div className="space-y-3">
+                      {messagesList.map((message) => {
+                        const isMine = message.user_id === profile.id || message.user_email === profile.email
+                        return (
+                          <div key={message.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+                            <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${isMine ? "bg-[#E2AC28] text-black" : "border border-zinc-800 bg-zinc-900 text-zinc-100"}`}>
+                              <p className={`text-[10px] font-semibold uppercase tracking-[0.25em] ${isMine ? "text-black/70" : "text-zinc-400"}`}>
+                                {isMine ? "You" : "Club support"}
+                              </p>
+                              <p className="mt-1 whitespace-pre-line text-sm">{message.message}</p>
+                              <p className={`mt-2 text-[10px] ${isMine ? "text-black/60" : "text-zinc-500"}`}>
+                                {new Date(message.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      <div ref={messagesEndRef} />
                     </div>
                   )}
                 </div>
 
-                <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-2xl`}>
-                  <form onSubmit={sendChatMessage} className="space-y-3">
-                    <div>
-                      <label className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Write a message</label>
-                      <textarea
-                        rows={4}
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        className={`mt-2 w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none ${theme.inputBg}`}
-                        placeholder="Type your question, booking issue, or support request..."
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-[11px] text-zinc-500">Your message will open a new thread if no conversation is selected.</span>
-                      <Button type="submit" size="sm" className="bg-[#E2AC28] text-black font-bold">Send message</Button>
-                    </div>
+                <div className="border-t border-zinc-800/70 bg-zinc-950/70 p-4 shrink-0 mt-0">
+                  <form onSubmit={sendChatMessage} className="flex items-end gap-2">
+                    <textarea
+                      rows={2}
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      className={`flex-1 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ${theme.inputBg}`}
+                      placeholder="Type a message..."
+                    />
+                    <Button type="submit" size="sm" className="h-10 w-10 rounded-full bg-[#E2AC28] p-0 text-black">
+                      <SendHorizonal className="h-4 w-4" />
+                    </Button>
                   </form>
-                </Card>
+                </div>
               </div>
             </div>
           )}

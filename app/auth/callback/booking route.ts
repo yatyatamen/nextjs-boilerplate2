@@ -1,45 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server"
 
-function coerceValue(value: unknown): string | number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return value
-  if (typeof value === "string") {
-    const trimmed = value.trim()
-    if (!trimmed) return undefined
-    if (/^-?\d+$/.test(trimmed)) return Number(trimmed)
-    return trimmed
-  }
-  return undefined
-}
-
-async function parseJsonBody(request: NextRequest, fallback: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
-  try {
-    const contentType = request.headers.get("content-type") ?? ""
-    if (!contentType.includes("application/json")) {
-      return fallback
-    }
-
-    const text = await request.text()
-    if (!text.trim()) {
-      return fallback
-    }
-
-    return JSON.parse(text) as Record<string, unknown>
-  } catch {
-    return fallback
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
-    const body = await parseJsonBody(request, {})
-    const sessionIdValue = coerceValue(body?.session_id)
+    const body = await request.json()
+    const session_id = typeof body?.session_id === "string" || typeof body?.session_id === "number" ? String(body.session_id) : ""
 
-    if (sessionIdValue === undefined) return NextResponse.json({ error: "session_id required" }, { status: 400 })
-
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      return NextResponse.json({ error: "Booking service unavailable" }, { status: 503 })
-    }
+    if (!session_id) return NextResponse.json({ error: "session_id required" }, { status: 400 })
 
     const supabase = await createSupabaseServerClient()
     const { data: userData, error: userError } = await supabase.auth.getUser()
@@ -49,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabase
       .from("bookings")
-      .insert({ session_id: sessionIdValue, user_id: user.id, status: "confirmed" })
+      .insert({ session_id: session_id, user_id: user.id, status: "confirmed" })
       .select()
 
     if (error) {
@@ -66,25 +33,9 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const body = await parseJsonBody(request, {})
-    const rawBookingId = body?.booking_id ?? request.nextUrl.searchParams.get("booking_id")
-    const rawSessionId = body?.session_id ?? request.nextUrl.searchParams.get("session_id")
-    const bookingIdCandidates: Array<string | number> = []
-    const primaryBookingId = coerceValue(rawBookingId)
-    const sessionIdValue = coerceValue(rawSessionId)
-
-    if (primaryBookingId !== undefined) {
-      bookingIdCandidates.push(primaryBookingId)
-      if (typeof primaryBookingId === "number") {
-        bookingIdCandidates.push(String(primaryBookingId))
-      } else if (/^-?\d+$/.test(primaryBookingId)) {
-        bookingIdCandidates.push(Number(primaryBookingId))
-      }
-    }
-
-    if (bookingIdCandidates.length === 0) {
-      return NextResponse.json({ error: "booking_id required" }, { status: 400 })
-    }
+    const body = await request.json()
+    const booking_id = typeof body?.booking_id === "string" || typeof body?.booking_id === "number" ? String(body.booking_id) : ""
+    if (!booking_id) return NextResponse.json({ error: "booking_id required" }, { status: 400 })
 
     const supabase = await createSupabaseServerClient()
     const { data: userData, error: userError } = await supabase.auth.getUser()
@@ -92,33 +43,8 @@ export async function DELETE(request: NextRequest) {
     const user = userData.user
 
     // fetch booking to verify ownership
-    let existing: Record<string, unknown> | null = null
-    let fetchError: unknown = null
-
-    for (const candidate of bookingIdCandidates) {
-      const { data, error } = await supabase.from("bookings").select("*").eq("id", candidate as never).maybeSingle()
-      if (!error && data) {
-        existing = data
-        fetchError = null
-        break
-      }
-      fetchError = error
-    }
-
-    if (!existing && sessionIdValue !== undefined && user.id) {
-      const { data: sessionBooking, error: sessionError } = await supabase
-        .from("bookings")
-        .select("*")
-        .eq("session_id", sessionIdValue as never)
-        .eq("user_id", user.id)
-        .maybeSingle()
-
-      if (!sessionError && sessionBooking) {
-        existing = sessionBooking
-      }
-    }
-
-    if (!existing) {
+    const { data: existing, error: fetchError } = await supabase.from("bookings").select("*").eq("id", booking_id).single()
+    if (fetchError || !existing) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 })
     }
 
@@ -130,10 +56,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Not authorized to delete this booking" }, { status: 403 })
     }
 
-    const { data, error } = await supabase.from("bookings").delete().eq("id", (existing as Record<string, unknown>).id as never).select()
+    const { data, error } = await supabase.from("bookings").delete().eq("id", booking_id).select()
     if (error) {
       console.error("Booking delete failed:", error)
-      return NextResponse.json({ error: error.message || "Unable to delete booking" }, { status: 500 })
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ data })

@@ -53,16 +53,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-[#0B0C0E] text-zinc-100 font-sans antialiased flex flex-col justify-between p-6 md:p-12">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_50%,rgba(20,184,166,0.04)_0%,transparent_50%)] pointer-events-none" />
+    <div className="min-h-screen w-full text-zinc-100 font-sans antialiased flex flex-col justify-between p-6 md:p-12 relative overflow-hidden" style={{
+      backgroundImage: `url('https://jmlhdtltucwhxrrunenl.supabase.co/storage/v1/object/public/pics/Screenshot%202026-07-14%20091522.png')`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundAttachment: 'fixed'
+    }}>
+      {/* Background overlay for better text readability */}
+      <div className="absolute inset-0 bg-black/40 pointer-events-none" />
 
-      <div className="flex items-center gap-3 z-10">
-        <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-zinc-900 border border-zinc-800 text-[#14B8A6]">
-          <Trophy className="h-4 w-4 fill-[#14B8A6]/10" />
+      <div className="flex items-center gap-3 z-10 relative">
+        <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-zinc-900 border border-[#14B8A6]/50 text-[#14B8A6] shadow-lg shadow-[#14B8A6]/20">
+          <Trophy className="h-4 w-4 fill-[#14B8A6]" />
         </div>
         <div>
-          <h1 className="text-xs font-black uppercase tracking-wider text-white leading-none">Westmount</h1>
-          <p className="text-[10px] font-mono text-[#14B8A6] tracking-tight mt-0.5">Collegiate Institute</p>
+          <h1 className="text-xs font-black uppercase tracking-wider text-white leading-none">🐺 Westmount Wolves</h1>
+          <p className="text-[10px] font-mono text-[#14B8A6] tracking-tight mt-0.5">Badminton Portal</p>
         </div>
       </div>
 
@@ -90,18 +96,21 @@ export default function LoginPage() {
         </div>
 
         <div className="lg:col-span-5 flex justify-center lg:justify-end relative">
-          <Card className="relative w-full max-w-md border border-zinc-800/80 bg-zinc-900/40 p-8 backdrop-blur-md rounded-sm shadow-xl overflow-hidden">
-            <div className="mb-6">
-              <h3 className="text-xl font-extrabold text-white uppercase tracking-tight">Welcome to the Pack</h3>
-              <p className="text-xs text-zinc-400 mt-1">Sign in or register with your school account.</p>
+          <Card className="relative w-full max-w-md border border-[#14B8A6]/40 bg-zinc-900/70 backdrop-blur-xl p-8 rounded-sm shadow-2xl shadow-[#14B8A6]/20 overflow-hidden">
+            {/* Card background accent */}
+            <div className="absolute inset-0 bg-gradient-to-br from-[#14B8A6]/5 to-transparent pointer-events-none" />
+            
+            <div className="relative mb-6">
+              <h3 className="text-xl font-extrabold text-white uppercase tracking-tight">Pack Access</h3>
+              <p className="text-xs text-zinc-400 mt-1">🐺 Wolves Only · School Credentials Required</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 bg-zinc-950 p-1 rounded-sm border border-zinc-800/60 mb-6">
+            <div className="grid grid-cols-2 gap-2 bg-zinc-950 p-1 rounded-sm border border-zinc-800/60 mb-6 relative">
               <button
                 type="button"
                 onClick={() => { setIsRegister(false); setError(null); }}
                 className={`py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-sm transition-all ${
-                  !isRegister ? "bg-zinc-900 text-[#14B8A6] border border-zinc-800" : "text-zinc-500 hover:text-zinc-300"
+                  !isRegister ? "bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black border border-[#14B8A6] shadow-lg shadow-[#14B8A6]/50" : "text-zinc-500 hover:text-zinc-300"
                 }`}
               >
                 Sign In
@@ -110,7 +119,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => { setIsRegister(true); setError(null); }}
                 className={`py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-sm transition-all ${
-                  isRegister ? "bg-zinc-900 text-[#14B8A6] border border-zinc-800" : "text-zinc-500 hover:text-zinc-300"
+                  isRegister ? "bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black border border-[#14B8A6] shadow-lg shadow-[#14B8A6]/50" : "text-zinc-500 hover:text-zinc-300"
                 }`}
               >
                 Register
@@ -125,18 +134,18 @@ export default function LoginPage() {
               </div>
             )}
 
-            <form onSubmit={handleAuth} className="flex flex-col gap-4">
+            <form onSubmit={handleAuth} className="flex flex-col gap-4 relative">
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 font-mono">School Email</label>
                 <div className="relative flex items-center">
-                  <Mail className="absolute left-3 h-4 w-4 text-zinc-500" />
+                  <Mail className="absolute left-3 h-4 w-4 text-[#14B8A6]/60" />
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@gapps.yrdsb.ca"
-                    className="w-full bg-zinc-950 text-white border border-zinc-800 outline-none rounded-sm py-2.5 pl-10 pr-3 text-xs font-mono transition-all focus:border-[#14B8A6]"
+                    className="w-full bg-zinc-950/80 text-white border border-zinc-800 outline-none rounded-sm py-2.5 pl-10 pr-3 text-xs font-mono transition-all focus:border-[#14B8A6] focus:shadow-lg focus:shadow-[#14B8A6]/30 placeholder-zinc-600"
                   />
                 </div>
               </div>
@@ -144,14 +153,14 @@ export default function LoginPage() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 font-mono">Password</label>
                 <div className="relative flex items-center">
-                  <Lock className="absolute left-3 h-4 w-4 text-zinc-500" />
+                  <Lock className="absolute left-3 h-4 w-4 text-[#14B8A6]/60" />
                   <input
                     type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-zinc-950 text-white border border-zinc-800 outline-none rounded-sm py-2.5 pl-10 pr-3 text-xs font-mono transition-all focus:border-[#14B8A6]"
+                    className="w-full bg-zinc-950/80 text-white border border-zinc-800 outline-none rounded-sm py-2.5 pl-10 pr-3 text-xs font-mono transition-all focus:border-[#14B8A6] focus:shadow-lg focus:shadow-[#14B8A6]/30 placeholder-zinc-600"
                   />
                 </div>
               </div>
@@ -159,16 +168,16 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full mt-2 bg-[#14B8A6] text-black hover:bg-[#0D9488] disabled:bg-zinc-800 disabled:text-zinc-500 font-extrabold font-mono text-xs uppercase tracking-widest py-3 rounded-sm border-none cursor-pointer"
+                className="w-full mt-2 bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black hover:from-[#0D9488] hover:to-cyan-600 disabled:from-zinc-800 disabled:to-zinc-700 disabled:text-zinc-500 font-extrabold font-mono text-xs uppercase tracking-widest py-3 rounded-sm border-none cursor-pointer shadow-lg shadow-[#14B8A6]/50 hover:shadow-[#14B8A6]/70 transition-all"
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Authorizing Profile...
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Authorizing...
                   </span>
                 ) : isRegister ? (
-                  "Create Credentials"
+                  "Join the Pack"
                 ) : (
-                  "Initialize Session"
+                  "Enter the Den"
                 )}
               </Button>
             </form>

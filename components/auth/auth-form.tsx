@@ -23,12 +23,17 @@ export function AuthForm() {
   const [formError, setFormError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const emailValid = email.length === 0 || isValidSchoolEmail(email)
-  const canSubmit = isValidSchoolEmail(email) && password.length >= 6
+  const emailValid = email.length === 0 || mode !== "register" || isValidSchoolEmail(email)
+  const canSubmit =
+    email.trim().length > 0 &&
+    password.length >= 6 &&
+    (mode === "register"
+      ? isValidSchoolEmail(email) && fullName.trim().length > 0 && password === confirmPassword
+      : true)
 
   function handleEmailChange(value: string) {
     setEmail(value)
-    if (value.length > 0 && !isValidSchoolEmail(value)) {
+    if (mode === "register" && value.length > 0 && !isValidSchoolEmail(value)) {
       setEmailError(DOMAIN_ERROR)
     } else {
       setEmailError(null)
@@ -64,15 +69,16 @@ export function AuthForm() {
     e.preventDefault()
     setFormError(null)
 
-    if (!isValidSchoolEmail(email)) {
-      setEmailError(DOMAIN_ERROR)
-      return
-    }
-
     setLoading(true)
     try {
       const supabase = createClient()
       if (mode === "register") {
+        if (!isValidSchoolEmail(email)) {
+          setEmailError(DOMAIN_ERROR)
+          setLoading(false)
+          return
+        }
+
         if (!fullName.trim()) {
           setFormError("Please enter your full name.")
           setLoading(false)
@@ -188,7 +194,7 @@ export function AuthForm() {
         )}
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email">School email</Label>
+          <Label htmlFor="email">{mode === "register" ? "School email" : "Email address"}</Label>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -196,7 +202,7 @@ export function AuthForm() {
               type="email"
               value={email}
               onChange={(e) => handleEmailChange(e.target.value)}
-              placeholder={`you${ALLOWED_DOMAIN}`}
+              placeholder={mode === "register" ? `you${ALLOWED_DOMAIN}` : "you@example.com"}
               autoComplete="email"
               aria-invalid={!emailValid}
               className={`pl-9 ${!emailValid ? "border-destructive focus-visible:ring-destructive" : ""}`}
