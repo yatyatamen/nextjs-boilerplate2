@@ -23,17 +23,17 @@ export function AuthForm() {
   const [formError, setFormError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const emailValid = email.length === 0 || isValidSchoolEmail(email)
+  const emailValid = email.length === 0 || mode !== "register" || isValidSchoolEmail(email)
   const canSubmit =
     email.trim().length > 0 &&
     password.length >= 6 &&
     (mode === "register"
       ? isValidSchoolEmail(email) && fullName.trim().length > 0 && password === confirmPassword
-      : isValidSchoolEmail(email))
+      : true)
 
   function handleEmailChange(value: string) {
     setEmail(value)
-    if (value.length > 0 && !isValidSchoolEmail(value)) {
+    if (mode === "register" && value.length > 0 && !isValidSchoolEmail(value)) {
       setEmailError(DOMAIN_ERROR)
     } else {
       setEmailError(null)
@@ -74,13 +74,12 @@ export function AuthForm() {
       const supabase = createClient()
       const normalizedEmail = email.trim()
 
-      if (!isValidSchoolEmail(normalizedEmail)) {
-        setEmailError(DOMAIN_ERROR)
-        setLoading(false)
-        return
-      }
-
       if (mode === "register") {
+        if (!isValidSchoolEmail(normalizedEmail)) {
+          setEmailError(DOMAIN_ERROR)
+          setLoading(false)
+          return
+        }
 
         if (!fullName.trim()) {
           setFormError("Please enter your full name.")

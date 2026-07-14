@@ -25,13 +25,13 @@ export default function LoginPage() {
 
     const normalizedEmail = email.trim()
 
-    if (!isValidSchoolEmail(normalizedEmail)) {
-      setError(DOMAIN_ERROR)
-      setLoading(false)
-      return
-    }
-
     if (isRegister) {
+      if (!isValidSchoolEmail(normalizedEmail)) {
+        setError(DOMAIN_ERROR)
+        setLoading(false)
+        return
+      }
+
       const { error } = await supabase.auth.signUp({ email: normalizedEmail, password })
       if (error) {
         setError(error.message)
