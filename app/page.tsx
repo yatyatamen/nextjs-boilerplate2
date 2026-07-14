@@ -65,7 +65,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen w-full text-zinc-100 font-sans antialiased flex flex-col justify-between p-6 md:p-12 relative overflow-hidden" style={{
-      backgroundImage: `url('https://jmlhdtltucwhxrrunenl.supabase.co/storage/v1/object/public/pics/Screenshot%202026-07-14%20091522.png')`,
+      backgroundImage: `url('https://jmlhdtltucwhxrrunenl.supabase.co/storage/v1/object/public/pics/Screenshot%202026-07-14%201459121.png')`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundAttachment: 'fixed'
