@@ -74,6 +74,10 @@ const PLAYER_TIERS = [
   "Diamond II"
 ]
 
+function normalizeFilterValue(value: string | null | undefined) {
+  return (value ?? "").toString().trim().toLowerCase()
+}
+
 function formatDate(date: string | null) {
   if (!date) return "TBD"
   // Handle date strings in YYYY-MM-DD format by parsing them in local timezone
@@ -167,6 +171,7 @@ export function MemberDashboard({
   const [gearFilter, setGearFilter] = useState("All")
   const [gearTierFilter, setGearTierFilter] = useState("All")
   const [gearSearch, setGearSearch] = useState("")
+  const [shopItemsState, setShopItemsState] = useState<ShopItem[]>(shopItems)
   const [shopFilter, setShopFilter] = useState("All")
   const [shopSearch, setShopSearch] = useState("")
   const [shopPriceMin, setShopPriceMin] = useState<number | "">("")
@@ -213,6 +218,10 @@ export function MemberDashboard({
     return new Date() > sessionEndTime
   }
 
+  useEffect(() => {
+    setShopItemsState(shopItems)
+  }, [shopItems])
+
   const visibleSchedule = useMemo(() => schedule.filter((s) => !isSessionExpired(s)), [schedule])
 
   const visibleBookings = useMemo(() => bookings.filter((b) => {
@@ -233,49 +242,70 @@ export function MemberDashboard({
     return "Intermediate"
   }
   const filteredGearGuides = useMemo(() => {
+    const normalizedGearFilter = normalizeFilterValue(gearFilter)
+    const normalizedTierFilter = normalizeFilterValue(gearTierFilter)
+    const normalizedSearchValue = normalizeFilterValue(gearSearch)
+
     return gearGuides.filter((g) => {
-      const categoryMatch = gearFilter === "All" || (g.category || "Other") === gearFilter
+      const categoryMatch = normalizedGearFilter === "all" || normalizeFilterValue(g.category || "Other") === normalizedGearFilter
       const tierMatch =
-        gearTierFilter === "All" || tierGroup(g.recommended_for_tier) === gearTierFilter
-      const searchValue = gearSearch.trim().toLowerCase()
+        normalizedTierFilter === "all" || normalizeFilterValue(tierGroup(g.recommended_for_tier)) === normalizedTierFilter
       const searchMatch =
-        !searchValue ||
+        !normalizedSearchValue ||
         [g.title, g.brand, g.specs, g.why_recommend, g.category, g.recommended_for_tier]
-          .map((v) => (v || "").toLowerCase())
-          .some((text) => text.includes(searchValue))
+          .map((value) => normalizeFilterValue(value))
+          .some((text) => text.includes(normalizedSearchValue))
       return categoryMatch && tierMatch && searchMatch
     })
   }, [gearGuides, gearFilter, gearTierFilter, gearSearch])
 
   const shopCategories = useMemo(
-    () => ["All", ...Array.from(new Set(shopItems.map((item) => item.category || "Other")))],
-    [shopItems],
+    () => ["All", ...Array.from(new Set(shopItemsState.map((item) => item.category || "Other")))],
+    [shopItemsState],
   )
   const filteredShopItems = useMemo(() => {
-    return shopItems.filter((item) => {
-      const categoryMatch = shopFilter === "All" || (item.category || "Other") === shopFilter
-      const searchValue = shopSearch.trim().toLowerCase()
+    const normalizedShopFilter = normalizeFilterValue(shopFilter)
+    const normalizedSearchValue = normalizeFilterValue(shopSearch)
+
+    // Helper to coerce a value that may be number|null|string to a finite number or undefined
+    const toNumeric = (v: any): number | undefined => {
+      if (v === null || v === undefined || v === "") return undefined
+      if (typeof v === "number") return Number.isFinite(v) ? v : undefined
+      const n = Number(v)
+      return Number.isFinite(n) ? n : undefined
+    }
+
+    const minPrice = toNumeric(shopPriceMin)
+    const maxPrice = toNumeric(shopPriceMax)
+
+    return shopItemsState.filter((item) => {
+      const categoryMatch = normalizedShopFilter === "all" || normalizeFilterValue(item.category || "Other") === normalizedShopFilter
       const searchMatch =
-        !searchValue ||
+        !normalizedSearchValue ||
         [item.name, item.category, item.description, item.unit]
-          .map((v) => (v || "").toLowerCase())
-          .some((text) => text.includes(searchValue))
-      const minPrice = typeof shopPriceMin === "number" ? shopPriceMin : undefined
-      const maxPrice = typeof shopPriceMax === "number" ? shopPriceMax : undefined
-      const priceValue = typeof item.price === "number" ? item.price : undefined
-      const minMatch = minPrice === undefined || (priceValue !== undefined && priceValue >= minPrice)
-      const maxMatch = maxPrice === undefined || (priceValue !== undefined && priceValue <= maxPrice)
+          .map((value) => normalizeFilterValue(value))
+          .some((text) => text.includes(normalizedSearchValue))
+
+      const numericPrice = toNumeric(item.price)
+
+      // If both min and max provided and min > max, treat as no-match
+      if (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice) return false
+
+      const minMatch = minPrice === undefined || (numericPrice !== undefined && numericPrice >= minPrice)
+      const maxMatch = maxPrice === undefined || (numericPrice !== undefined && numericPrice <= maxPrice)
+
       return categoryMatch && searchMatch && minMatch && maxMatch
     })
-  }, [shopItems, shopFilter, shopSearch, shopPriceMin, shopPriceMax])
+  }, [shopItemsState, shopFilter, shopSearch, shopPriceMin, shopPriceMax])
 
   const bookedSessionIds = useMemo(() => new Set(visibleBookings.map((b) => String(b.session_id))), [visibleBookings])
 
   // Computed filtration pipeline for attendance records
   const filteredAttendance = useMemo(() => {
+    const normalizedAttendanceFilter = normalizeFilterValue(attendanceFilter)
     return attendanceList.filter(record => {
-      if (attendanceFilter === "all") return true
-      return record.status === attendanceFilter
+      if (normalizedAttendanceFilter === "all") return true
+      return normalizeFilterValue(record.status) === normalizedAttendanceFilter
     })
   }, [attendanceList, attendanceFilter])
 
