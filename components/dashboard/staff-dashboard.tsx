@@ -1590,7 +1590,7 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
   const [category, setCategory] = useState("Rackets")
   const [description, setDescription] = useState("")
   const [picUrl, setPicUrl] = useState("")
-  const [recommendedTier, setRecommendedTier] = useState("Beginner")
+  const [recommendedTiers, setRecommendedTiers] = useState<string[]>(["Beginner"])
   const [priceEstimate, setPriceEstimate] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1598,16 +1598,17 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
     
     showConfirmation(
       "Publish Equipment Guide?",
-      `Publish "${title}" guide for ${category} (${recommendedTier})?`,
+      `Publish "${title}" guide for ${category} (${recommendedTiers.join(", ")})?`,
       async () => {
         setConfirmLoading(true)
         try {
           const specs = priceEstimate ? `Estimated price: $${Number(priceEstimate).toFixed(2)}` : ""
-          await onCreate({ title, category, description, image_url: picUrl, recommended_for_tier: recommendedTier, specs })
+          const recommended_for_tier = recommendedTiers.join(", ")
+          await onCreate({ title, category, description, image_url: picUrl, recommended_for_tier, specs })
           setTitle("")
           setDescription("")
           setPicUrl("")
-          setRecommendedTier("Beginner")
+          setRecommendedTiers(["Beginner"])
           setPriceEstimate("")
           closeConfirmation()
           showToast(`✓ ${title} guide published!`)
@@ -1643,11 +1644,22 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
             <div className="flex flex-col gap-1.5"><Label>Estimated Price ($)</Label><Input type="number" step="0.01" value={priceEstimate} onChange={(e) => setPriceEstimate(e.target.value)} placeholder="79.99" /></div>
             <div className="flex flex-col gap-1.5">
               <Label>Recommended Tier</Label>
-              <Select value={recommendedTier} onChange={(e) => setRecommendedTier(e.target.value)}>
-                <option value="Beginner">Beginner</option>
-                <option value="Intermediate">Intermediate</option>
-                <option value="Advanced">Advanced</option>
-              </Select>
+              <div className="flex gap-3 items-center">
+                {["Beginner", "Intermediate", "Advanced"].map((tier) => (
+                  <label key={tier} className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={recommendedTiers.includes(tier)}
+                      onChange={(e) => {
+                        setRecommendedTiers((prev) =>
+                          e.target.checked ? [...prev.filter(Boolean), tier] : prev.filter((t) => t !== tier),
+                        )
+                      }}
+                    />
+                    <span>{tier}</span>
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
           <div className="flex flex-col gap-1.5"><Label>Technical Recommendation Summary</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required /></div>

@@ -239,7 +239,7 @@ export function MemberDashboard({
     if (/(for fun|bronze|silver)/i.test(normalized)) return "Beginner"
     if (/gold/i.test(normalized)) return "Intermediate"
     if (/diamond/i.test(normalized)) return "Advanced"
-    return "Intermediate"
+    return "Other"
   }
   const filteredGearGuides = useMemo(() => {
     const normalizedGearFilter = normalizeFilterValue(gearFilter)
