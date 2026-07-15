@@ -462,9 +462,47 @@ export function MemberDashboard({
   async function sendChatMessage(e: React.FormEvent) {
     e.preventDefault()
     if (!chatInput.trim()) return
-
-    const subject = selectedMessage ? `Re: ${selectedMessage.subject || "Member message"}` : "Member message"
     const messageText = chatInput.trim()
+
+    // If an existing ticket is selected (not an optimistic local item), post a reply
+    if (selectedMessage && !String(selectedMessage.id).startsWith("local-")) {
+      // optimistic local echo: move ticket to top and update preview
+      setMessagesList((prev) => {
+        const updated = prev.map((item) =>
+          String(item.id) === String(selectedMessage.id)
+            ? { ...item, message: messageText, created_at: new Date().toISOString() }
+            : item,
+        )
+        const ticket = updated.find((i) => String(i.id) === String(selectedMessage.id))
+        const rest = updated.filter((i) => String(i.id) !== String(selectedMessage.id))
+        return ticket ? [ticket, ...rest] : updated
+      })
+
+      setChatInput("")
+
+      try {
+        const response = await fetch("/api/support/reply", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ticketId: String(selectedMessage.id), message: messageText }),
+        })
+
+        const result = await handleJsonResponse(response)
+        if (!response.ok) {
+          return
+        }
+
+        // nothing else required: replies are stored in support_replies
+      } catch (err) {
+        console.error("Failed to send reply:", err)
+      }
+
+      return
+    }
+
+    // Otherwise create a new support ticket
+    const subject = selectedMessage ? `Re: ${selectedMessage.subject || "Member message"}` : "Member message"
     const optimisticMessage: SupportTicket = {
       id: `local-${Date.now()}`,
       user_id: profile.id,
@@ -549,13 +587,6 @@ export function MemberDashboard({
       const inserted = Array.isArray(result.data) ? result.data[0] : result.data
       if (inserted) {
         setSupportTickets((prev) => prev.map((item) => item.id === optimisticTicket.id ? (inserted as SupportTicket) : item))
-        setMessagesList((prev) => {
-          const updated = prev.map((item) => item.id === optimisticTicket.id ? (inserted as SupportTicket) : item)
-          if (!updated.some((item) => item.id === inserted.id)) {
-            return [inserted as SupportTicket, ...updated]
-          }
-          return updated
-        })
       }
     } catch (err) {
       console.error("❌ Support Ticket Exception:", err)
