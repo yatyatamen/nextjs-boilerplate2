@@ -549,6 +549,13 @@ export function MemberDashboard({
       const inserted = Array.isArray(result.data) ? result.data[0] : result.data
       if (inserted) {
         setSupportTickets((prev) => prev.map((item) => item.id === optimisticTicket.id ? (inserted as SupportTicket) : item))
+        setMessagesList((prev) => {
+          const updated = prev.map((item) => item.id === optimisticTicket.id ? (inserted as SupportTicket) : item)
+          if (!updated.some((item) => item.id === inserted.id)) {
+            return [inserted as SupportTicket, ...updated]
+          }
+          return updated
+        })
       }
     } catch (err) {
       console.error("❌ Support Ticket Exception:", err)
