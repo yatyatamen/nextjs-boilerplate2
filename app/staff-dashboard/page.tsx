@@ -41,6 +41,7 @@ export default async function StaffDashboardPage() {
     bookingsRes,
     equipmentRecommendationsRes,
     attendanceRes,
+    supportTicketsRes,
   ] = await Promise.all([
     supabase.from("profiles").select("*"), // Fixed: No longer crashes on missing created_at column
     supabase.from("schedule").select("*").order("date", { ascending: true }),
@@ -51,6 +52,7 @@ export default async function StaffDashboardPage() {
     supabase.from("bookings").select("*").order("created_at", { ascending: false }),
     supabase.from("equipment_recommendations").select("*").order("created_at", { ascending: false }),
     supabase.from("attendance").select("*"),
+    supabase.from("support_tickets").select("*").order("created_at", { ascending: false }),
   ])
 
   // Log table errors to your server terminal so you can spot what's broken
@@ -72,6 +74,7 @@ export default async function StaffDashboardPage() {
       initialBookings={bookingsRes.data ?? []}
       initialGearGuides={equipmentRecommendationsRes.data ?? []}
       initialAttendanceRecords={attendanceRes.data ?? []}
+        initialMessages={supportTicketsRes.data ?? []}
     />
   )
 }

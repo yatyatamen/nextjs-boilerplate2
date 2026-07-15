@@ -248,13 +248,23 @@ export function MemberDashboard({
 
     return gearGuides.filter((g) => {
       const categoryMatch = normalizedGearFilter === "all" || normalizeFilterValue(g.category || "Other") === normalizedGearFilter
+
+      // Normalize the raw recommended tier string and the grouped tier label
+      const rawRecommended = normalizeFilterValue(g.recommended_for_tier)
+      const grouped = normalizeFilterValue(tierGroup(g.recommended_for_tier))
+
+      // Match tier either by direct substring of the raw value or by the grouped label
       const tierMatch =
-        normalizedTierFilter === "all" || normalizeFilterValue(tierGroup(g.recommended_for_tier)) === normalizedTierFilter
+        normalizedTierFilter === "all" ||
+        (rawRecommended && rawRecommended.includes(normalizedTierFilter)) ||
+        (grouped && grouped === normalizedTierFilter)
+
       const searchMatch =
         !normalizedSearchValue ||
         [g.title, g.brand, g.specs, g.why_recommend, g.category, g.recommended_for_tier]
           .map((value) => normalizeFilterValue(value))
           .some((text) => text.includes(normalizedSearchValue))
+
       return categoryMatch && tierMatch && searchMatch
     })
   }, [gearGuides, gearFilter, gearTierFilter, gearSearch])

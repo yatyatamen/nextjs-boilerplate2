@@ -127,6 +127,7 @@ export function StaffDashboard({
   initialBookings = [],
   initialGearGuides = [],
   initialAttendanceRecords = [],
+  initialMessages = [],
 }: {
   profile: Profile
   initialMembers: Profile[]
@@ -138,6 +139,7 @@ export function StaffDashboard({
   initialBookings?: Booking[]
   initialGearGuides?: EquipmentRecommendation[]
   initialAttendanceRecords?: AttendanceRecord[]
+  initialMessages?: SupportTicket[]
 }) {
   const supabase = createClient()
   const [active, setActive] = useState("overview")
@@ -188,20 +190,21 @@ export function StaffDashboard({
   const selectedMessage = messages.find((m) => String(m.id) === selectedMessageId) ?? messages[0] ?? null
 
   useEffect(() => {
-    // Load messages when staff opens the messages tab
+    // Initialize messages from server-provided data first, then attempt refresh when viewing messages
+    if (messages.length === 0 && initialMessages.length > 0) {
+      setMessages(initialMessages)
+      if (!selectedMessageId && initialMessages.length > 0) setSelectedMessageId(String(initialMessages[0].id))
+    }
+
     if (active !== "messages") return
     let mounted = true
     ;(async () => {
       try {
         const { data, error } = await supabase.from("support_tickets").select("*").order("created_at", { ascending: false })
-        if (mounted) {
-          if (!error && data) {
-            setMessages(data as SupportTicket[])
-            if (!selectedMessageId && data.length > 0) {
-              setSelectedMessageId(String(data[0].id))
-            }
-          } else {
-            console.error("Failed to fetch staff messages:", error)
+        if (mounted && !error && data) {
+          setMessages(data as SupportTicket[])
+          if (!selectedMessageId && data.length > 0) {
+            setSelectedMessageId(String(data[0].id))
           }
         }
       } catch (err) {
