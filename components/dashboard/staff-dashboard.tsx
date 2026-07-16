@@ -61,7 +61,7 @@ const NAV: NavItem[] = [
   { key: "shop", label: "Wolves Shop Items", icon: ShoppingBag },
   { key: "gear", label: "Equipment Guides", icon: BookOpen },
   { key: "assessments", label: "Assessments", icon: ClipboardList },
-  { key: "messages", label: "Messages", icon: Mail },
+  { key: "orders", label: "Orders", icon: ClipboardList },
 ]
 
 function formatDate(date: string | null) {
@@ -85,64 +85,31 @@ function formatDate(date: string | null) {
 
 function SectionHeader({ title, desc }: { title: string; desc: string }) {
   return (
-    <div className="mb-4">
-      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-      <p className="text-sm text-muted-foreground">{desc}</p>
-    </div>
-  )
-}
-
-function sortSessions(sessions: ScheduleSession[]) {
-  const now = new Date()
-  const startOfToday = new Date(now.toDateString())
-  const upcoming: ScheduleSession[] = []
-  const past: ScheduleSession[] = []
-  sessions.forEach((s) => {
-    const d = s?.date ? new Date(s.date) : null
-    if (!d) {
-      upcoming.push(s)
-    } else if (d >= startOfToday) {
-      upcoming.push(s)
-    } else {
-      past.push(s)
-    }
-  })
-  upcoming.sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
-  past.sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
-  return [...upcoming, ...past]
-}
-
-function getMemberDisplayName(member: Profile | null | undefined) {
-  if (!member) return "Member"
-  return `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || member.full_name || member.email || "Member"
-}
-
-export function StaffDashboard({
-  profile,
-  initialMembers,
-  initialSchedule,
-  initialAnnouncements,
-  initialShopItems,
-  initialAssessments,
-  initialBookings = [],
-  initialGearGuides = [],
-  initialAttendanceRecords = [],
-  initialMessages = [],
-}: {
-  profile: Profile
-  initialMembers: Profile[]
-  initialSchedule: ScheduleSession[]
-  initialAnnouncements: Announcement[]
-  initialBlogPosts: BlogPost[]
-  initialShopItems: ShopItem[]
-  initialAssessments: Assessment[]
-  initialBookings?: Booking[]
-  initialGearGuides?: EquipmentRecommendation[]
-  initialAttendanceRecords?: AttendanceRecord[]
-  initialMessages?: SupportTicket[]
-}) {
-  const supabase = createClient()
-  const [active, setActive] = useState("overview")
+      {active === "orders" && (
+        <div>
+          <SectionHeader title="Orders" desc="Member purchase requests from the Wolves Shop." />
+          {orders.length === 0 ? (
+            <Card className="p-6">
+              <p className="text-sm text-muted-foreground">No orders yet.</p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {orders.map((o) => (
+                <Card key={o.id || `${o.item_name}-${o.created_at}`} className="p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{o.item_name}</p>
+                    <p className="text-xs text-zinc-400">Requested by {o.user_name || o.user_id} • {o.category || "-"}</p>
+                    <p className="text-xs text-muted-foreground mt-2">{o.note}</p>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-[12px] text-zinc-400">{o.status}</span>
+                    <span className="text-[10px] text-zinc-500 mt-2">{o.created_at ? new Date(o.created_at).toLocaleString() : "-"}</span>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
 
   const [members, setMembers] = useState<Profile[]>(initialMembers)
   const [schedule, setSchedule] = useState<ScheduleSession[]>(() => sortSessions(initialSchedule || []))
@@ -160,10 +127,8 @@ export function StaffDashboard({
     () => Array.from({ length: 5 }, () => ({ title: "", url: "" })),
   )
   const [membersNameEdits, setMembersNameEdits] = useState<Record<string, string>>({})
-  const [messages, setMessages] = useState<SupportTicket[]>([])
-  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
-  const [replyDraft, setReplyDraft] = useState("")
-  const [localReplies, setLocalReplies] = useState<Record<string, string[]>>({})
+  // messages removed; orders will be used instead
+  const [orders, setOrders] = useState<any[]>([])
 
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
@@ -213,6 +178,27 @@ export function StaffDashboard({
     })()
     return () => { mounted = false }
   }, [active, selectedMessageId])
+
+  useEffect(() => {
+    if (active !== "orders") return
+    let mounted = true
+    ;(async () => {
+      try {
+        const res = await fetch("/api/orders")
+        const json = await res.json().catch(() => ({ data: [] }))
+        if (!mounted) return
+        if (res.ok && Array.isArray(json.data)) {
+          setOrders(json.data)
+        } else if (Array.isArray(json.data)) {
+          setOrders(json.data)
+        }
+      } catch (err) {
+        console.error("Failed to load orders:", err)
+      }
+    })()
+
+    return () => { mounted = false }
+  }, [active])
 
   // If the page is opened with a ticketId query param, open messages and select that ticket
   useEffect(() => {
@@ -297,63 +283,7 @@ export function StaffDashboard({
     }
   }, [active, supabase])
 
-  function addStaffReply(messageId: string, replyText: string) {
-    if (!replyText.trim()) return
-    setLocalReplies((prev) => ({
-      ...prev,
-      [messageId]: [...(prev[messageId] || []), replyText.trim()],
-    }))
-  }
-
-  async function handleStaffReply(e: React.FormEvent) {
-    e.preventDefault()
-    if (!selectedMessageId || !replyDraft.trim()) return
-    try {
-      const res = await fetch(`/api/support/reply`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticketId: selectedMessageId, message: replyDraft }),
-      })
-      const json = await res.json()
-      if (res.ok && json.data) {
-        // push persisted reply to local state
-        const replyText = json.data.message
-        addStaffReply(selectedMessageId, replyText)
-      } else {
-        console.error("Reply save failed:", json.error)
-        // fallback to local only
-        addStaffReply(selectedMessageId, replyDraft)
-      }
-    } catch (err) {
-      console.error("Failed to send reply:", err)
-      addStaffReply(selectedMessageId, replyDraft)
-    } finally {
-      setReplyDraft("")
-    }
-  }
-
-  // Load persisted replies when a conversation is selected
-  useEffect(() => {
-    let mounted = true
-    async function loadReplies() {
-      if (!selectedMessageId) return
-      try {
-        const res = await fetch(`/api/support/reply?ticketId=${selectedMessageId}`)
-        const json = await res.json()
-        if (!mounted) return
-        if (res.ok && Array.isArray(json.data)) {
-          setLocalReplies((prev) => ({ ...prev, [selectedMessageId]: json.data.map((r: any) => r.message) }))
-        }
-      } catch (err) {
-        console.error("Failed to load replies:", err)
-      }
-    }
-
-    loadReplies()
-    return () => {
-      mounted = false
-    }
-  }, [selectedMessageId])
+  // message handlers removed
 
   async function updateMemberProfile(memberId: string, updates: { fullName?: string; level?: string }) {
     const response = await fetch("/api/profiles", {

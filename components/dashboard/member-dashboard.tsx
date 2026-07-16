@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
@@ -53,9 +54,7 @@ const NAV: NavItem[] = [
   { key: "coaches", label: "Our Leaders", icon: Users },
   { key: "gear", label: "Equipment Guides", icon: Award },
   { key: "shop", label: "Wolves Shop", icon: ShoppingBag },
-  { key: "messages", label: "Messages", icon: Mail },
   { key: "club-info", label: "About Wolves", icon: Info },
-  { key: "support", label: "Contact & Support", icon: LifeBuoy },
   { key: "settings", label: "Settings", icon: Settings },
 ]
 
@@ -130,12 +129,7 @@ export function MemberDashboard({
   const [assessments, setAssessments] = useState<Assessment[]>(initialAssessments)
   const [coaches, setCoaches] = useState<StaffProfile[]>(initialCoaches)
   const [gearGuides, setGearGuides] = useState<EquipmentRecommendation[]>(initialGearGuides)
-  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(initialTickets)
-  const [messagesList, setMessagesList] = useState<SupportTicket[]>(initialTickets)
-  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(initialTickets[0]?.id ?? null)
-  const messagesEndRef = useRef<HTMLDivElement | null>(null)
-  const [chatInput, setChatInput] = useState("")
-  const [pendingId, setPendingId] = useState<string | null>(null)
+  
   const [isDarkMode, setIsDarkMode] = useState(true)
   const [customName, setCustomName] = useState(profile.full_name || "")
   const [isSavingName, setIsSavingName] = useState(false)
@@ -163,10 +157,7 @@ export function MemberDashboard({
   const [critiqueFeedbackText, setCritiqueFeedbackText] = useState("")
   const [isSubmittingGrade, setIsSubmittingGrade] = useState(false)
 
-  // Support Ticketing Hooks
-  const [supportCategory, setSupportCategory] = useState("Technical Help")
-  const [supportMessage, setSupportMessage] = useState("")
-  const [supportStatus, setSupportStatus] = useState<string | null>(null)
+  // Support Ticketing removed — messages handled externally via social channels
 
   const [gearFilter, setGearFilter] = useState("All")
   const [gearTierFilter, setGearTierFilter] = useState("All")
@@ -419,125 +410,7 @@ export function MemberDashboard({
     }
   }
 
-  useEffect(() => {
-    if (active !== "messages") return
-
-    let mounted = true
-    ;(async () => {
-      try {
-        if (messagesList.length > 0) {
-          if (!selectedMessageId && messagesList[0]) {
-            setSelectedMessageId(String(messagesList[0].id))
-          }
-          return
-        }
-
-        const response = await fetch("/api/support", { credentials: "same-origin" })
-        const result = await handleJsonResponse(response)
-        if (!mounted) return
-
-        const normalized = Array.isArray(result?.data) ? result.data : []
-        if (normalized.length > 0) {
-          setMessagesList(normalized as SupportTicket[])
-          if (!selectedMessageId) {
-            setSelectedMessageId(String(normalized[0].id))
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load messages:", err)
-      }
-    })()
-
-    return () => { mounted = false }
-  }, [active, messagesList.length, selectedMessageId])
-
-  useEffect(() => {
-    if (active === "messages") {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
-    }
-  }, [active, messagesList.length, chatInput])
-
-  const selectedMessage = messagesList.find((m) => String(m.id) === selectedMessageId) ?? messagesList[0] ?? null
-
-  async function sendChatMessage(e: React.FormEvent) {
-    e.preventDefault()
-    if (!chatInput.trim()) return
-    const messageText = chatInput.trim()
-
-    // If an existing ticket is selected (not an optimistic local item), post a reply
-    if (selectedMessage && !String(selectedMessage.id).startsWith("local-")) {
-      // optimistic local echo: move ticket to top and update preview
-      setMessagesList((prev) => {
-        const updated = prev.map((item) =>
-          String(item.id) === String(selectedMessage.id)
-            ? { ...item, message: messageText, created_at: new Date().toISOString() }
-            : item,
-        )
-        const ticket = updated.find((i) => String(i.id) === String(selectedMessage.id))
-        const rest = updated.filter((i) => String(i.id) !== String(selectedMessage.id))
-        return ticket ? [ticket, ...rest] : updated
-      })
-
-      setChatInput("")
-
-      try {
-        const response = await fetch("/api/support/reply", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticketId: String(selectedMessage.id), message: messageText }),
-        })
-
-        const result = await handleJsonResponse(response)
-        if (!response.ok) {
-          return
-        }
-
-        // nothing else required: replies are stored in support_replies
-      } catch (err) {
-        console.error("Failed to send reply:", err)
-      }
-
-      return
-    }
-
-    // Otherwise create a new support ticket
-    const subject = selectedMessage ? `Re: ${selectedMessage.subject || "Member message"}` : "Member message"
-    const optimisticMessage: SupportTicket = {
-      id: `local-${Date.now()}`,
-      user_id: profile.id,
-      user_email: profile.email || "",
-      subject,
-      message: messageText,
-      status: "open",
-      created_at: new Date().toISOString(),
-    }
-
-    setMessagesList((prev) => [optimisticMessage, ...prev])
-    setSelectedMessageId(String(optimisticMessage.id))
-    setChatInput("")
-
-    try {
-      const response = await fetch("/api/support", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, message: messageText }),
-      })
-
-      const result = await handleJsonResponse(response)
-      if (!response.ok) {
-        return
-      }
-
-      const inserted = Array.isArray(result.data) ? result.data[0] : result.data
-      if (inserted) {
-        setMessagesList((prev) => prev.map((item) => item.id === optimisticMessage.id ? (inserted as SupportTicket) : item))
-      }
-    } catch (err) {
-      console.error("Failed to send chat message:", err)
-    }
-  }
+  
 
   async function handleUpdateAssetLink(table: "staff_profiles" | "equipment_recommendations", id: string, field: string, url: string) {
     const { error } = await supabase.from(table).update({ [field]: url }).eq("id", id)
@@ -550,48 +423,7 @@ export function MemberDashboard({
     }
   }
 
-  async function submitSupportTicket(e: React.FormEvent) {
-    e.preventDefault()
-    if (!supportMessage.trim()) return
-
-    const optimisticTicket: SupportTicket = {
-      id: `local-${Date.now()}`,
-      user_id: profile.id,
-      user_email: profile.email || "",
-      subject: supportCategory,
-      message: supportMessage,
-      status: "open",
-      created_at: new Date().toISOString(),
-    }
-
-    setSupportTickets((prev) => [optimisticTicket, ...prev])
-    setSupportMessage("")
-    setSupportStatus("Success! System routing confirmation generated.")
-
-    try {
-      const response = await fetch("/api/support", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject: supportCategory,
-          message: supportMessage,
-        }),
-      })
-
-      const result = await handleJsonResponse(response)
-      if (!response.ok) {
-        return
-      }
-
-      const inserted = Array.isArray(result.data) ? result.data[0] : result.data
-      if (inserted) {
-        setSupportTickets((prev) => prev.map((item) => item.id === optimisticTicket.id ? (inserted as SupportTicket) : item))
-      }
-    } catch (err) {
-      console.error("❌ Support Ticket Exception:", err)
-    }
-  }
+  
 
   async function insertBookingRecord(sessionId: string | number) {
     const { data, error } = await supabase
@@ -669,23 +501,15 @@ export function MemberDashboard({
       async () => {
         setConfirmLoading(true)
         try {
-          const response = await fetch("/api/support", {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              subject: `Purchase Request: ${item.name}`,
-              message: `Member ${displayName} requests to purchase ${item.name} (${item.category}). Please follow up via Instagram.`,
-            }),
+          // navigate to the order request form page so member can fill contact details
+          const router = useRouter()
+          const params = new URLSearchParams({
+            itemId: String(item.id),
+            itemName: String(item.name),
+            category: String(item.category ?? ""),
+            price: String(item.price ?? ""),
           })
-
-          const result = await handleJsonResponse(response)
-          if (!response.ok) {
-            console.warn("Purchase request API returned an error, but continuing to open Instagram:", result)
-          }
-
-          showToast("✓ Purchase request sent. Opening Instagram...")
-          window.open("https://instagram.com/wolvesbadminton", "_blank")
+          router.push(`/shop/request?${params.toString()}`)
         } finally {
           setConfirmLoading(false)
         }
@@ -1503,13 +1327,6 @@ async function cleanupExpiredBookings() {
                           >
                             Request Purchase
                           </Button>
-                          <button
-                            type="button"
-                            onClick={() => setActive("messages")}
-                            className="inline-flex items-center justify-center rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1 text-[10px] font-mono uppercase text-zinc-100"
-                          >
-                            Message Club
-                          </button>
                         </div>
                       </Card>
                     )
@@ -1531,165 +1348,18 @@ async function cleanupExpiredBookings() {
             </div>
           )}
 
-          {/* CONTACT & SUPPORT HUB */}
+          {/* CONTACT & SUPPORT HUB - removed in favor of Instagram DM and shop order form */}
           {active === "messages" && (
-            <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-5">
-              <div className={`rounded-2xl border ${theme.cardBorder} ${theme.cardBg} p-4 flex flex-col gap-3`}>
-                <div>
-                  <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Chats</h2>
-                  <p className="text-[11px] text-zinc-500 mt-1">Continuous support conversations with the club team.</p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedMessageId(messagesList[0]?.id ? String(messagesList[0].id) : null)}
-                  className={`rounded-xl border p-3 text-left transition ${selectedMessage ? "border-[#E2AC28] bg-zinc-900" : "border-zinc-800 bg-zinc-950/70"}`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-white">Club Support</p>
-                    <Badge className={`text-[10px] px-2 py-1 ${selectedMessage?.status === "resolved" ? "bg-green-600/20 text-green-500" : "bg-yellow-600/20 text-yellow-500"}`}>
-                      {selectedMessage?.status || "open"}
-                    </Badge>
-                  </div>
-                  <p className="text-[11px] text-zinc-500 mt-1 truncate">
-                    {selectedMessage ? selectedMessage.message : "Start a new chat with the team."}
-                  </p>
-                </button>
-              </div>
-
-              <div className={`flex min-h-[620px] max-h-[760px] flex-col overflow-hidden rounded-2xl border ${theme.cardBorder} ${theme.cardBg}`}>
-                <div className="border-b border-zinc-800/70 bg-zinc-950/60 px-4 py-4 shrink-0">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-bold text-white">Club Support</h3>
-                      <p className="text-[11px] text-zinc-500">Usually replies in a few minutes</p>
-                    </div>
-                    <div className="flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
-                      <span className="h-2 w-2 rounded-full bg-emerald-400" /> Online
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(226,172,40,0.08),_transparent_50%)] p-4">
-                  {messagesList.length === 0 ? (
-                    <div className="flex h-full items-center justify-center">
-                      <div className="max-w-sm rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-center text-sm text-zinc-300">
-                        Start a chat and we’ll keep everything in one continuous conversation.
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {messagesList.map((message) => {
-                        const isMine = message.user_id === profile.id || message.user_email === profile.email
-                        return (
-                          <div key={message.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                            <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${isMine ? "bg-[#E2AC28] text-black" : "border border-zinc-800 bg-zinc-900 text-zinc-100"}`}>
-                              <p className={`text-[10px] font-semibold uppercase tracking-[0.25em] ${isMine ? "text-black/70" : "text-zinc-400"}`}>
-                                {isMine ? "You" : "Club support"}
-                              </p>
-                              <p className="mt-1 whitespace-pre-line text-sm">{message.message}</p>
-                              <p className={`mt-2 text-[10px] ${isMine ? "text-black/60" : "text-zinc-500"}`}>
-                                {new Date(message.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                              </p>
-                            </div>
-                          </div>
-                        )
-                      })}
-                      <div ref={messagesEndRef} />
-                    </div>
-                  )}
-                </div>
-
-                <div className="border-t border-zinc-800/70 bg-zinc-950/70 p-4 shrink-0 mt-0">
-                  <form onSubmit={sendChatMessage} className="flex items-end gap-2">
-                    <textarea
-                      rows={2}
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      className={`flex-1 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ${theme.inputBg}`}
-                      placeholder="Type a message..."
-                    />
-                    <Button type="submit" size="sm" className="h-10 w-10 rounded-full bg-[#E2AC28] p-0 text-black">
-                      <SendHorizonal className="h-4 w-4" />
-                    </Button>
-                  </form>
-                </div>
-              </div>
-            </div>
-          )}
-          {active === "support" && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="md:col-span-2 flex flex-col gap-4">
-                <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                  <div className="mb-4">
-                    <h3 className="text-sm font-bold uppercase tracking-wide text-[#E2AC28]">Submit Support Case / Request Ticket</h3>
-                    <p className={`text-[11px] ${theme.textMuted} font-mono mt-0.5`}>Direct message pipeline straight to operational management desks</p>
-                  </div>
-                  <form onSubmit={submitSupportTicket} className="flex flex-col gap-3">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-mono uppercase text-zinc-400">Inquiry Category</label>
-                      <select value={supportCategory} onChange={(e) => setSupportCategory(e.target.value)} className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`}>
-                        <option value="Technical Help">Technical Help / Portal Bugs</option>
-                        <option value="Booking Inquiry">Booking Placements & Waiting Lists</option>
-                        <option value="Grading & Leveling">Grading Matrix Disputes</option>
-                        <option value="Other">General Feedback</option>
-                      </select>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-mono uppercase text-zinc-400">Describe Issue / Message Payload</label>
-                      <textarea
-                        rows={4}
-                        placeholder="Detail your request comprehensively here..."
-                        value={supportMessage}
-                        onChange={(e) => setSupportMessage(e.target.value)}
-                        className={`px-3 py-2 text-xs font-mono rounded-sm border outline-none ${theme.inputBg}`}
-                      />
-                    </div>
-                    <Button type="submit" size="sm" className="bg-[#E2AC28] text-black font-bold font-mono text-xs uppercase py-2 rounded-sm border-none self-end">
-                      Transmit Ticket Node
-                    </Button>
-                    {supportStatus && (
-                      <p className={`text-[11px] font-mono mt-2 ${supportStatus.startsWith('Success') ? 'text-green-400' : 'text-red-400'}`}>
-                        {supportStatus}
-                      </p>
-                    )}
-                  </form>
-                </Card>
-
-                <Card className={`p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                  <h4 className="text-xs font-bold uppercase tracking-wide text-zinc-300 mb-2">Your Open Tickets Ledger</h4>
-                  {supportTickets.length === 0 ? (
-                    <p className={`text-[11px] ${theme.textMuted} font-mono`}>No pending operations cases logged inside network cluster.</p>
-                  ) : (
-                    <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
-                      {supportTickets.map((ticket) => (
-                        <div key={ticket.id} className="p-2 border border-zinc-800/60 bg-zinc-950/20 rounded-xs flex justify-between items-center text-[11px] font-mono">
-                          <div className="min-w-0 flex-1 pr-2">
-                            <span className="text-[#E2AC28] font-bold">[{ticket.subject}]</span> <span className="text-zinc-400 truncate block">{ticket.message}</span>
-                          </div>
-                          <Badge className={`text-[9px] uppercase font-bold border-none px-1 rounded-xs ${ticket.status === 'open' ? 'bg-yellow-600/20 text-yellow-500' : 'bg-green-600/20 text-green-500'}`}>
-                            {ticket.status}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Card>
-              </div>
-
-              <div className="flex flex-col gap-4">
-                <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm text-center flex flex-col items-center justify-center gap-3`}>
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wide text-white">Instant Social Dispatch</h4>
-                    <p className={`text-[11px] ${theme.textMuted} font-mono mt-1`}>For rapid emergency check-ins or quick system updates, patch into our direct messaging channel.</p>
-                  </div>
-                  <a href="https://instagram.com" target="_blank" rel="noreferrer" className="w-full">
-                    <Button size="sm" className="w-full bg-[#E2AC28] text-black font-bold font-mono text-xs uppercase py-2 rounded-sm border-none flex items-center justify-center gap-1.5">
-                      Open Instagram DM
-                    </Button>
+            <div>
+              <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                <h3 className="text-sm font-bold">Contact & Orders</h3>
+                <p className="text-xs text-zinc-400 mt-2">Support and chat have been removed. To request a shop item, use the Request Purchase button which opens a form. For direct messaging, open our Instagram.</p>
+                <div className="mt-4 flex gap-2">
+                  <a href="https://instagram.com/wolvesbadminton" target="_blank" rel="noreferrer">
+                    <Button size="sm" className="bg-[#E2AC28] text-black">Open Instagram DM</Button>
                   </a>
-                </Card>
-              </div>
+                </div>
+              </Card>
             </div>
           )}
 
