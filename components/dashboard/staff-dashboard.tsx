@@ -83,35 +83,60 @@ function formatDate(date: string | null) {
   })
 }
 
+function sortSessions(sessions: ScheduleSession[]) {
+  return sessions.slice().sort((a, b) => {
+    const aTime = a?.date ? new Date(a.date).getTime() : 0
+    const bTime = b?.date ? new Date(b.date).getTime() : 0
+    return bTime - aTime
+  })
+}
+
+function getMemberDisplayName(member?: Profile | null) {
+  if (!member) return ""
+  return (member.full_name || `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || member.email || "").trim()
+}
+
 function SectionHeader({ title, desc }: { title: string; desc: string }) {
   return (
-      {active === "orders" && (
-        <div>
-          <SectionHeader title="Orders" desc="Member purchase requests from the Wolves Shop." />
-          {orders.length === 0 ? (
-            <Card className="p-6">
-              <p className="text-sm text-muted-foreground">No orders yet.</p>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {orders.map((o) => (
-                <Card key={o.id || `${o.item_name}-${o.created_at}`} className="p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-white">{o.item_name}</p>
-                    <p className="text-xs text-zinc-400">Requested by {o.user_name || o.user_id} • {o.category || "-"}</p>
-                    <p className="text-xs text-muted-foreground mt-2">{o.note}</p>
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <span className="text-[12px] text-zinc-400">{o.status}</span>
-                    <span className="text-[10px] text-zinc-500 mt-2">{o.created_at ? new Date(o.created_at).toLocaleString() : "-"}</span>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
+    <div className="mb-4">
+      <h2 className="text-xs font-bold uppercase tracking-widest">{title}</h2>
+      <p className="text-[11px] text-muted-foreground">{desc}</p>
+    </div>
+  )
+}
+
+export function StaffDashboard({
+  profile,
+  initialMembers = [],
+  initialSchedule = [],
+  initialAnnouncements = [],
+  initialShopItems = [],
+  initialAssessments = [],
+  initialBookings = [],
+  initialGearGuides = [],
+  initialAttendanceRecords = [],
+  initialMessages = [],
+}: {
+  profile: Profile
+  initialMembers?: Profile[]
+  initialSchedule?: ScheduleSession[]
+  initialAnnouncements?: Announcement[]
+  initialShopItems?: ShopItem[]
+  initialAssessments?: Assessment[]
+  initialBookings?: Booking[]
+  initialGearGuides?: EquipmentRecommendation[]
+  initialAttendanceRecords?: AttendanceRecord[]
+  initialMessages?: SupportTicket[]
+}) {
 
   const [members, setMembers] = useState<Profile[]>(initialMembers)
+  const supabase = createClient()
+  const [active, setActive] = useState("overview")
+  // Messaging state (kept lightweight; messages may be empty if messaging removed)
+  const [messages, setMessages] = useState<SupportTicket[]>(initialMessages)
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
+  const [localReplies, setLocalReplies] = useState<Record<string, string[]>>({})
+  const [replyDraft, setReplyDraft] = useState("")
   const [schedule, setSchedule] = useState<ScheduleSession[]>(() => sortSessions(initialSchedule || []))
   const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
   const [shopItems, setShopItems] = useState<ShopItem[]>(initialShopItems)
@@ -405,6 +430,16 @@ function SectionHeader({ title, desc }: { title: string; desc: string }) {
     } finally {
       setPendingAttendance((p) => ({ ...p, [bookingKey]: false }))
     }
+  }
+
+  async function handleStaffReply(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedMessageId) return
+    const text = replyDraft.trim()
+    if (!text) return
+    setLocalReplies((prev) => ({ ...prev, [selectedMessageId]: [...(prev[selectedMessageId] || []), text] }))
+    setReplyDraft("")
+    showToast("Reply saved")
   }
 
   return (

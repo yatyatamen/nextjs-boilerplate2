@@ -27,7 +27,8 @@ export default function OrderRequestPage() {
       try {
         const { data } = await supabase.auth.getUser()
         if (data?.user) setUserId(data.user.id)
-        if (data?.user?.full_name) setFullName(data.user.full_name)
+        // full name may be stored in user_metadata depending on auth setup
+        if (data?.user?.user_metadata?.full_name) setFullName(data.user.user_metadata.full_name)
       } catch (err) {
         // ignore
       }

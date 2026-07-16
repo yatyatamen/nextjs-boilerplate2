@@ -30,10 +30,7 @@ import {
   Users,
   Award,
   Info,
-  Mail,
   CheckCircle,
-  XCircle,
-  SendHorizonal,
   Sun,
   Moon,
   Settings,
@@ -122,6 +119,8 @@ export function MemberDashboard({
   supportTickets?: SupportTicket[]
 }) {
   const supabase = createClient()
+  const router = useRouter()
+  const [pendingId, setPendingId] = useState<string | null>(null)
   const [active, setActive] = useState("overview")
   const [schedule, setSchedule] = useState<ScheduleSession[]>(initialSchedule)
   const [bookings, setBookings] = useState<Booking[]>(initialBookings)
@@ -500,16 +499,15 @@ export function MemberDashboard({
       `Send a request for \"${item.name}\" to the team leader? Instagram will also be opened for direct DM.`,
       async () => {
         setConfirmLoading(true)
-        try {
-          // navigate to the order request form page so member can fill contact details
-          const router = useRouter()
-          const params = new URLSearchParams({
-            itemId: String(item.id),
-            itemName: String(item.name),
-            category: String(item.category ?? ""),
-            price: String(item.price ?? ""),
-          })
-          router.push(`/shop/request?${params.toString()}`)
+          try {
+            // navigate to the order request form page so member can fill contact details
+            const params = new URLSearchParams({
+              itemId: String(item.id),
+              itemName: String(item.name),
+              category: String(item.category ?? ""),
+              price: String(item.price ?? ""),
+            })
+            router.push(`/shop/request?${params.toString()}`)
         } finally {
           setConfirmLoading(false)
         }
