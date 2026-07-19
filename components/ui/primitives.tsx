@@ -13,8 +13,7 @@ export function Button({
   const variants: Record<string, string> = {
     primary: "bg-primary text-primary-foreground hover:bg-primary/90",
     secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-    outline:
-      "border border-border bg-transparent text-foreground hover:bg-muted",
+    outline: "border border-border bg-transparent text-foreground hover:bg-muted",
     ghost: "bg-transparent text-foreground hover:bg-muted",
     destructive: "bg-destructive text-white hover:bg-destructive/90",
   }

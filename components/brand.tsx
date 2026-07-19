@@ -1,5 +1,8 @@
 import { cn } from "@/lib/utils"
 
+const LOGO_IMAGE_URL =
+  "https://jmlhdtltucwhxrrunenl.supabase.co/storage/v1/object/public/pics/Screenshot%202026-07-18%20191727.png"
+
 export function Logo({
   className,
   showText = true,
@@ -10,15 +13,17 @@ export function Logo({
   onDark?: boolean
 }) {
   return (
-    <div className={cn("flex items-center gap-2.5", className)}>
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-        <ShuttleIcon className="h-5 w-5" />
-      </span>
+    <div className={cn("flex items-center gap-3", className)}>
+      <img
+        src={LOGO_IMAGE_URL}
+        alt="Westmount Badminton Club logo"
+        className="h-12 w-12 rounded-xl object-cover"
+      />
       {showText && (
         <div className="flex flex-col leading-none">
           <span
             className={cn(
-              "text-sm font-semibold tracking-tight",
+              "text-base font-semibold tracking-tight",
               onDark ? "text-sidebar-foreground" : "text-foreground",
             )}
           >
@@ -26,7 +31,7 @@ export function Logo({
           </span>
           <span
             className={cn(
-              "text-xs",
+              "text-sm",
               onDark ? "text-sidebar-foreground/60" : "text-muted-foreground",
             )}
           >
@@ -35,28 +40,5 @@ export function Logo({
         </div>
       )}
     </div>
-  )
-}
-
-export function ShuttleIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="18" r="3" />
-      <path d="M12 15 L6 4" />
-      <path d="M12 15 L18 4" />
-      <path d="M12 15 L9.5 3.5" />
-      <path d="M12 15 L14.5 3.5" />
-      <path d="M6 4 L18 4" />
-      <path d="M8 8.5 L16 8.5" />
-    </svg>
   )
 }

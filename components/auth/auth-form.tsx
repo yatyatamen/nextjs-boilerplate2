@@ -149,17 +149,17 @@ export function AuthForm() {
 
   return (
     <div className="w-full">
-      <div className="mb-6 flex rounded-lg bg-muted p-1">
+      <div className="mb-6 grid grid-cols-2 gap-2 rounded-md border border-zinc-800/70 bg-zinc-950/90 p-1 shadow-sm">
         <button
           type="button"
           onClick={() => {
             setMode("login")
             setFormError(null)
           }}
-          className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+          className={`rounded-md border px-4 py-2 text-sm font-medium uppercase tracking-wide transition-all ${
             mode === "login"
-              ? "bg-card text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black border-[#14B8A6] shadow-lg shadow-[#14B8A6]/40"
+              : "bg-zinc-900/90 text-zinc-300 border-zinc-800 hover:text-white"
           }`}
         >
           Sign in
@@ -170,10 +170,10 @@ export function AuthForm() {
             setMode("register")
             setFormError(null)
           }}
-          className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+          className={`rounded-md border px-4 py-2 text-sm font-medium uppercase tracking-wide transition-all ${
             mode === "register"
-              ? "bg-card text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black border-[#14B8A6] shadow-lg shadow-[#14B8A6]/40"
+              : "bg-zinc-900/90 text-zinc-300 border-zinc-800 hover:text-white"
           }`}
         >
           Register
