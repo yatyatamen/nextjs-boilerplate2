@@ -61,7 +61,7 @@ const NAV: NavItem[] = [
   { key: "shop", label: "Wolves Shop Items", icon: ShoppingBag },
   { key: "gear", label: "Equipment Guides", icon: BookOpen },
   { key: "assessments", label: "Assessments", icon: ClipboardList },
-  { key: "orders", label: "Orders", icon: ClipboardList },
+  { key: "messages", label: "Messages", icon: Mail },
 ]
 
 function formatDate(date: string | null) {
@@ -83,60 +83,68 @@ function formatDate(date: string | null) {
   })
 }
 
-function sortSessions(sessions: ScheduleSession[]) {
-  return sessions.slice().sort((a, b) => {
-    const aTime = a?.date ? new Date(a.date).getTime() : 0
-    const bTime = b?.date ? new Date(b.date).getTime() : 0
-    return bTime - aTime
-  })
-}
-
-function getMemberDisplayName(member?: Profile | null) {
-  if (!member) return ""
-  return (member.full_name || `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || member.email || "").trim()
-}
-
 function SectionHeader({ title, desc }: { title: string; desc: string }) {
   return (
     <div className="mb-4">
-      <h2 className="text-xs font-bold uppercase tracking-widest">{title}</h2>
-      <p className="text-[11px] text-muted-foreground">{desc}</p>
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      <p className="text-sm text-muted-foreground">{desc}</p>
     </div>
   )
 }
 
+function sortSessions(sessions: ScheduleSession[]) {
+  const now = new Date()
+  const startOfToday = new Date(now.toDateString())
+  const upcoming: ScheduleSession[] = []
+  const past: ScheduleSession[] = []
+  sessions.forEach((s) => {
+    const d = s?.date ? new Date(s.date) : null
+    if (!d) {
+      upcoming.push(s)
+    } else if (d >= startOfToday) {
+      upcoming.push(s)
+    } else {
+      past.push(s)
+    }
+  })
+  upcoming.sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
+  past.sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
+  return [...upcoming, ...past]
+}
+
+function getMemberDisplayName(member: Profile | null | undefined) {
+  if (!member) return "Member"
+  return `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || member.full_name || member.email || "Member"
+}
+
 export function StaffDashboard({
   profile,
-  initialMembers = [],
-  initialSchedule = [],
-  initialAnnouncements = [],
-  initialShopItems = [],
-  initialAssessments = [],
+  initialMembers,
+  initialSchedule,
+  initialAnnouncements,
+  initialShopItems,
+  initialAssessments,
   initialBookings = [],
   initialGearGuides = [],
   initialAttendanceRecords = [],
   initialMessages = [],
 }: {
   profile: Profile
-  initialMembers?: Profile[]
-  initialSchedule?: ScheduleSession[]
-  initialAnnouncements?: Announcement[]
-  initialShopItems?: ShopItem[]
-  initialAssessments?: Assessment[]
+  initialMembers: Profile[]
+  initialSchedule: ScheduleSession[]
+  initialAnnouncements: Announcement[]
+  initialBlogPosts: BlogPost[]
+  initialShopItems: ShopItem[]
+  initialAssessments: Assessment[]
   initialBookings?: Booking[]
   initialGearGuides?: EquipmentRecommendation[]
   initialAttendanceRecords?: AttendanceRecord[]
   initialMessages?: SupportTicket[]
 }) {
-
-  const [members, setMembers] = useState<Profile[]>(initialMembers)
   const supabase = createClient()
   const [active, setActive] = useState("overview")
-  // Messaging state (kept lightweight; messages may be empty if messaging removed)
-  const [messages, setMessages] = useState<SupportTicket[]>(initialMessages)
-  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
-  const [localReplies, setLocalReplies] = useState<Record<string, string[]>>({})
-  const [replyDraft, setReplyDraft] = useState("")
+
+  const [members, setMembers] = useState<Profile[]>(initialMembers)
   const [schedule, setSchedule] = useState<ScheduleSession[]>(() => sortSessions(initialSchedule || []))
   const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
   const [shopItems, setShopItems] = useState<ShopItem[]>(initialShopItems)
@@ -152,8 +160,10 @@ export function StaffDashboard({
     () => Array.from({ length: 5 }, () => ({ title: "", url: "" })),
   )
   const [membersNameEdits, setMembersNameEdits] = useState<Record<string, string>>({})
-  // messages removed; orders will be used instead
-  const [orders, setOrders] = useState<any[]>([])
+  const [messages, setMessages] = useState<SupportTicket[]>([])
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
+  const [replyDraft, setReplyDraft] = useState("")
+  const [localReplies, setLocalReplies] = useState<Record<string, string[]>>({})
 
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
@@ -203,27 +213,6 @@ export function StaffDashboard({
     })()
     return () => { mounted = false }
   }, [active, selectedMessageId])
-
-  useEffect(() => {
-    if (active !== "orders") return
-    let mounted = true
-    ;(async () => {
-      try {
-        const res = await fetch("/api/orders")
-        const json = await res.json().catch(() => ({ data: [] }))
-        if (!mounted) return
-        if (res.ok && Array.isArray(json.data)) {
-          setOrders(json.data)
-        } else if (Array.isArray(json.data)) {
-          setOrders(json.data)
-        }
-      } catch (err) {
-        console.error("Failed to load orders:", err)
-      }
-    })()
-
-    return () => { mounted = false }
-  }, [active])
 
   // If the page is opened with a ticketId query param, open messages and select that ticket
   useEffect(() => {
@@ -308,7 +297,63 @@ export function StaffDashboard({
     }
   }, [active, supabase])
 
-  // message handlers removed
+  function addStaffReply(messageId: string, replyText: string) {
+    if (!replyText.trim()) return
+    setLocalReplies((prev) => ({
+      ...prev,
+      [messageId]: [...(prev[messageId] || []), replyText.trim()],
+    }))
+  }
+
+  async function handleStaffReply(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedMessageId || !replyDraft.trim()) return
+    try {
+      const res = await fetch(`/api/support/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticketId: selectedMessageId, message: replyDraft }),
+      })
+      const json = await res.json()
+      if (res.ok && json.data) {
+        // push persisted reply to local state
+        const replyText = json.data.message
+        addStaffReply(selectedMessageId, replyText)
+      } else {
+        console.error("Reply save failed:", json.error)
+        // fallback to local only
+        addStaffReply(selectedMessageId, replyDraft)
+      }
+    } catch (err) {
+      console.error("Failed to send reply:", err)
+      addStaffReply(selectedMessageId, replyDraft)
+    } finally {
+      setReplyDraft("")
+    }
+  }
+
+  // Load persisted replies when a conversation is selected
+  useEffect(() => {
+    let mounted = true
+    async function loadReplies() {
+      if (!selectedMessageId) return
+      try {
+        const res = await fetch(`/api/support/reply?ticketId=${selectedMessageId}`)
+        const json = await res.json()
+        if (!mounted) return
+        if (res.ok && Array.isArray(json.data)) {
+          setLocalReplies((prev) => ({ ...prev, [selectedMessageId]: json.data.map((r: any) => r.message) }))
+        }
+      } catch (err) {
+        console.error("Failed to load replies:", err)
+      }
+    }
+
+    loadReplies()
+    return () => {
+      mounted = false
+    }
+  }, [selectedMessageId])
 
   async function updateMemberProfile(memberId: string, updates: { fullName?: string; level?: string }) {
     const response = await fetch("/api/profiles", {
@@ -327,11 +372,12 @@ export function StaffDashboard({
 
   async function saveMemberFullName(memberId: string) {
     const edit = membersNameEdits[memberId]
-    const member = members.find((m) => m.id === memberId)
-    const derived = getMemberDisplayName(member)
-    const fullName = (typeof edit === "string" && edit.trim().length > 0) ? edit.trim() : derived
-    if (!fullName) return
+    if (typeof edit !== "string" || edit.trim().length === 0) {
+      showToast("Enter a display name before saving.")
+      return
+    }
 
+    const fullName = edit.trim()
     const previousMembers = members
     setMembers((prev) => prev.map((item) => (item.id === memberId ? { ...item, full_name: fullName } : item)))
 
@@ -432,16 +478,6 @@ export function StaffDashboard({
     }
   }
 
-  async function handleStaffReply(e: React.FormEvent) {
-    e.preventDefault()
-    if (!selectedMessageId) return
-    const text = replyDraft.trim()
-    if (!text) return
-    setLocalReplies((prev) => ({ ...prev, [selectedMessageId]: [...(prev[selectedMessageId] || []), text] }))
-    setReplyDraft("")
-    showToast("Reply saved")
-  }
-
   return (
     <DashboardShell
       navItems={NAV}
@@ -519,7 +555,7 @@ export function StaffDashboard({
           <SectionHeader title="Members" desc="View members and update account names and skill levels." />
           <div className="flex flex-col gap-3">
             {members.map((m) => {
-              const currentName = (membersNameEdits[m.id] ?? getMemberDisplayName(m)).trim()
+              const currentName = membersNameEdits[m.id] ?? m.full_name ?? getMemberDisplayName(m)
               return (
                 <Card key={m.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
