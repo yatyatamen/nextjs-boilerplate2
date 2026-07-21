@@ -123,3 +123,10 @@ export type BlogPost = {
   created_at: string
   image_url?: string | null
 }
+
+export type Resource = {
+  id: string
+  title: string | null
+  url: string | null
+  created_at: string
+}

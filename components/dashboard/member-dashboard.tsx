@@ -16,6 +16,7 @@ import type {
   AttendanceRecord,
   EquipmentRecommendation,
   SupportTicket,
+  Resource,
 } from "@/lib/types"
 import {
   LayoutDashboard,
@@ -52,6 +53,7 @@ const NAV: NavItem[] = [
   { key: "attendance", label: "Active Check-Ins", icon: UserCheck },
   { key: "coaches", label: "Our Leaders", icon: Users },
   { key: "gear", label: "Equipment Guides", icon: Award },
+  { key: "resources", label: "Rubrics & PDFs", icon: GraduationCap },
   { key: "shop", label: "Wolves Shop", icon: ShoppingBag },
   { key: "messages", label: "Messages", icon: Mail },
   { key: "club-info", label: "About Wolves", icon: Info },
@@ -146,6 +148,7 @@ export function MemberDashboard({
   // Advanced State Fields
   const [attendanceList, setAttendanceList] = useState<AttendanceRecord[]>(attendanceRecords)
   const [attendanceFilter, setAttendanceFilter] = useState<"all" | "present" | "absent" | "late">("all")
+  const [resources, setResources] = useState<Resource[]>([])
   
   // Dropdown Form Management
   const [newSessionDate, setNewSessionDate] = useState("")
@@ -472,9 +475,48 @@ export function MemberDashboard({
 
   useEffect(() => {
     if (active === "messages") {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+      // Scroll to bottom when active or when messages change
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+      }, 50)
     }
   }, [active, messagesList.length, chatInput])
+
+  // Set up real-time listener for support ticket responses - only listen for external updates, not own messages
+  useEffect(() => {
+    let channel: any
+    try {
+      channel = supabase
+        .channel(`support_tickets:user:${profile.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "support_tickets",
+            filter: `user_id=eq.${profile.id}`,
+          },
+          (payload: any) => {
+            console.log("Support ticket update received:", payload)
+            const updatedTicket = (payload.new ?? payload.record) as SupportTicket
+            if (updatedTicket) {
+              setMessagesList((prev) =>
+                prev.map((m) => (m.id === updatedTicket.id ? updatedTicket : m))
+              )
+            }
+          },
+        )
+        .subscribe()
+    } catch (err) {
+      console.error("Failed to subscribe to support ticket updates:", err)
+    }
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel)
+      }
+    }
+  }, [profile.id, supabase])
 
   const selectedMessage = messagesList.find((m) => String(m.id) === selectedMessageId) ?? messagesList[0] ?? null
 
@@ -816,6 +858,69 @@ async function cleanupExpiredBookings() {
     const interval = setInterval(cleanupExpiredBookings, 60000) // Check every 60 seconds
     return () => clearInterval(interval)
   }, [bookings, schedule])
+
+  // Fetch resources when resources tab is active
+  useEffect(() => {
+    if (active !== "resources") return
+    let mounted = true
+    ;(async () => {
+      try {
+        const response = await fetch("/api/support/resources")
+        if (!response.ok) throw new Error("Failed to fetch resources")
+        const { data } = await response.json()
+        if (mounted) {
+          setResources(data || [])
+        }
+      } catch (err) {
+        console.error("Failed to load resources:", err)
+      }
+    })()
+    return () => { mounted = false }
+  }, [active])
+
+  // Set up real-time listener for attendance updates
+  useEffect(() => {
+    let channel: any
+    try {
+      channel = supabase
+        .channel(`attendance:user:${profile.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "attendance",
+            filter: `user_id=eq.${profile.id}`,
+          },
+          (payload: any) => {
+            console.log("Attendance update received:", payload)
+            const newRecord = payload.new as AttendanceRecord
+            if (newRecord) {
+              setAttendanceList((prev) => {
+                // Check if record already exists
+                const exists = prev.some((r) => r.id === newRecord.id)
+                if (exists) {
+                  // Update existing record
+                  return prev.map((r) => (r.id === newRecord.id ? newRecord : r))
+                } else {
+                  // Add new record at the top
+                  return [newRecord, ...prev]
+                }
+              })
+            }
+          },
+        )
+        .subscribe()
+    } catch (err) {
+      console.error("Failed to subscribe to attendance updates:", err)
+    }
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel)
+      }
+    }
+  }, [profile.id, supabase])
 
   return (
     <div className={`w-full min-h-screen ${theme.bg} ${theme.textPrimary} transition-colors duration-200`}>
@@ -1214,6 +1319,69 @@ async function cleanupExpiredBookings() {
             </div>
           )}
 
+          {/* MEMBER ATTENDANCE HISTORY */}
+          {active === "attendance" && !isStaff && (
+            <div>
+              <div className="mb-6">
+                <h2 className={`text-lg font-semibold ${theme.headingColor}`}>Your Attendance</h2>
+                <p className={`text-sm ${theme.textMuted}`}>View your session attendance and check-in history</p>
+              </div>
+
+              {/* Filter Buttons */}
+              <div className="mb-4 flex flex-wrap gap-2">
+                {(["all", "present", "absent", "late"] as const).map((filterOpt) => (
+                  <Button
+                    key={filterOpt}
+                    variant={attendanceFilter === filterOpt ? "secondary" : "outline"}
+                    size="sm"
+                    className="uppercase tracking-widest text-[10px]"
+                    onClick={() => setAttendanceFilter(filterOpt)}
+                  >
+                    {filterOpt === "all" ? "All" : filterOpt === "absent" ? "Miss" : filterOpt.charAt(0).toUpperCase() + filterOpt.slice(1)}
+                  </Button>
+                ))}
+              </div>
+
+              {/* Attendance Records */}
+              <div className="flex flex-col gap-3">
+                {filteredAttendance.length === 0 ? (
+                  <Card className="p-6 text-center">
+                    <p className={theme.textMuted}>No attendance records found for the selected filter.</p>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3">
+                    {filteredAttendance.map((record) => {
+                      const statusColor = 
+                        record.status === "present" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                        : record.status === "absent" ? "text-rose-400 bg-rose-500/10 border-rose-500/20"
+                        : "text-amber-400 bg-amber-500/10 border-amber-500/20"
+                      
+                      return (
+                        <Card key={record.id} className={`p-4 border ${statusColor}`}>
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-sm">{record.user_name}</p>
+                              <p className={`text-xs ${theme.textMuted} mt-1`}>Session: {record.session_id.substring(0, 8)}</p>
+                              <p className={`text-xs ${theme.textMuted}`}>Level: {record.user_level}</p>
+                            </div>
+                            <div className="flex flex-col sm:items-end gap-2">
+                              <Badge className={statusColor}>
+                                {record.status.toUpperCase()}
+                              </Badge>
+                              <p className={`text-xs ${theme.textMuted}`}>
+                                {record.marked_at ? new Date(record.marked_at).toLocaleString() : "Not marked"}
+                              </p>
+                            </div>
+                          </div>
+                        </Card>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
 {/* OUR LEADERS / INSTRUCTORS BIOGRAPHY */}
           {active === "coaches" && (
             <div>
@@ -1512,6 +1680,42 @@ async function cleanupExpiredBookings() {
             </div>
           )}
 
+          {/* RUBRICS & PDFS SECTION */}
+          {active === "resources" && (
+            <div>
+              <div className="mb-6">
+                <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Rubrics & Assessment PDFs</h2>
+                <p className="text-[11px] text-zinc-500 mt-1">View and download rubrics, assessment guides, and other learning resources shared by your coaches.</p>
+              </div>
+
+              {resources.length === 0 ? (
+                <Card className={`p-6 text-center ${theme.cardBorder} ${theme.cardBg}`}>
+                  <p className={`${theme.textSecondary}`}>No resources available yet. Check back soon!</p>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {resources.map((resource) => (
+                    <Card key={resource.id} className={`p-4 ${theme.cardBorder} ${theme.cardBg} flex flex-col justify-between gap-3`}>
+                      <div>
+                        <h3 className="font-medium text-foreground">{resource.title}</h3>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Posted {new Date(resource.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <Button
+                        onClick={() => window.open(resource.url || "", "_blank")}
+                        className="w-full"
+                        size="sm"
+                      >
+                        View PDF
+                      </Button>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* CONTACT & SUPPORT HUB */}
           {active === "messages" && (
             <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-5">
@@ -1538,7 +1742,7 @@ async function cleanupExpiredBookings() {
                 </button>
               </div>
 
-              <div className={`flex min-h-[620px] max-h-[760px] flex-col overflow-hidden rounded-2xl border ${theme.cardBorder} ${theme.cardBg}`}>
+            <div className={`flex min-h-[620px] max-h-[760px] flex-col overflow-hidden rounded-2xl border ${theme.cardBorder} ${theme.cardBg}`}>
                 <div className="border-b border-zinc-800/70 bg-zinc-950/60 px-4 py-4 shrink-0">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -1551,6 +1755,7 @@ async function cleanupExpiredBookings() {
                   </div>
                 </div>
 
+
                 <div className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(226,172,40,0.08),_transparent_50%)] p-4">
                   {messagesList.length === 0 ? (
                     <div className="flex h-full items-center justify-center">
@@ -1560,18 +1765,29 @@ async function cleanupExpiredBookings() {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {messagesList.map((message) => {
+                      {messagesList.map((message, index) => {
                         const isMine = message.user_id === profile.id || message.user_email === profile.email
+                        const prevMessage = index > 0 ? messagesList[index - 1] : null
+                        const showDateSeparator = !prevMessage || new Date(prevMessage.created_at).toDateString() !== new Date(message.created_at).toDateString()
                         return (
-                          <div key={message.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                            <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${isMine ? "bg-[#E2AC28] text-black" : "border border-zinc-800 bg-zinc-900 text-zinc-100"}`}>
-                              <p className={`text-[10px] font-semibold uppercase tracking-[0.25em] ${isMine ? "text-black/70" : "text-zinc-400"}`}>
-                                {isMine ? "You" : "Club support"}
-                              </p>
-                              <p className="mt-1 whitespace-pre-line text-sm">{message.message}</p>
-                              <p className={`mt-2 text-[10px] ${isMine ? "text-black/60" : "text-zinc-500"}`}>
-                                {new Date(message.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                              </p>
+                          <div key={message.id}>
+                            {showDateSeparator && (
+                              <div className="flex justify-center py-2 mb-2">
+                                <p className="text-[11px] text-zinc-500 font-medium bg-zinc-900/50 px-3 py-1 rounded-full">
+                                  {new Date(message.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                            )}
+                            <div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+                              <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${isMine ? "bg-[#E2AC28] text-black" : "border border-zinc-800 bg-zinc-900 text-zinc-100"}`}>
+                                <p className={`text-[10px] font-semibold uppercase tracking-[0.25em] ${isMine ? "text-black/70" : "text-zinc-400"}`}>
+                                  {isMine ? "You" : "Club support"}
+                                </p>
+                                <p className="mt-1 whitespace-pre-line text-sm">{message.message}</p>
+                                <p className={`mt-2 text-[10px] ${isMine ? "text-black/60" : "text-zinc-500"}`}>
+                                  {new Date(message.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                                </p>
+                              </div>
                             </div>
                           </div>
                         )
@@ -1587,10 +1803,16 @@ async function cleanupExpiredBookings() {
                       rows={2}
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault()
+                          sendChatMessage(e as any)
+                        }
+                      }}
                       className={`flex-1 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ${theme.inputBg}`}
                       placeholder="Type a message..."
                     />
-                    <Button type="submit" size="sm" className="h-10 w-10 rounded-full bg-[#E2AC28] p-0 text-black">
+                    <Button type="submit" size="sm" className="h-10 w-10 rounded-full bg-[#E2AC28] p-0 text-black hover:bg-[#d4a428]">
                       <SendHorizonal className="h-4 w-4" />
                     </Button>
                   </form>

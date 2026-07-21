@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
 import {
@@ -23,6 +23,7 @@ import type {
   SupportTicket,
   EquipmentRecommendation,
   AttendanceRecord,
+  Resource,
 } from "@/lib/types"
 import {
   LayoutDashboard,
@@ -154,16 +155,20 @@ export function StaffDashboard({
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(initialAttendanceRecords ?? [])
   const [attendanceSelection, setAttendanceSelection] = useState<Record<string, "present" | "late" | "absent">>({})
   const [attendanceFilter, setAttendanceFilter] = useState<"all" | "present" | "absent" | "late">("all")
+  const [attendanceViewMode, setAttendanceViewMode] = useState<"by-session" | "all-records">("by-session")
   const [selectedAttendanceMemberId, setSelectedAttendanceMemberId] = useState<string | null>(null)
+  const [selectedMemberFilter, setSelectedMemberFilter] = useState<string | null>(null)
   const [pendingAttendance, setPendingAttendance] = useState<Record<string, boolean>>({})
-  const [resourceLinks, setResourceLinks] = useState<{ title: string; url: string }[]>(
-    () => Array.from({ length: 5 }, () => ({ title: "", url: "" })),
-  )
+  const [resources, setResources] = useState<Resource[]>([])
+  const [newResourceTitle, setNewResourceTitle] = useState("")
+  const [newResourceUrl, setNewResourceUrl] = useState("")
+  const [savingResource, setSavingResource] = useState(false)
   const [membersNameEdits, setMembersNameEdits] = useState<Record<string, string>>({})
   const [messages, setMessages] = useState<SupportTicket[]>([])
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
   const [replyDraft, setReplyDraft] = useState("")
   const [localReplies, setLocalReplies] = useState<Record<string, string[]>>({})
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
@@ -214,6 +219,61 @@ export function StaffDashboard({
     return () => { mounted = false }
   }, [active, selectedMessageId])
 
+  // Set up real-time listener for new support tickets
+  useEffect(() => {
+    let channel: any
+    try {
+      channel = supabase
+        .channel("support_tickets_changes")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "support_tickets",
+          },
+          (payload: any) => {
+            console.log("Support ticket update:", payload)
+            if (payload.eventType === "INSERT" || payload.event === "INSERT") {
+              // New ticket was created
+              const newTicket = (payload.new ?? payload.record) as SupportTicket
+              if (newTicket) {
+                setMessages((prev) => [newTicket, ...prev])
+              }
+            } else if (payload.eventType === "UPDATE" || payload.event === "UPDATE") {
+              // Existing ticket was updated
+              const updatedTicket = (payload.new ?? payload.record) as SupportTicket
+              if (updatedTicket) {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === updatedTicket.id ? updatedTicket : m))
+                )
+              }
+            }
+          },
+        )
+        .subscribe()
+    } catch (err) {
+      console.error("Failed to subscribe to support tickets:", err)
+    }
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel)
+      }
+    }
+  }, [supabase])
+
+  // Scroll to bottom when messages or replies change
+  useEffect(() => {
+    if (messagesContainerRef.current) {
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+        }
+      }, 50)
+    }
+  }, [selectedMessageId, localReplies])
+
   // If the page is opened with a ticketId query param, open messages and select that ticket
   useEffect(() => {
     try {
@@ -229,26 +289,62 @@ export function StaffDashboard({
   }, [])
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem("staff-assessment-pdfs")
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        if (Array.isArray(parsed) && parsed.length === 5) {
-          setResourceLinks(parsed)
+    if (active !== "resources") return
+    let mounted = true
+    ;(async () => {
+      try {
+        const response = await fetch("/api/support/resources")
+        if (!response.ok) throw new Error("Failed to fetch resources")
+        const { data } = await response.json()
+        if (mounted) {
+          setResources(data || [])
         }
+      } catch (err) {
+        console.error("Failed to load resources:", err)
+      }
+    })()
+    return () => { mounted = false }
+  }, [active])
+
+  const saveNewResource = async () => {
+    if (!newResourceTitle.trim() || !newResourceUrl.trim()) {
+      showToast("Please fill in both title and URL")
+      return
+    }
+    setSavingResource(true)
+    try {
+      const response = await fetch("/api/support/resources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newResourceTitle.trim(), url: newResourceUrl.trim() }),
+      })
+      if (!response.ok) throw new Error("Failed to save resource")
+      const { data } = await response.json()
+      if (data) {
+        setResources((prev) => [data, ...prev])
+        setNewResourceTitle("")
+        setNewResourceUrl("")
+        showToast("Resource saved!")
       }
     } catch (err) {
-      console.warn("Unable to load saved rubric resources", err)
+      console.error("Error saving resource:", err)
+      showToast("Failed to save resource")
+    } finally {
+      setSavingResource(false)
     }
-  }, [])
+  }
 
-  useEffect(() => {
+  const deleteResource = async (id: string) => {
     try {
-      window.localStorage.setItem("staff-assessment-pdfs", JSON.stringify(resourceLinks))
+      const response = await fetch(`/api/support/resources?id=${id}`, { method: "DELETE" })
+      if (!response.ok) throw new Error("Failed to delete resource")
+      setResources((prev) => prev.filter((r) => r.id !== id))
+      showToast("Resource deleted")
     } catch (err) {
-      console.warn("Unable to save rubric resources", err)
+      console.error("Error deleting resource:", err)
+      showToast("Failed to delete resource")
     }
-  }, [resourceLinks])
+  }
 
   // Keep bookings list in sync with realtime changes so staff view reflects member cancellations/rebooks
   useEffect(() => {
@@ -356,7 +452,7 @@ export function StaffDashboard({
   }, [selectedMessageId])
 
   async function updateMemberProfile(memberId: string, updates: { fullName?: string; level?: string }) {
-    const response = await fetch("/api/profiles", {
+    const response = await fetch("/api/support/profile", {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -371,31 +467,49 @@ export function StaffDashboard({
     return result.data as Profile | undefined
   }
 
-  async function saveMemberFullName(memberId: string) {
+  async function saveMemberChanges(memberId: string) {
     const member = members.find((m) => m.id === memberId)
-    const edit = membersNameEdits[memberId] ?? member?.full_name ?? getMemberDisplayName(member)
-    if (typeof edit !== "string" || edit.trim().length === 0) {
-      showToast("Enter a display name before saving.")
+    if (!member) return
+
+    const edit = membersNameEdits[memberId]
+    const fullName = typeof edit === "string" ? edit.trim() : member.full_name ?? getMemberDisplayName(member)
+    const level = member.level ?? null
+
+    if (!fullName && !level) {
+      showToast("Enter a display name or select a level before saving.")
       return
     }
 
-    const fullName = edit.trim()
     const previousMembers = members
-    setMembers((prev) => prev.map((item) => (item.id === memberId ? { ...item, full_name: fullName } : item)))
+    setMembers((prev) => prev.map((item) => (item.id === memberId ? { ...item, full_name: fullName, level } : item)))
 
     try {
-      const updatedProfile = await updateMemberProfile(memberId, { fullName })
-      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, full_name: updatedProfile?.full_name ?? fullName } : m)))
+      const payload: { fullName?: string; level?: string } = {}
+      if (fullName) payload.fullName = fullName
+      if (level) payload.level = level
+
+      const updatedProfile = await updateMemberProfile(memberId, payload)
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.id === memberId
+            ? {
+                ...m,
+                full_name: updatedProfile?.full_name ?? fullName,
+                level: updatedProfile?.level ?? (level ?? m.level),
+              }
+            : m,
+        ),
+      )
       setMembersNameEdits((prev) => {
         const next = { ...prev }
         delete next[memberId]
         return next
       })
-      showToast("Display name updated")
+      showToast("Member changes saved")
     } catch (error) {
-      console.error("Failed to update member name:", error)
+      console.error("Failed to update member:", error)
       setMembers(previousMembers)
-      showToast(error instanceof Error ? error.message : "Unable to update member name")
+      showToast(error instanceof Error ? error.message : "Unable to save member changes")
     }
   }
 
@@ -586,19 +700,9 @@ export function StaffDashboard({
                       <Label className="text-xs text-muted-foreground">Level</Label>
                       <Select
                         value={m.level ?? ALL_6_TIERS[0]}
-                        onChange={async (e) => {
+                        onChange={(e) => {
                           const level = e.target.value
-                          const prevMembers = members
                           setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, level } : x)))
-                          try {
-                            const updatedProfile = await updateMemberProfile(m.id, { level })
-                            setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, level: updatedProfile?.level ?? level } : x)))
-                            showToast("Member level updated")
-                          } catch (err) {
-                            console.error("Failed to update member level:", err)
-                            setMembers(prevMembers)
-                            showToast(err instanceof Error ? err.message : "Unable to update level")
-                          }
                         }}
                         className="h-9 w-40"
                       >
@@ -611,9 +715,9 @@ export function StaffDashboard({
                       size="sm"
                       variant="secondary"
                       className="h-9"
-                      onClick={() => saveMemberFullName(m.id)}
+                      onClick={() => saveMemberChanges(m.id)}
                     >
-                      Save Name
+                      Save Member
                     </Button>
                   </div>
                 </Card>
@@ -788,6 +892,26 @@ export function StaffDashboard({
       {active === "attendance" && (
         <div>
           <SectionHeader title="Attendance" desc="Mark attendance and review session sign-ups for each booking." />
+          
+          {/* View Mode Toggle */}
+          <div className="mb-6 flex gap-2">
+            <Button
+              variant={attendanceViewMode === "by-session" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setAttendanceViewMode("by-session")}
+            >
+              By Session
+            </Button>
+            <Button
+              variant={attendanceViewMode === "all-records" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setAttendanceViewMode("all-records")}
+            >
+              All Records
+            </Button>
+          </div>
+
+          {/* Filter Buttons */}
           <div className="mb-4 flex flex-wrap gap-2">
             {ATTENDANCE_FILTERS.map((filterOpt) => (
               <Button
@@ -801,174 +925,312 @@ export function StaffDashboard({
               </Button>
             ))}
           </div>
-          {schedule.length === 0 ? (
-            <Card className="p-6 text-center">
-              <p className="text-muted-foreground">No sessions available to mark attendance.</p>
-            </Card>
-          ) : (
-            schedule.map((session) => {
-              const sessionBookings = bookings.filter((b) => b.session_id === session.id)
-              const uniqueBookings = Array.from(
-                new Map(
-                  sessionBookings
-                    .sort((a, b) => {
-                      const aDate = new Date(a.created_at || 0).getTime()
-                      const bDate = new Date(b.created_at || 0).getTime()
-                      return bDate - aDate
-                    })
-                    .map((b) => [String(b.user_id), b]),
-                ).values(),
-              )
+
+          {/* Member Filter */}
+          {attendanceViewMode === "all-records" && (
+            <div className="mb-4">
+              <Label className="text-xs text-muted-foreground mb-2 block">Filter by Member</Label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant={selectedMemberFilter === null ? "secondary" : "outline"}
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => setSelectedMemberFilter(null)}
+                >
+                  All Members
+                </Button>
+                {members.map((member) => {
+                  const hasRecords = attendanceRecords.some(r => r.user_id === member.id)
+                  if (!hasRecords) return null
+                  return (
+                    <Button
+                      key={member.id}
+                      variant={selectedMemberFilter === member.id ? "secondary" : "outline"}
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => setSelectedMemberFilter(member.id)}
+                    >
+                      {member.full_name || member.email}
+                    </Button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* BY SESSION VIEW */}
+          {attendanceViewMode === "by-session" && (
+            <>
+              {schedule.length === 0 ? (
+                <Card className="p-6 text-center">
+                  <p className="text-muted-foreground">No sessions available to mark attendance.</p>
+                </Card>
+              ) : (
+                schedule.map((session) => {
+                  const sessionBookings = bookings.filter((b) => b.session_id === session.id)
+                  const uniqueBookings = Array.from(
+                    new Map(
+                      sessionBookings
+                        .sort((a, b) => {
+                          const aDate = new Date(a.created_at || 0).getTime()
+                          const bDate = new Date(b.created_at || 0).getTime()
+                          return bDate - aDate
+                        })
+                        .map((b) => [String(b.user_id), b]),
+                    ).values(),
+                  )
 
                   const rows = uniqueBookings
-                .map((booking) => {
-                  const member = members.find((m) => m.id === booking.user_id)
-                  const attendance = attendanceRecords.find(
-                    (record) => record.session_id === booking.session_id && record.user_id === booking.user_id,
-                  )
-                  const status = attendance?.status ?? "not marked"
-                      // default selection handled by initialization effect
-                  return { booking, member, attendance, status }
-                })
-                .filter((row) => attendanceFilter === "all" || row.status === attendanceFilter)
+                    .map((booking) => {
+                      const member = members.find((m) => m.id === booking.user_id)
+                      const attendance = attendanceRecords.find(
+                        (record) => record.session_id === booking.session_id && record.user_id === booking.user_id,
+                      )
+                      const status = attendance?.status ?? "not marked"
+                      return { booking, member, attendance, status }
+                    })
+                    .filter((row) => attendanceFilter === "all" || row.status === attendanceFilter)
 
-              return (
-                <Card key={session.id} className="p-4">
-                  <div className="mb-3">
-                    <h4 className="font-semibold text-foreground">{session.title ?? "Untitled Session"}</h4>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {formatDate(session.date)} · {session.time ?? "TBD"}
-                    </p>
-                  </div>
-                  <div className="mb-3 flex items-center justify-end">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={async () => {
-                        const toSave = rows
-                        for (const row of toSave) {
-                          const booking = row.booking
-                          const desired = attendanceSelection[booking.id] ?? "present"
-                          const current = row.attendance?.status ?? "not marked"
-                          if (desired !== current) {
-                            await markAttendance(booking, desired)
-                          }
-                        }
-                        showToast("Attendance saved")
-                      }}
-                    >
-                      Save Attendance
-                    </Button>
-                  </div>
-                  {rows.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No matching attendance rows for this filter.</p>
-                  ) : (
-                    <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950">
-                      <table className="min-w-full text-left text-sm">
-                        <thead className="border-b border-zinc-800 bg-zinc-900 text-zinc-300">
-                          <tr>
-                            <th className="px-4 py-3">Member</th>
-                            <th className="px-4 py-3">Tier</th>
-                            <th className="px-4 py-3">Status</th>
-                            <th className="px-4 py-3">Marked At</th>
-                            <th className="px-4 py-3">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-800">
-                          {rows.map(({ booking, member, attendance, status }) => (
-                            <tr key={booking.id} className="hover:bg-zinc-900">
-                              <td className="px-4 py-3 align-top">
-                                <p className="font-medium text-zinc-100">
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
-                                    className="text-left p-0 m-0 underline-offset-2 hover:underline"
-                                  >
-                                    {member?.full_name || member?.email || "Unknown Member"}
-                                  </button>
-                                </p>
-                                <p className="text-xs text-zinc-400">{booking.user_id}</p>
-                              </td>
-                              <td className="px-4 py-3 align-top text-xs text-zinc-400">{member?.level || "N/A"}</td>
-                              <td className="px-4 py-3 align-top text-xs text-zinc-200 uppercase tracking-[0.08em]">{status}</td>
-                              <td className="px-4 py-3 align-top text-xs text-zinc-400">
-                                {attendance?.marked_at ? new Date(attendance.marked_at).toLocaleString() : "—"}
-                              </td>
-                              <td className="px-4 py-3 align-top">
-                                <div className="flex items-center gap-3">
-                                  {(["present", "late", "absent"] as const).map((opt) => (
-                                    <label key={opt} className="inline-flex items-center gap-2">
-                                      <input
-                                        type="radio"
-                                        name={`attendance-${booking.id}`}
-                                        value={opt}
-                                        checked={(attendanceSelection[booking.id] ?? "present") === opt}
-                                        onChange={() => setAttendanceSelection((prev) => ({ ...prev, [booking.id]: opt }))}
-                                      />
-                                      <span className={`text-xs ${opt === "present" ? "text-emerald-400" : opt === "late" ? "text-amber-400" : "text-rose-400"}`}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</span>
-                                    </label>
-                                  ))}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  return (
+                    <Card key={session.id} className="p-4 mb-4">
+                      <div className="mb-3">
+                        <h4 className="font-semibold text-foreground">{session.title ?? "Untitled Session"}</h4>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {formatDate(session.date)} · {session.time ?? "TBD"}
+                        </p>
+                      </div>
+                      <div className="mb-3 flex items-center justify-end">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={async () => {
+                            const toSave = rows
+                            for (const row of toSave) {
+                              const booking = row.booking
+                              const desired = attendanceSelection[booking.id] ?? "present"
+                              const current = row.attendance?.status ?? "not marked"
+                              if (desired !== current) {
+                                await markAttendance(booking, desired)
+                              }
+                            }
+                            showToast("Attendance saved")
+                          }}
+                        >
+                          Save Attendance
+                        </Button>
+                      </div>
+                      {rows.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No matching attendance rows for this filter.</p>
+                      ) : (
+                        <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950">
+                          <table className="min-w-full text-left text-sm">
+                            <thead className="border-b border-zinc-800 bg-zinc-900 text-zinc-300">
+                              <tr>
+                                <th className="px-4 py-3">Member</th>
+                                <th className="px-4 py-3">Tier</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3">Marked At</th>
+                                <th className="px-4 py-3">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-800">
+                              {rows.map(({ booking, member, attendance, status }) => (
+                                <tr key={booking.id} className="hover:bg-zinc-900">
+                                  <td className="px-4 py-3 align-top">
+                                    <p className="font-medium text-zinc-100">
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
+                                        className="text-left p-0 m-0 underline-offset-2 hover:underline"
+                                      >
+                                        {member?.full_name || member?.email || "Unknown Member"}
+                                      </button>
+                                    </p>
+                                    <p className="text-xs text-zinc-400">{booking.user_id}</p>
+                                  </td>
+                                  <td className="px-4 py-3 align-top text-xs text-zinc-400">{member?.level || "N/A"}</td>
+                                  <td className="px-4 py-3 align-top text-xs text-zinc-200 uppercase tracking-[0.08em]">{status}</td>
+                                  <td className="px-4 py-3 align-top text-xs text-zinc-400">
+                                    {attendance?.marked_at ? new Date(attendance.marked_at).toLocaleString() : "—"}
+                                  </td>
+                                  <td className="px-4 py-3 align-top">
+                                    <div className="flex items-center gap-3">
+                                      {(["present", "late", "absent"] as const).map((opt) => (
+                                        <label key={opt} className="inline-flex items-center gap-2">
+                                          <input
+                                            type="radio"
+                                            name={`attendance-${booking.id}`}
+                                            value={opt}
+                                            checked={(attendanceSelection[booking.id] ?? "present") === opt}
+                                            onChange={() => setAttendanceSelection((prev) => ({ ...prev, [booking.id]: opt }))}
+                                          />
+                                          <span className={`text-xs ${opt === "present" ? "text-emerald-400" : opt === "late" ? "text-amber-400" : "text-rose-400"}`}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </Card>
+                  )
+                })
+              )}
+            </>
+          )}
+
+          {/* ALL RECORDS VIEW */}
+          {attendanceViewMode === "all-records" && (
+            <>
+              {/* Statistics */}
+              <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Card className="p-3">
+                  <p className="text-xs text-muted-foreground">Total Records</p>
+                  <p className="text-2xl font-bold mt-1">{attendanceRecords.length}</p>
                 </Card>
-              )
-            })
+                <Card className="p-3">
+                  <p className="text-xs text-muted-foreground">Present</p>
+                  <p className="text-2xl font-bold text-emerald-400 mt-1">{attendanceRecords.filter(r => r.status === "present").length}</p>
+                </Card>
+                <Card className="p-3">
+                  <p className="text-xs text-muted-foreground">Late</p>
+                  <p className="text-2xl font-bold text-amber-400 mt-1">{attendanceRecords.filter(r => r.status === "late").length}</p>
+                </Card>
+                <Card className="p-3">
+                  <p className="text-xs text-muted-foreground">Absent</p>
+                  <p className="text-2xl font-bold text-rose-400 mt-1">{attendanceRecords.filter(r => r.status === "absent").length}</p>
+                </Card>
+              </div>
+
+              {/* All Records Table */}
+              {attendanceRecords.filter(r => attendanceFilter === "all" || r.status === attendanceFilter).length === 0 ? (
+                <Card className="p-6 text-center">
+                  <p className="text-muted-foreground">No attendance records found for the selected filter.</p>
+                </Card>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-zinc-800 bg-zinc-900 text-zinc-300">
+                      <tr>
+                        <th className="px-4 py-3">Member</th>
+                        <th className="px-4 py-3">Level</th>
+                        <th className="px-4 py-3">Session Date & Title</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">Marked At</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800">
+                      {attendanceRecords
+                        .filter(r => (attendanceFilter === "all" || r.status === attendanceFilter) && (selectedMemberFilter === null || r.user_id === selectedMemberFilter))
+                        .sort((a, b) => new Date(b.marked_at).getTime() - new Date(a.marked_at).getTime())
+                        .map((record) => {
+                          const session = schedule.find(s => s.id === record.session_id)
+                          return (
+                            <tr key={record.id} className="hover:bg-zinc-900">
+                              <td className="px-4 py-3">
+                                <p className="font-medium text-zinc-100">{record.user_name}</p>
+                                <p className="text-xs text-zinc-400">{record.user_id}</p>
+                              </td>
+                              <td className="px-4 py-3 text-xs text-zinc-400">{record.user_level}</td>
+                              <td className="px-4 py-3 text-xs text-zinc-300">
+                                <div>{formatDate(session?.date ?? null)}</div>
+                                <div className="text-zinc-400">{session?.title ?? "Unknown Session"}</div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+                                  record.status === "present" ? "bg-emerald-500/10 text-emerald-400"
+                                  : record.status === "late" ? "bg-amber-500/10 text-amber-400"
+                                  : "bg-rose-500/10 text-rose-400"
+                                }`}>
+                                  {record.status.toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-xs text-zinc-400">{new Date(record.marked_at).toLocaleString()}</td>
+                            </tr>
+                          )
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
 
       {active === "resources" && (
         <div>
-          <SectionHeader title="Assessment PDFs" desc="Store five rubric or assessment PDFs for staff access." />
+          <SectionHeader title="Assessment PDFs" desc="Post rubric and assessment PDFs for all members to view." />
+          
+          {/* Add New Resource */}
+          <Card className="p-4 mb-6">
+            <div className="flex flex-col gap-3">
+              <Label className="text-sm font-semibold">Add New Resource</Label>
+              <Input
+                placeholder="Resource title (e.g., 'Level Testing Rubric')"
+                value={newResourceTitle}
+                onChange={(e) => setNewResourceTitle(e.target.value)}
+              />
+              <Input
+                placeholder="PDF URL or link"
+                value={newResourceUrl}
+                onChange={(e) => setNewResourceUrl(e.target.value)}
+              />
+              <Button
+                onClick={saveNewResource}
+                disabled={savingResource || !newResourceTitle.trim() || !newResourceUrl.trim()}
+                className="w-full"
+              >
+                {savingResource ? "Saving..." : "Save Resource"}
+              </Button>
+            </div>
+          </Card>
+
+          {/* Resources List */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {resourceLinks.map((resource, index) => (
-              <Card key={index} className="p-4">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label className="text-sm">PDF Slot {index + 1}</Label>
-                    <span className="text-xs text-muted-foreground">Paste a link to your file</span>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Input
-                      placeholder="PDF title or rubric name"
-                      value={resource.title}
-                      onChange={(e) =>
-                        setResourceLinks((prev) =>
-                          prev.map((item, idx) => (idx === index ? { ...item, title: e.target.value } : item)),
-                        )
-                      }
-                    />
-                    <Input
-                      placeholder="PDF URL"
-                      value={resource.url}
-                      onChange={(e) =>
-                        setResourceLinks((prev) =>
-                          prev.map((item, idx) => (idx === index ? { ...item, url: e.target.value } : item)),
-                        )
-                      }
-                    />
+            {resources.length === 0 ? (
+              <Card className="p-6 text-center col-span-1 md:col-span-2">
+                <p className="text-muted-foreground">No resources posted yet. Add one above to share with members!</p>
+              </Card>
+            ) : (
+              resources.map((resource) => (
+                <Card key={resource.id} className="p-4">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <h3 className="font-medium text-foreground">{resource.title}</h3>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(resource.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
-                        disabled={!resource.url}
-                        onClick={() => window.open(resource.url, "_blank")}
+                        onClick={() => window.open(resource.url || "", "_blank")}
+                        className="flex-1"
                       >
                         Open PDF
                       </Button>
-                      <span className="text-xs text-muted-foreground truncate">{resource.title || "No title"}</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="text-rose-400 hover:text-rose-300"
+                        onClick={() => deleteResource(resource.id)}
+                      >
+                        Delete
+                      </Button>
                     </div>
                   </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -1141,13 +1403,15 @@ export function StaffDashboard({
                   </div>
 
                   {/* Messages area */}
-                  <div className="flex-1 overflow-auto p-4 space-y-4">
+                  <div className="flex-1 overflow-auto p-4 space-y-4" ref={messagesContainerRef}>
                     <div className="flex items-start gap-3">
                       <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-semibold">{(selectedMessage.user_email || String(selectedMessage.user_id)).slice(0,2).toUpperCase()}</div>
                       <div className="bg-zinc-900 p-3 rounded-2xl max-w-[75%]">
                         <p className="text-[11px] uppercase tracking-[0.2em] text-[#E2AC28] mb-2">Member</p>
                         <p className="text-sm text-zinc-100 whitespace-pre-line">{selectedMessage.message}</p>
-                        <p className="text-[10px] text-zinc-500 mt-2">{new Date(selectedMessage.created_at || "").toLocaleString()}</p>
+                        <p className="text-[10px] text-zinc-500 mt-2">
+                          {new Date(selectedMessage.created_at || "").toLocaleDateString()} at {new Date(selectedMessage.created_at || "").toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                        </p>
                       </div>
                     </div>
 
@@ -1156,7 +1420,7 @@ export function StaffDashboard({
                         <div className="bg-[#E2AC28]/10 p-3 rounded-2xl max-w-[75%] text-sm text-zinc-100">
                           <p className="text-[11px] uppercase tracking-[0.2em] text-[#E2AC28] mb-2">You</p>
                           <p>{reply}</p>
-                          <p className="text-[10px] text-zinc-500 mt-2">{new Date().toLocaleString()}</p>
+                          <p className="text-[10px] text-zinc-500 mt-2">{new Date().toLocaleDateString()} at {new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>
                         </div>
                         <div className="h-8 w-8 rounded-full bg-[#E2AC28]/10 flex items-center justify-center text-[#E2AC28] text-xs font-semibold">ST</div>
                       </div>
