@@ -358,6 +358,7 @@ export function StaffDashboard({
   async function updateMemberProfile(memberId: string, updates: { fullName?: string; level?: string }) {
     const response = await fetch("/api/profiles", {
       method: "PATCH",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ memberId, ...(updates.fullName ? { fullName: updates.fullName } : {}), ...(updates.level ? { level: updates.level } : {}) }),
     })
@@ -371,7 +372,8 @@ export function StaffDashboard({
   }
 
   async function saveMemberFullName(memberId: string) {
-    const edit = membersNameEdits[memberId]
+    const member = members.find((m) => m.id === memberId)
+    const edit = membersNameEdits[memberId] ?? member?.full_name ?? getMemberDisplayName(member)
     if (typeof edit !== "string" || edit.trim().length === 0) {
       showToast("Enter a display name before saving.")
       return
@@ -384,7 +386,11 @@ export function StaffDashboard({
     try {
       const updatedProfile = await updateMemberProfile(memberId, { fullName })
       setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, full_name: updatedProfile?.full_name ?? fullName } : m)))
-      setMembersNameEdits((prev) => ({ ...prev, [memberId]: "" }))
+      setMembersNameEdits((prev) => {
+        const next = { ...prev }
+        delete next[memberId]
+        return next
+      })
       showToast("Display name updated")
     } catch (error) {
       console.error("Failed to update member name:", error)
@@ -555,7 +561,8 @@ export function StaffDashboard({
           <SectionHeader title="Members" desc="View members and update account names and skill levels." />
           <div className="flex flex-col gap-3">
             {members.map((m) => {
-              const currentName = membersNameEdits[m.id] ?? m.full_name ?? getMemberDisplayName(m)
+              const editValue = membersNameEdits[m.id]?.trim()
+              const currentName = editValue ? editValue : m.full_name ?? getMemberDisplayName(m)
               return (
                 <Card key={m.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
