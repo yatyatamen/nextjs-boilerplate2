@@ -205,12 +205,14 @@ export function StaffDashboard({
     let mounted = true
     ;(async () => {
       try {
-        const { data, error } = await supabase.from("support_tickets").select("*").order("created_at", { ascending: false })
-        if (mounted && !error && data) {
-          setMessages(data as SupportTicket[])
-          if (!selectedMessageId && data.length > 0) {
-            setSelectedMessageId(String(data[0].id))
-          }
+        const response = await fetch("/api/support?all=true", { credentials: "same-origin" })
+        const result = await response.json().catch(() => ({ data: [] }))
+        if (!mounted) return
+
+        const nextMessages = Array.isArray(result?.data) ? (result.data as SupportTicket[]) : []
+        setMessages(nextMessages)
+        if (!selectedMessageId && nextMessages.length > 0) {
+          setSelectedMessageId(String(nextMessages[0].id))
         }
       } catch (err) {
         console.error("Staff messages load error:", err)
