@@ -458,29 +458,22 @@
                                                     let mounted = true
                                                     ;(async () => {
                                                       try {
-                                                        if (messagesList.length > 0) {
-                                                          if (!selectedConvoId && messagesList[0]) {
-                                                            const initialConvoId = (messagesList[0] as SupportTicket & { convoId?: string }).convoId || messagesList[0].subject || "_general_"
-                                                            setSelectedConvoId(initialConvoId)
-                                                          }
-                                                          if (!selectedMessageId && messagesList[0]) {
-                                                            setSelectedMessageId(String(messagesList[0].id))
-                                                          }
+                                                        const { data, error } = await supabase
+                                                          .from("support_tickets")
+                                                          .select("*")
+                                                          .eq("user_id", profile.id)
+                                                          .order("created_at", { ascending: false })
+
+                                                        if (!mounted || error) {
+                                                          console.error("Failed to load messages:", error)
                                                           return
                                                         }
 
-                                                        const response = await fetch("/api/support?all=true", { credentials: "same-origin" })
-                                                        const result = await handleJsonResponse(response)
-                                                        if (!mounted) return
-
-                                                        const normalized = Array.isArray(result?.data) ? result.data : []
+                                                        const normalized = Array.isArray(data) ? data : []
                                                         if (normalized.length > 0) {
                                                           const annotated = (normalized as SupportTicket[]).map((t) => ({ ...t, convoId: t.id || t.subject || "_general_" }))
                                                           setMessagesList(annotated)
-                                                          const latest = annotated.reduce((acc, cur) => {
-                                                            if (!acc) return cur
-                                                            return new Date(cur.created_at).getTime() > new Date(acc.created_at).getTime() ? cur : acc
-                                                          }, annotated[0])
+                                                          const latest = annotated[0]
                                                           setSelectedConvoId(latest?.convoId ?? null)
                                                           if (!selectedMessageId && annotated[0]) {
                                                             setSelectedMessageId(String(annotated[0].id))
@@ -492,7 +485,7 @@
                                                     })()
 
                                                     return () => { mounted = false }
-                                                  }, [active, messagesList.length, selectedMessageId])
+                                                  }, [active, profile.id])
 
                                                   useEffect(() => {
                                                     window.scrollTo({ top: 0, behavior: "auto" })
@@ -605,24 +598,29 @@
                                                     setChatInput("")
 
                                                     try {
-                                                      const response = await fetch("/api/support", {
-                                                        method: "POST",
-                                                        credentials: "same-origin",
-                                                        headers: { "Content-Type": "application/json" },
-                                                        body: JSON.stringify({ subject: activeConversationSubject, message: messageText }),
-                                                      })
+                                                      const { data, error } = await supabase
+                                                        .from("support_tickets")
+                                                        .insert({
+                                                          user_id: profile.id,
+                                                          user_email: profile.email || "",
+                                                          subject: activeConversationSubject,
+                                                          message: messageText,
+                                                          status: "open",
+                                                          created_at: new Date().toISOString(),
+                                                        })
+                                                        .select()
+                                                        .single()
 
-                                                      const result = await handleJsonResponse(response)
-                                                      if (!response.ok) {
+                                                      if (error) {
+                                                        console.error("Failed to save chat message:", error)
                                                         return
                                                       }
 
-                                                      const inserted = Array.isArray(result.data) ? result.data[0] : result.data
-                                                      if (inserted) {
+                                                      if (data) {
                                                         setMessagesList((prev) => prev.map((item) => {
                                                           if (String(item.id) !== String(optimisticMessage.id)) return item
                                                           return {
-                                                            ...(inserted as SupportTicket),
+                                                            ...(data as SupportTicket),
                                                             convoId: item.convoId,
                                                           } as SupportTicket & { convoId?: string }
                                                         }))
@@ -685,28 +683,30 @@
                                                     showToast("Message sent successfully")
 
                                                     try {
-                                                      const response = await fetch("/api/support", {
-                                                        method: "POST",
-                                                        credentials: "same-origin",
-                                                        headers: { "Content-Type": "application/json" },
-                                                        body: JSON.stringify({
+                                                      const { data, error } = await supabase
+                                                        .from("support_tickets")
+                                                        .insert({
+                                                          user_id: profile.id,
+                                                          user_email: profile.email || "",
                                                           subject: conversationSubject,
                                                           message,
-                                                        }),
-                                                      })
+                                                          status: "open",
+                                                          created_at: new Date().toISOString(),
+                                                        })
+                                                        .select()
+                                                        .single()
 
-                                                      const result = await handleJsonResponse(response)
-                                                      if (!response.ok) {
+                                                      if (error) {
+                                                        console.error("❌ Support Ticket Exception:", error)
                                                         return
                                                       }
 
-                                                      const inserted = Array.isArray(result.data) ? result.data[0] : result.data
-                                                      if (inserted) {
-                                                        setSupportTickets((prev) => prev.map((item) => item.id === optimisticTicket.id ? (inserted as SupportTicket) : item))
+                                                      if (data) {
+                                                        setSupportTickets((prev) => prev.map((item) => item.id === optimisticTicket.id ? (data as SupportTicket) : item))
                                                         setMessagesList((prev) => prev.map((item) => {
                                                           if (String(item.id) !== String(optimisticTicket.id)) return item
                                                           return {
-                                                            ...(inserted as SupportTicket),
+                                                            ...(data as SupportTicket),
                                                             convoId: item.convoId,
                                                           } as SupportTicket & { convoId?: string }
                                                         }))

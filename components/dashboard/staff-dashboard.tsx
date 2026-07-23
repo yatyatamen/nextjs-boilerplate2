@@ -194,6 +194,12 @@ export function StaffDashboard({
 
   const selectedMessage = messages.find((m) => String(m.id) === selectedMessageId) ?? messages[0] ?? null
 
+  function getMessageSenderName(message: SupportTicket | null | undefined) {
+    if (!message) return "Member"
+    const member = members.find((entry) => entry.id === message.user_id)
+    return getMemberDisplayName(member) || message.user_email || message.user_id || "Member"
+  }
+
   useEffect(() => {
     // Initialize messages from server-provided data first, then attempt refresh when viewing messages
     if (messages.length === 0 && initialMessages.length > 0) {
@@ -205,14 +211,12 @@ export function StaffDashboard({
     let mounted = true
     ;(async () => {
       try {
-        const response = await fetch("/api/support?all=true", { credentials: "same-origin" })
-        const result = await response.json().catch(() => ({ data: [] }))
-        if (!mounted) return
-
-        const nextMessages = Array.isArray(result?.data) ? (result.data as SupportTicket[]) : []
-        setMessages(nextMessages)
-        if (!selectedMessageId && nextMessages.length > 0) {
-          setSelectedMessageId(String(nextMessages[0].id))
+        const { data, error } = await supabase.from("support_tickets").select("*").order("created_at", { ascending: false })
+        if (mounted && !error && data) {
+          setMessages(data as SupportTicket[])
+          if (!selectedMessageId && data.length > 0) {
+            setSelectedMessageId(String(data[0].id))
+          }
         }
       } catch (err) {
         console.error("Staff messages load error:", err)
@@ -1370,13 +1374,13 @@ export function StaffDashboard({
                     onClick={() => setSelectedMessageId(String(m.id))}
                     className={`flex items-start gap-3 w-full rounded-xl border p-3 text-left ${selectedMessageId === String(m.id) ? "border-[#E2AC28] bg-zinc-950" : "border-zinc-800 bg-zinc-900/90 hover:bg-zinc-950"}`}
                   >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-sm">{(m.user_email || String(m.user_id) || "?").slice(0,2).toUpperCase()}</div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-sm">{getMessageSenderName(m).slice(0,2).toUpperCase()}</div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm font-semibold text-white truncate">{m.subject || "Message"}</p>
+                        <p className="text-sm font-semibold text-white truncate">{getMessageSenderName(m)}</p>
                         <span className="text-[10px] text-zinc-500">{new Date(m.created_at || "").toLocaleDateString()}</span>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{m.message}</p>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{m.subject || m.message}</p>
                       <p className="text-[10px] text-zinc-500 mt-2">{m.user_email || m.user_id}</p>
                     </div>
                   </button>
@@ -1399,7 +1403,7 @@ export function StaffDashboard({
                   <div className="flex items-center justify-between p-4 border-b border-zinc-800">
                     <div>
                       <p className="text-sm font-semibold text-white">{selectedMessage.subject || "Conversation"}</p>
-                      <p className="text-xs text-muted-foreground">{selectedMessage.user_email || selectedMessage.user_id}</p>
+                      <p className="text-xs text-muted-foreground">{getMessageSenderName(selectedMessage)}</p>
                     </div>
                     <div className="text-xs text-zinc-500">{selectedMessage.status}</div>
                   </div>
@@ -1409,7 +1413,7 @@ export function StaffDashboard({
                     <div className="flex items-start gap-3">
                       <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-semibold">{(selectedMessage.user_email || String(selectedMessage.user_id)).slice(0,2).toUpperCase()}</div>
                       <div className="bg-zinc-900 p-3 rounded-2xl max-w-[75%]">
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-[#E2AC28] mb-2">Member</p>
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-[#E2AC28] mb-2">{getMessageSenderName(selectedMessage)}</p>
                         <p className="text-sm text-zinc-100 whitespace-pre-line">{selectedMessage.message}</p>
                         <p className="text-[10px] text-zinc-500 mt-2">
                           {new Date(selectedMessage.created_at || "").toLocaleDateString()} at {new Date(selectedMessage.created_at || "").toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { StaffDashboard } from "@/components/dashboard/staff-dashboard"
 import type { Profile } from "@/lib/types"
 
@@ -30,7 +30,27 @@ export default async function StaffDashboardPage() {
   if (!profile) redirect("/")
   if (profile.role !== "staff") redirect("/member-dashboard")
 
-  // 2. Safe data fetching (Removed broken created_at sort on profiles table)
+  // 2. Fetch support tickets using service role to bypass RLS
+  let supportTicketsRes = { data: null as any, error: null as any }
+  try {
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const serviceClient = await createServiceClient()
+      supportTicketsRes = await serviceClient
+        .from("support_tickets")
+        .select("*")
+        .order("created_at", { ascending: false })
+    } else {
+      // Fallback to regular client if no service role
+      supportTicketsRes = await supabase
+        .from("support_tickets")
+        .select("*")
+        .order("created_at", { ascending: false })
+    }
+  } catch (err) {
+    console.error("❌ Support Tickets Service Fetch Error:", err)
+  }
+
+  // 3. Safe data fetching (Removed broken created_at sort on profiles table)
   const [
     membersRes,
     scheduleRes,
@@ -41,7 +61,6 @@ export default async function StaffDashboardPage() {
     bookingsRes,
     equipmentRecommendationsRes,
     attendanceRes,
-    supportTicketsRes,
   ] = await Promise.all([
     supabase.from("profiles").select("*"), // Fixed: No longer crashes on missing created_at column
     supabase.from("schedule").select("*").order("date", { ascending: true }),
@@ -52,7 +71,6 @@ export default async function StaffDashboardPage() {
     supabase.from("bookings").select("*").order("created_at", { ascending: false }),
     supabase.from("equipment_recommendations").select("*").order("created_at", { ascending: false }),
     supabase.from("attendance").select("*"),
-    supabase.from("support_tickets").select("*").order("created_at", { ascending: false }),
   ])
 
   // Log table errors to your server terminal so you can spot what's broken
@@ -61,6 +79,7 @@ export default async function StaffDashboardPage() {
   if (announcementsRes.error) console.error("❌ Announcements Fetch Error:", announcementsRes.error.message)
   if (bookingsRes.error) console.error("❌ Bookings Fetch Error:", bookingsRes.error.message)
   if (attendanceRes.error) console.error("❌ Attendance Fetch Error:", attendanceRes.error.message)
+  if (supportTicketsRes.error) console.error("❌ Support Tickets Fetch Error:", supportTicketsRes.error.message)
 
   return (
     <StaffDashboard
@@ -74,7 +93,7 @@ export default async function StaffDashboardPage() {
       initialBookings={bookingsRes.data ?? []}
       initialGearGuides={equipmentRecommendationsRes.data ?? []}
       initialAttendanceRecords={attendanceRes.data ?? []}
-        initialMessages={supportTicketsRes.data ?? []}
+      initialMessages={supportTicketsRes.data ?? []}
     />
   )
 }
