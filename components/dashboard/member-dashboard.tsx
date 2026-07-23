@@ -243,6 +243,17 @@
                                                     return !isSessionExpired(session)
                                                   }), [bookings, scheduleById])
 
+                                                  const supportNotifications = useMemo(() => {
+                                                    return messagesList
+                                                      .filter((message) => {
+                                                        if (!message?.message) return false
+                                                        const isMine = message.user_id === profile.id || message.user_email === profile.email
+                                                        return !isMine && message.status !== "resolved"
+                                                      })
+                                                      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                                                      .slice(0, 3)
+                                                  }, [messagesList, profile.id, profile.email])
+
                                                   const gearCategories = useMemo(
                                                     () => ["All", ...Array.from(new Set(gearGuides.map((g) => g.category || "Other")))],
                                                     [gearGuides],
@@ -452,6 +463,23 @@
                                                     }
                                                   }
 
+                                                  async function createSupportTicket(payload: { subject: string; message: string }) {
+                                                    const response = await fetch("/api/support", {
+                                                      method: "POST",
+                                                      credentials: "same-origin",
+                                                      headers: { "Content-Type": "application/json" },
+                                                      body: JSON.stringify(payload),
+                                                    })
+
+                                                    const result = await handleJsonResponse(response)
+                                                    if (!response.ok) {
+                                                      throw new Error(result.error || `Request failed (${response.status})`)
+                                                    }
+
+                                                    const inserted = Array.isArray(result.data) ? result.data[0] : result.data
+                                                    return inserted as SupportTicket | null
+                                                  }
+
                                                   useEffect(() => {
                                                     if (active !== "messages") return
 
@@ -598,35 +626,23 @@
                                                     setChatInput("")
 
                                                     try {
-                                                      const { data, error } = await supabase
-                                                        .from("support_tickets")
-                                                        .insert({
-                                                          user_id: profile.id,
-                                                          user_email: profile.email || "",
-                                                          subject: activeConversationSubject,
-                                                          message: messageText,
-                                                          status: "open",
-                                                          created_at: new Date().toISOString(),
-                                                        })
-                                                        .select()
-                                                        .single()
+                                                      const savedMessage = await createSupportTicket({
+                                                        subject: activeConversationSubject,
+                                                        message: messageText,
+                                                      })
 
-                                                      if (error) {
-                                                        console.error("Failed to save chat message:", error)
-                                                        return
-                                                      }
-
-                                                      if (data) {
+                                                      if (savedMessage) {
                                                         setMessagesList((prev) => prev.map((item) => {
                                                           if (String(item.id) !== String(optimisticMessage.id)) return item
                                                           return {
-                                                            ...(data as SupportTicket),
+                                                            ...savedMessage,
                                                             convoId: item.convoId,
                                                           } as SupportTicket & { convoId?: string }
                                                         }))
                                                       }
                                                     } catch (err) {
                                                       console.error("Failed to send chat message:", err)
+                                                      showToast("We couldn't save that message. Please try again.")
                                                     }
                                                   }
 
@@ -683,36 +699,24 @@
                                                     showToast("Message sent successfully")
 
                                                     try {
-                                                      const { data, error } = await supabase
-                                                        .from("support_tickets")
-                                                        .insert({
-                                                          user_id: profile.id,
-                                                          user_email: profile.email || "",
-                                                          subject: conversationSubject,
-                                                          message,
-                                                          status: "open",
-                                                          created_at: new Date().toISOString(),
-                                                        })
-                                                        .select()
-                                                        .single()
+                                                      const savedTicket = await createSupportTicket({
+                                                        subject: conversationSubject,
+                                                        message,
+                                                      })
 
-                                                      if (error) {
-                                                        console.error("❌ Support Ticket Exception:", error)
-                                                        return
-                                                      }
-
-                                                      if (data) {
-                                                        setSupportTickets((prev) => prev.map((item) => item.id === optimisticTicket.id ? (data as SupportTicket) : item))
+                                                      if (savedTicket) {
+                                                        setSupportTickets((prev) => prev.map((item) => item.id === optimisticTicket.id ? savedTicket : item))
                                                         setMessagesList((prev) => prev.map((item) => {
                                                           if (String(item.id) !== String(optimisticTicket.id)) return item
                                                           return {
-                                                            ...(data as SupportTicket),
+                                                            ...savedTicket,
                                                             convoId: item.convoId,
                                                           } as SupportTicket & { convoId?: string }
                                                         }))
                                                       }
                                                     } catch (err) {
                                                       console.error("❌ Support Ticket Exception:", err)
+                                                      showToast("We couldn't save that support request. Please try again.")
                                                     }
                                                   }
 
@@ -1096,6 +1100,43 @@
                                                                       className={`px-3 py-2 text-xs font-mono rounded-sm border outline-none ${theme.inputBg}`}
                                                                     />
                                                                     <Button size="sm" onClick={handlePostAnnouncement} className="bg-[#E2AC28] text-black font-bold text-xs uppercase font-mono py-2 rounded-sm border-none self-end">Publish Log</Button>
+                                                                  </div>
+                                                                </Card>
+                                                              )}
+
+                                                              {supportNotifications.length > 0 && (
+                                                                <Card className={`p-5 border ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                                                    <div className="flex items-start gap-3">
+                                                                      <div className="p-2.5 rounded-sm bg-[#E2AC28]/10 text-[#E2AC28]">
+                                                                        <Mail className="h-5 w-5" />
+                                                                      </div>
+                                                                      <div>
+                                                                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#E2AC28]">New support messages</p>
+                                                                        <p className="text-sm font-semibold text-white mt-1">You have {supportNotifications.length} new update{supportNotifications.length > 1 ? "s" : ""} from Club Support</p>
+                                                                      </div>
+                                                                    </div>
+                                                                    <Button size="sm" onClick={() => setActive("messages")} className="rounded-sm border border-[#E2AC28]/30 bg-transparent text-[#E2AC28] hover:bg-[#E2AC28]/10">Open messages</Button>
+                                                                  </div>
+                                                                  <div className="mt-4 space-y-2">
+                                                                    {supportNotifications.map((message) => (
+                                                                      <button
+                                                                        key={message.id}
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                          setActive("messages")
+                                                                          setSelectedConvoId(message.convoId ?? message.subject ?? "_general_")
+                                                                          setSelectedMessageId(String(message.id))
+                                                                        }}
+                                                                        className="w-full rounded-sm border border-zinc-800/80 bg-zinc-950/60 p-3 text-left transition hover:border-[#E2AC28]/40"
+                                                                      >
+                                                                        <div className="flex items-center justify-between gap-2">
+                                                                          <p className="text-sm font-semibold text-white">{message.subject || "Club Support"}</p>
+                                                                          <Badge className="bg-[#E2AC28]/15 text-[#E2AC28] border border-[#E2AC28]/20 px-2 py-0.5 text-[10px]">New</Badge>
+                                                                        </div>
+                                                                        <p className="mt-1 text-sm text-zinc-400">{message.message}</p>
+                                                                      </button>
+                                                                    ))}
                                                                   </div>
                                                                 </Card>
                                                               )}
@@ -1943,9 +1984,11 @@
                                                                               )}
                                                                               <div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                                                                                 <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${isMine ? "bg-[#E2AC28] text-black" : "border border-zinc-800 bg-zinc-900 text-zinc-100"}`}>
-                                                                                  <p className={`text-[10px] font-semibold uppercase tracking-[0.25em] ${isMine ? "text-black/70" : "text-zinc-400"}`}>
-                                                                                    {isMine ? "You" : "Club support"}
-                                                                                  </p>
+                                                                                  {!isMine && (
+                                                                                    <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-zinc-400">
+                                                                                      Club support
+                                                                                    </p>
+                                                                                  )}
                                                                                   <p className="mt-1 whitespace-pre-line text-sm">{message.message}</p>
                                                                                   <p className={`mt-2 text-[10px] ${isMine ? "text-black/60" : "text-zinc-500"}`}>
                                                                                     {new Date(message.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
