@@ -200,6 +200,12 @@ export function StaffDashboard({
     return getMemberDisplayName(member) || message.user_email || message.user_id || "Member"
   }
 
+  function getProfileAvatar(profileEntry: Partial<Profile> | null | undefined) {
+    return typeof profileEntry?.avatar_url === "string" && profileEntry.avatar_url.trim()
+      ? profileEntry.avatar_url
+      : null
+  }
+
   useEffect(() => {
     // Initialize messages from server-provided data first, then attempt refresh when viewing messages
     if (messages.length === 0 && initialMessages.length > 0) {
@@ -269,16 +275,18 @@ export function StaffDashboard({
     }
   }, [supabase])
 
-  // Scroll to bottom when messages or replies change
+  // Scroll to bottom when a conversation is opened or when messages/replies change
   useEffect(() => {
-    if (messagesContainerRef.current) {
-      setTimeout(() => {
-        if (messagesContainerRef.current) {
-          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
-        }
-      }, 50)
-    }
-  }, [selectedMessageId, localReplies])
+    if (active !== "messages") return
+
+    const frame = window.requestAnimationFrame(() => {
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+      }
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [active, selectedMessageId, messages, localReplies])
 
   // If the page is opened with a ticketId query param, open messages and select that ticket
   useEffect(() => {
@@ -1357,16 +1365,16 @@ export function StaffDashboard({
       {active === "messages" && (
         <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5 h-[70vh]">
           {/* Conversations list */}
-          <div className="flex flex-col gap-4">
-            <div>
+          <div className="flex flex-col gap-4 overflow-hidden">
+            <div className="shrink-0">
               <SectionHeader title="Messages" desc="Member conversations — chat-style view." />
             </div>
             {messages.length === 0 ? (
-              <Card className="p-6">
+              <Card className="p-6 shrink-0">
                 <p className="text-sm text-muted-foreground">No conversations yet.</p>
               </Card>
             ) : (
-              <div className="space-y-2 overflow-auto">
+              <div className="space-y-2 overflow-y-auto flex-1">
                 {messages.map((m) => (
                   <button
                     key={m.id}
@@ -1390,7 +1398,7 @@ export function StaffDashboard({
           </div>
 
           {/* Chat thread */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 overflow-hidden h-full">
             <Card className="rounded-2xl border p-0 bg-zinc-950 border-zinc-800 flex flex-col h-full overflow-hidden">
               {!selectedMessage ? (
                 <div className="p-6">
@@ -1421,16 +1429,29 @@ export function StaffDashboard({
                       </div>
                     </div>
 
-                    {(localReplies[selectedMessageId ?? ""] || []).map((reply, index) => (
-                      <div key={index} className="flex items-start gap-3 justify-end">
-                        <div className="bg-[#E2AC28]/10 p-3 rounded-2xl max-w-[75%] text-sm text-zinc-100">
-                          <p className="text-[11px] uppercase tracking-[0.2em] text-[#E2AC28] mb-2">You</p>
-                          <p>{reply}</p>
-                          <p className="text-[10px] text-zinc-500 mt-2">{new Date().toLocaleDateString()} at {new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>
+                    {(localReplies[selectedMessageId ?? ""] || []).map((reply, index) => {
+                      const senderAvatar = getProfileAvatar(profile)
+                      const senderName = profile.full_name || `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || profile.email || "Staff"
+
+                      return (
+                        <div key={index} className="flex items-start gap-3 justify-end">
+                          <div className="bg-[#E2AC28]/10 p-3 rounded-2xl max-w-[75%] text-sm text-zinc-100">
+                            <div className="mb-2 flex items-center justify-end gap-2">
+                              {senderAvatar ? (
+                                <img src={senderAvatar} alt={senderName} className="h-7 w-7 rounded-full border border-zinc-700 object-cover" />
+                              ) : (
+                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#E2AC28]/20 text-[10px] font-semibold text-[#E2AC28]">
+                                  {senderName.slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-[#E2AC28]">{senderName}</p>
+                            </div>
+                            <p>{reply}</p>
+                            <p className="text-[10px] text-zinc-500 mt-2">{new Date().toLocaleDateString()} at {new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>
+                          </div>
                         </div>
-                        <div className="h-8 w-8 rounded-full bg-[#E2AC28]/10 flex items-center justify-center text-[#E2AC28] text-xs font-semibold">ST</div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
 
                   {/* Reply input (sticky at bottom) */}

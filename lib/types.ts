@@ -25,6 +25,7 @@ export type Profile = {
   email: string | null
   role: Role
   level: string | null
+  avatar_url?: string | null
   created_at: string
 }
 

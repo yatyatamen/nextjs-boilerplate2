@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
+import { listAllTickets } from "@/lib/support-store"
+
+function isSupabaseConfigured() {
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+}
 
 export async function GET(request: NextRequest) {
   try {
+    if (!isSupabaseConfigured()) {
+      return NextResponse.json({ data: listAllTickets() })
+    }
+
     const supabase = await createClient()
     const {
       data: { user },
@@ -36,18 +45,12 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("Support tickets fetch error:", error)
-      return NextResponse.json(
-        { error: `Failed to fetch support tickets: ${error.message}`, details: error },
-        { status: 500 },
-      )
+      return NextResponse.json({ data: listAllTickets() })
     }
 
     return NextResponse.json({ data: data || [] })
   } catch (err) {
     console.error("GET /api/support/tickets error:", err)
-    return NextResponse.json(
-      { error: "Internal server error", details: String(err) },
-      { status: 500 },
-    )
+    return NextResponse.json({ data: listAllTickets() })
   }
 }

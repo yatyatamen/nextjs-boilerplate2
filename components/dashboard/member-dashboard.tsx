@@ -136,6 +136,7 @@
                                                   const [messagesList, setMessagesList] = useState<(SupportTicket & { convoId?: string })[]>(
                                                     Array.isArray(initialTickets) ? initialTickets.map((t) => ({ ...t, convoId: t.id || t.subject || "_general_" })) : []
                                                   )
+                                                  const [ticketReplies, setTicketReplies] = useState<Record<string, Array<{ id: string; ticket_id: string; sender_id: string; message: string; created_at: string }>>>({})
                                                   
                                                   const [selectedConvoId, setSelectedConvoId] = useState<string | null>(
                                                     Array.isArray(initialTickets) && initialTickets.length ? (initialTickets[initialTickets.length - 1].id || initialTickets[initialTickets.length - 1].subject || "_general_") : null
@@ -198,6 +199,18 @@
 
                                                   const displayName = customName.trim() || profile.email || "Member"
                                                   const isStaff = profile.role === "staff"
+
+                                                  function getProfileDisplayName(profileEntry: Partial<Profile> | null | undefined) {
+                                                    if (!profileEntry) return "Member"
+                                                    const combinedName = `${profileEntry.first_name ?? ""} ${profileEntry.last_name ?? ""}`.trim()
+                                                    return combinedName || profileEntry.full_name || profileEntry.email || "Member"
+                                                  }
+
+                                                  function getProfileAvatar(profileEntry: Partial<Profile> | null | undefined) {
+                                                    return typeof profileEntry?.avatar_url === "string" && profileEntry.avatar_url.trim()
+                                                      ? profileEntry.avatar_url
+                                                      : null
+                                                  }
 
                                                   const scheduleById = useMemo(() => {
                                                     const map = new Map<string, ScheduleSession>()
@@ -531,21 +544,7 @@
                                                     })
 
                                                     return () => window.cancelAnimationFrame(frame)
-                                                  }, [active])
-
-                                                  useEffect(() => {
-                                                    if (active !== "messages") return
-
-                                                    const frame = window.requestAnimationFrame(() => {
-                                                      const viewport = document.querySelector<HTMLElement>('[data-messages-scroll-container]')
-                                                      if (viewport) {
-                                                        viewport.scrollTop = viewport.scrollHeight
-                                                      }
-                                                      messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" })
-                                                    })
-
-                                                    return () => window.cancelAnimationFrame(frame)
-                                                  }, [active, messagesList.length, selectedConvoId])
+                                                  }, [active, selectedConvoId, messagesList.length])
 
                                                   // Set up real-time listener for support ticket responses - only listen for external updates, not own messages
                                                   useEffect(() => {
@@ -583,8 +582,68 @@
                                                     }
                                                   }, [profile.id, supabase])
 
+                                                  useEffect(() => {
+                                                    let channel: any
+                                                    try {
+                                                      channel = supabase
+                                                        .channel(`support_replies:user:${profile.id}`)
+                                                        .on(
+                                                          "postgres_changes",
+                                                          {
+                                                            event: "INSERT",
+                                                            schema: "public",
+                                                            table: "support_replies",
+                                                          },
+                                                          (payload: any) => {
+                                                            const reply = payload.new as { id?: string; ticket_id?: string; sender_id?: string; message?: string; created_at?: string } | undefined
+                                                            if (!reply?.ticket_id || !reply.id) return
+
+                                                            const key = String(reply.ticket_id)
+                                                            setTicketReplies((prev) => ({
+                                                              ...prev,
+                                                              [key]: [
+                                                                ...(prev[key] || []),
+                                                                {
+                                                                  id: reply.id,
+                                                                  ticket_id: reply.ticket_id,
+                                                                  sender_id: reply.sender_id ?? "",
+                                                                  message: reply.message ?? "",
+                                                                  created_at: reply.created_at ?? new Date().toISOString(),
+                                                                },
+                                                              ],
+                                                            }))
+                                                          },
+                                                        )
+                                                        .subscribe()
+                                                    } catch (err) {
+                                                      console.error("Failed to subscribe to support replies:", err)
+                                                    }
+
+                                                    return () => {
+                                                      if (channel) {
+                                                        supabase.removeChannel(channel)
+                                                      }
+                                                    }
+                                                  }, [profile.id, supabase])
+
+                                                  async function loadRepliesForTicket(ticketId: string) {
+                                                    if (!ticketId || ticketId.startsWith("local-")) return
+
+                                                    try {
+                                                      const response = await fetch(`/api/support/reply?ticketId=${ticketId}`)
+                                                      if (!response.ok) return
+                                                      const json = await response.json()
+                                                      if (!Array.isArray(json?.data)) return
+                                                      setTicketReplies((prev) => ({ ...prev, [ticketId]: json.data }))
+                                                    } catch (err) {
+                                                      console.error("Failed to load ticket replies:", err)
+                                                    }
+                                                  }
+
                                                   const visibleConversationMessages = selectedConvoId ? messagesList.filter((m) => m.convoId === selectedConvoId) : messagesList
                                                   const selectedMessage = visibleConversationMessages.find((m) => String(m.id) === selectedMessageId) ?? visibleConversationMessages[visibleConversationMessages.length - 1] ?? null
+
+
                                                   const orderedConversations = useMemo(() => {
                                                     const latestByConvo = new Map<string, (SupportTicket & { convoId?: string })>()
 
@@ -602,6 +661,42 @@
                                                       return timeB - timeA
                                                     })
                                                   }, [messagesList])
+
+                                                  const conversationEntries = useMemo(() => {
+                                                    if (!selectedMessage) return []
+
+                                                    const initialEntry = {
+                                                      id: `ticket-${selectedMessage.id}`,
+                                                      kind: "ticket" as const,
+                                                      message: selectedMessage.message,
+                                                      created_at: selectedMessage.created_at,
+                                                      sender_id: selectedMessage.user_id,
+                                                      sender_email: selectedMessage.user_email,
+                                                      isMine: selectedMessage.user_id === profile.id || selectedMessage.user_email === profile.email,
+                                                    }
+
+                                                    const replyEntries = (ticketReplies[String(selectedMessage.id)] || []).map((reply) => ({
+                                                      id: reply.id,
+                                                      kind: "reply" as const,
+                                                      message: reply.message,
+                                                      created_at: reply.created_at,
+                                                      sender_id: reply.sender_id,
+                                                      sender_email: null,
+                                                      isMine: false,
+                                                    }))
+
+                                                    return [initialEntry, ...replyEntries].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                                                  }, [profile.id, profile.email, selectedMessage, ticketReplies])
+
+                                                  useEffect(() => {
+                                                    if (active !== "messages") return
+                                                    if (!selectedMessageId) return
+
+                                                    const ticketId = String(selectedMessageId)
+                                                    if (ticketId.startsWith("local-")) return
+
+                                                    void loadRepliesForTicket(ticketId)
+                                                  }, [active, selectedMessageId])
 
                                                   async function sendChatMessage(e: React.FormEvent) {
                                                     e.preventDefault()
@@ -1891,16 +1986,16 @@
 
                                                           {/* CONTACT & SUPPORT HUB */}
                                                           {active === "messages" && (
-                                                            <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-5">
-                                                              <div className={`rounded-2xl border ${theme.cardBorder} ${theme.cardBg} p-4 flex flex-col gap-3`}>
-                                                                <div>
+                                                            <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-5 h-[800px]">
+                                                              <div className={`rounded-2xl border ${theme.cardBorder} ${theme.cardBg} p-4 flex flex-col gap-3 overflow-hidden`}>
+                                                                <div className="shrink-0">
                                                                     <div className="flex items-center gap-3">
                                                                       <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Chats</h2>
                                                                     </div>
                                                                     <p className="text-[11px] text-zinc-500 mt-1">Continuous support conversations with the club team.</p>
                                                                 </div>
 
-                                                                <div className="flex flex-col gap-2 w-full">
+                                                                <div className="flex flex-col gap-2 w-full overflow-y-auto flex-1">
                                                                   {(() => {
                                                                     const convos = orderedConversations
                                                                     if (convos.length === 0) {
@@ -1938,7 +2033,7 @@
                                                                 </div>
                                                               </div>
 
-                                                            <div className={`flex min-h-[620px] max-h-[760px] flex-col overflow-hidden rounded-2xl border ${theme.cardBorder} ${theme.cardBg}`}>
+                                                            <div className={`flex min-h-full flex-col overflow-hidden rounded-2xl border ${theme.cardBorder} ${theme.cardBg}`}>
                                                                 <div className="border-b border-zinc-800/70 bg-zinc-950/60 px-4 py-4 shrink-0">
                                                                   <div className="flex items-center justify-between gap-3">
                                                                     <div className="flex items-center gap-3">
@@ -1969,29 +2064,51 @@
 
                                                                     return (
                                                                       <div className="space-y-3">
-                                                                        {visible.map((message, index) => {
-                                                                          const isMine = message.user_id === profile.id || message.user_email === profile.email
-                                                                          const prevMessage = index > 0 ? visible[index - 1] : null
-                                                                          const showDateSeparator = !prevMessage || new Date(prevMessage.created_at).toDateString() !== new Date(message.created_at).toDateString()
+                                                                        {conversationEntries.map((entry, index) => {
+                                                                          const isMine = entry.isMine
+                                                                          const prevEntry = index > 0 ? conversationEntries[index - 1] : null
+                                                                          const showDateSeparator = !prevEntry || new Date(prevEntry.created_at).toDateString() !== new Date(entry.created_at).toDateString()
+                                                                          const senderProfile = entry.sender_id ? allProfiles.find((profileEntry) => profileEntry.id === entry.sender_id) : null
+                                                                          const isStaffMessage = entry.kind === "reply" && senderProfile?.role === "staff"
+                                                                          const senderName = isStaffMessage ? getProfileDisplayName(senderProfile) : null
+                                                                          const senderAvatar = isStaffMessage ? getProfileAvatar(senderProfile) : null
+
                                                                           return (
-                                                                            <div key={message.id}>
+                                                                            <div key={entry.id}>
                                                                               {showDateSeparator && (
                                                                                 <div className="flex justify-center py-2 mb-2">
                                                                                   <p className="text-[11px] text-zinc-500 font-medium bg-zinc-900/50 px-3 py-1 rounded-full">
-                                                                                    {new Date(message.created_at).toLocaleDateString()}
+                                                                                    {new Date(entry.created_at).toLocaleDateString()}
                                                                                   </p>
                                                                                 </div>
                                                                               )}
                                                                               <div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                                                                                 <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${isMine ? "bg-[#E2AC28] text-black" : "border border-zinc-800 bg-zinc-900 text-zinc-100"}`}>
                                                                                   {!isMine && (
-                                                                                    <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-zinc-400">
-                                                                                      Club support
-                                                                                    </p>
+                                                                                    <div className="mb-2 flex items-center gap-2">
+                                                                                      {isStaffMessage ? (
+                                                                                        <>
+                                                                                          {senderAvatar ? (
+                                                                                            <img src={senderAvatar} alt={senderName ?? "Staff"} className="h-7 w-7 rounded-full border border-zinc-700 object-cover" />
+                                                                                          ) : (
+                                                                                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#E2AC28]/20 text-[10px] font-semibold text-[#E2AC28]">
+                                                                                              {(senderName ?? "ST").slice(0, 2).toUpperCase()}
+                                                                                            </div>
+                                                                                          )}
+                                                                                          <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-zinc-400">
+                                                                                            {senderName}
+                                                                                          </p>
+                                                                                        </>
+                                                                                      ) : (
+                                                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-zinc-400">
+                                                                                          Club support
+                                                                                        </p>
+                                                                                      )}
+                                                                                    </div>
                                                                                   )}
-                                                                                  <p className="mt-1 whitespace-pre-line text-sm">{message.message}</p>
+                                                                                  <p className="mt-1 whitespace-pre-line text-sm">{entry.message}</p>
                                                                                   <p className={`mt-2 text-[10px] ${isMine ? "text-black/60" : "text-zinc-500"}`}>
-                                                                                    {new Date(message.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                                                                                    {new Date(entry.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                                                                                   </p>
                                                                                 </div>
                                                                               </div>

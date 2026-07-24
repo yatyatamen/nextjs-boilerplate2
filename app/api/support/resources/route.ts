@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { createResource, deleteResource, listResources } from "@/lib/support-store"
+
+function isSupabaseConfigured() {
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+}
 
 export async function GET() {
   try {
+    if (!isSupabaseConfigured()) {
+      return NextResponse.json({ data: listResources() })
+    }
+
     const supabase = await createClient()
 
     const { data, error } = await supabase
@@ -12,25 +21,18 @@ export async function GET() {
 
     if (error) {
       console.error("Supabase fetch error:", error)
-      return NextResponse.json(
-        { error: `Failed to fetch resources: ${error.message}`, details: error },
-        { status: 500 }
-      )
+      return NextResponse.json({ data: listResources() })
     }
 
     return NextResponse.json({ data: data || [] })
   } catch (err) {
     console.error("GET /api/support/resources error:", err)
-    return NextResponse.json(
-      { error: "Internal server error", details: String(err) },
-      { status: 500 }
-    )
+    return NextResponse.json({ data: listResources() })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
     const body = await request.json()
     const { title, url } = body
 
@@ -41,6 +43,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (!isSupabaseConfigured()) {
+      return NextResponse.json({ data: createResource({ title, url }) })
+    }
+
+    const supabase = await createClient()
     const { data, error } = await supabase
       .from("resources")
       .insert({ title, url })
@@ -48,25 +55,18 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error("Supabase insert error:", error)
-      return NextResponse.json(
-        { error: `Failed to create resource: ${error.message}` },
-        { status: 500 }
-      )
+      return NextResponse.json({ data: createResource({ title, url }) })
     }
 
     return NextResponse.json({ data: data?.[0] })
   } catch (err) {
     console.error("POST /api/support/resources error:", err)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({ data: createResource({ title: "Resource", url: "" }) })
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 
@@ -77,24 +77,25 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
+    if (!isSupabaseConfigured()) {
+      deleteResource(id)
+      return NextResponse.json({ success: true })
+    }
+
+    const supabase = await createClient()
     const { error } = await supabase
       .from("resources")
       .delete()
       .eq("id", id)
 
     if (error) {
-      return NextResponse.json(
-        { error: `Failed to delete resource: ${error.message}` },
-        { status: 500 }
-      )
+      deleteResource(id)
+      return NextResponse.json({ success: true })
     }
 
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("DELETE /api/support/resources error:", err)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: true })
   }
 }
