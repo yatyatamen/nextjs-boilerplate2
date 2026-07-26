@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
 import {
@@ -30,40 +30,20 @@ import {
   Users,
   CalendarDays,
   Megaphone,
-  Newspaper,
   ShoppingBag,
   ClipboardList,
   Loader2,
-  Plus,
   Trophy,
-  Clock,
   CheckCircle2,
   UserPlus,
   BookOpen,
   Ticket,
   Mail,
   UserCheck,
-  FileText,
+  Image,
+  MoreHorizontal,
+  XCircle,
 } from "lucide-react"
-
-const ALL_6_TIERS = ["For Fun", "Bronze", "Silver", "Gold", "Diamond", "Diamond II"]
-const TIME_SLOTS = ["3:20-4:15 PM", "3:20-4:30 PM", "3:20-4:45 PM", "3:20-5:00 PM", "3:20-5:15 PM", "3:20-5:30 PM"]
-const ATTENDANCE_FILTERS = ["all", "present", "absent", "late"] as const
-
-const NAV: NavItem[] = [
-  { key: "overview", label: "Overview", icon: LayoutDashboard },
-  { key: "members", label: "Members", icon: Users },
-  { key: "schedule", label: "Schedule", icon: CalendarDays },
-  { key: "bookings", label: "Session Bookings", icon: Ticket },
-  { key: "attendance", label: "Attendance", icon: UserCheck },
-  { key: "resources", label: "Rubrics", icon: FileText },
-  { key: "announcements", label: "Announcements", icon: Megaphone },
-  { key: "profiles", label: "Post Coach Bio", icon: UserPlus },
-  { key: "shop", label: "Wolves Shop Items", icon: ShoppingBag },
-  { key: "gear", label: "Equipment Guides", icon: BookOpen },
-  { key: "assessments", label: "Assessments", icon: ClipboardList },
-  { key: "messages", label: "Messages", icon: Mail },
-]
 
 function formatDate(date: string | null) {
   if (!date) return "TBD"
@@ -83,6 +63,27 @@ function formatDate(date: string | null) {
     year: "numeric",
   })
 }
+
+const NAV: NavItem[] = [
+  { key: "overview", label: "Overview", icon: LayoutDashboard },
+  { key: "members", label: "Members", icon: Users },
+  { key: "schedule", label: "Schedule", icon: CalendarDays },
+  { key: "bookings", label: "Bookings", icon: Ticket },
+  { key: "attendance", label: "Attendance", icon: UserCheck },
+  { key: "resources", label: "Resources", icon: BookOpen },
+  { key: "announcements", label: "Announcements", icon: Megaphone },
+  { key: "profiles", label: "Profiles", icon: UserPlus },
+  { key: "shop", label: "Shop", icon: ShoppingBag },
+  { key: "gear", label: "Gear Guides", icon: Trophy },
+  { key: "assessments", label: "Assessments", icon: ClipboardList },
+  { key: "messages", label: "Messages", icon: Mail },
+]
+
+const ALL_6_TIERS = ["Bronze", "Silver", "Gold", "Diamond", "Diamond II"] as const
+const TIME_SLOTS = ["3:20-4:30 PM", "3:20-4:45 PM", "3:20-5:00 PM", "3:20-5:15 PM"] as const
+const ATTENDANCE_FILTERS = ["all", "present", "absent", "late"] as const
+
+type AttendanceFilter = typeof ATTENDANCE_FILTERS[number]
 
 function SectionHeader({ title, desc }: { title: string; desc: string }) {
   return (
@@ -123,7 +124,6 @@ export function StaffDashboard({
   initialMembers,
   initialSchedule,
   initialAnnouncements,
-  initialShopItems,
   initialAssessments,
   initialBookings = [],
   initialGearGuides = [],
@@ -148,13 +148,12 @@ export function StaffDashboard({
   const [members, setMembers] = useState<Profile[]>(initialMembers)
   const [schedule, setSchedule] = useState<ScheduleSession[]>(() => sortSessions(initialSchedule || []))
   const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
-  const [shopItems, setShopItems] = useState<ShopItem[]>(initialShopItems)
   const [assessments, setAssessments] = useState<Assessment[]>(initialAssessments)
   const [bookings, setBookings] = useState<Booking[]>(initialBookings)
   const [gearGuides, setGearGuides] = useState<EquipmentRecommendation[]>(initialGearGuides)
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(initialAttendanceRecords ?? [])
   const [attendanceSelection, setAttendanceSelection] = useState<Record<string, "present" | "late" | "absent">>({})
-  const [attendanceFilter, setAttendanceFilter] = useState<"all" | "present" | "absent" | "late">("all")
+  const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>("all")
   const [attendanceViewMode, setAttendanceViewMode] = useState<"by-session" | "all-records">("by-session")
   const [selectedAttendanceMemberId, setSelectedAttendanceMemberId] = useState<string | null>(null)
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string | null>(null)
@@ -167,7 +166,11 @@ export function StaffDashboard({
   const [messages, setMessages] = useState<SupportTicket[]>([])
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
   const [replyDraft, setReplyDraft] = useState("")
+  const [replyingTo, setReplyingTo] = useState<{ id: string; message: string; author?: string } | null>(null)
+  const [openMessageMenuId, setOpenMessageMenuId] = useState<string | null>(null)
   const [localReplies, setLocalReplies] = useState<Record<string, string[]>>({})
+  const [staffFile, setStaffFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
@@ -224,11 +227,12 @@ export function StaffDashboard({
             setSelectedMessageId(String(data[0].id))
           }
         }
-      } catch (err) {
-        console.error("Staff messages load error:", err)
+      } catch (_err) {
+        console.error("Staff messages load error:")
       }
     })()
     return () => { mounted = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, selectedMessageId])
 
   // Set up real-time listener for new support tickets
@@ -264,8 +268,8 @@ export function StaffDashboard({
           },
         )
         .subscribe()
-    } catch (err) {
-      console.error("Failed to subscribe to support tickets:", err)
+    } catch (_err) {
+      console.error("Failed to subscribe to support tickets:")
     }
 
     return () => {
@@ -297,7 +301,7 @@ export function StaffDashboard({
         setActive("messages")
         setSelectedMessageId(ticketId)
       }
-    } catch (err) {
+    } catch (_err) {
       // ignore (server render) or invalid URL
     }
   }, [])
@@ -313,8 +317,8 @@ export function StaffDashboard({
         if (mounted) {
           setResources(data || [])
         }
-      } catch (err) {
-        console.error("Failed to load resources:", err)
+      } catch (_err) {
+        console.error("Failed to load resources:")
       }
     })()
     return () => { mounted = false }
@@ -340,8 +344,8 @@ export function StaffDashboard({
         setNewResourceUrl("")
         showToast("Resource saved!")
       }
-    } catch (err) {
-      console.error("Error saving resource:", err)
+    } catch (_err) {
+      console.error("Error saving resource:")
       showToast("Failed to save resource")
     } finally {
       setSavingResource(false)
@@ -354,8 +358,8 @@ export function StaffDashboard({
       if (!response.ok) throw new Error("Failed to delete resource")
       setResources((prev) => prev.filter((r) => r.id !== id))
       showToast("Resource deleted")
-    } catch (err) {
-      console.error("Error deleting resource:", err)
+    } catch (_err) {
+      console.error("Error deleting resource:")
       showToast("Failed to delete resource")
     }
   }
@@ -397,10 +401,10 @@ export function StaffDashboard({
     return () => {
       try {
         supabase.removeChannel(channel)
-      } catch (e) {
+      } catch (_e) {
         try {
           channel.unsubscribe()
-        } catch (e2) {
+        } catch (_e2) {
           // ignore
         }
       }
@@ -415,30 +419,85 @@ export function StaffDashboard({
     }))
   }
 
+  async function handleStaffFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setStaffFile(file)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  function handleStaffReplyToMessage(messageId: string, message: string, author?: string) {
+    setReplyingTo({ id: messageId, message, author })
+  }
+
+  async function handleDeleteStaffReply(messageId: string, index: number) {
+    setLocalReplies((prev) => {
+      const replies = prev[messageId] || []
+      return { ...prev, [messageId]: replies.filter((_, i) => i !== index) }
+    })
+  }
+
   async function handleStaffReply(e: React.FormEvent) {
     e.preventDefault()
-    if (!selectedMessageId || !replyDraft.trim()) return
+    if (!selectedMessageId) return
+
+    const bodyText = replyDraft.trim()
+    const hasFile = Boolean(staffFile)
+    if (!bodyText && !hasFile) return
+
+    let finalMessage = bodyText
+    let uploadError = false
+
+    if (staffFile) {
+      try {
+        const fd = new FormData()
+        fd.append("file", staffFile)
+
+        const uploadRes = await fetch("/api/support/upload", {
+          method: "POST",
+          body: fd,
+        })
+        const uploadJson = await uploadRes.json()
+        if (!uploadRes.ok || !uploadJson?.data?.publicUrl) {
+          uploadError = true
+          console.error("Attachment upload failed:", uploadJson?.error)
+        } else {
+          const attachmentUrl = uploadJson.data.publicUrl
+          const attachmentLabel = `Attachment: ${staffFile.name} — ${attachmentUrl}`
+          finalMessage = bodyText ? `${bodyText}\n\n${attachmentLabel}` : attachmentLabel
+        }
+      } catch (_err) {
+        uploadError = true
+        console.error("Attachment upload failed:")
+      }
+    }
+
+    if (!finalMessage.trim()) return
+
     try {
       const res = await fetch(`/api/support/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticketId: selectedMessageId, message: replyDraft }),
+        body: JSON.stringify({ ticketId: selectedMessageId, message: finalMessage }),
       })
       const json = await res.json()
       if (res.ok && json.data) {
-        // push persisted reply to local state
         const replyText = json.data.message
         addStaffReply(selectedMessageId, replyText)
       } else {
         console.error("Reply save failed:", json.error)
-        // fallback to local only
-        addStaffReply(selectedMessageId, replyDraft)
+        addStaffReply(selectedMessageId, finalMessage)
       }
-    } catch (err) {
-      console.error("Failed to send reply:", err)
-      addStaffReply(selectedMessageId, replyDraft)
+    } catch (_err) {
+      console.error("Failed to send reply:")
+      addStaffReply(selectedMessageId, finalMessage)
     } finally {
       setReplyDraft("")
+      setStaffFile(null)
+    }
+
+    if (uploadError) {
+      showToast("Reply sent, but attachment upload failed.")
     }
   }
 
@@ -454,8 +513,8 @@ export function StaffDashboard({
         if (res.ok && Array.isArray(json.data)) {
           setLocalReplies((prev) => ({ ...prev, [selectedMessageId]: json.data.map((r: any) => r.message) }))
         }
-      } catch (err) {
-        console.error("Failed to load replies:", err)
+      } catch (_err) {
+        console.error("Failed to load replies:")
       }
     }
 
@@ -556,7 +615,7 @@ export function StaffDashboard({
         } else {
           showToast("Attendance updated")
         }
-      } catch (err) {
+      } catch (_err) {
         setAttendanceRecords((prev) =>
           prev.map((record) => (record.id === existingRecord.id ? existingRecord : record)),
         )
@@ -568,6 +627,7 @@ export function StaffDashboard({
     }
 
     // create optimistic temp record
+    // eslint-disable-next-line react-hooks/purity
     const tempId = `temp-${Date.now()}`
     const tempRecord: AttendanceRecord = {
       id: tempId,
@@ -604,7 +664,7 @@ export function StaffDashboard({
         setAttendanceRecords((prev) => prev.filter((r) => r.id !== tempId))
         showToast(`Failed to save attendance: ${error?.message ?? "unknown error"}`)
       }
-    } catch (err) {
+    } catch (_err) {
       setAttendanceRecords((prev) => prev.filter((r) => r.id !== tempId))
       showToast("Network error saving attendance")
     } finally {
@@ -1291,7 +1351,9 @@ export function StaffDashboard({
             onCreate={async (payload) => {
               const { data, error } = await supabase.from("shop_items").insert(payload).select()
               if (error) alert(`Shop DB Error: ${error.message}`)
-              if (data && data[0]) setShopItems((prev) => [...prev, data[0] as ShopItem])
+              if (data && data[0]) {
+                // Shop item added to database; update not needed for display
+              }
             }}
           />
         </div>
@@ -1363,9 +1425,9 @@ export function StaffDashboard({
       )}
 
       {active === "messages" && (
-        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5 h-[70vh]">
+        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5 h-full min-h-0">
           {/* Conversations list */}
-          <div className="flex flex-col gap-4 overflow-hidden">
+          <div className="flex flex-col gap-4 overflow-hidden min-h-0">
             <div className="shrink-0">
               <SectionHeader title="Messages" desc="Member conversations — chat-style view." />
             </div>
@@ -1398,8 +1460,8 @@ export function StaffDashboard({
           </div>
 
           {/* Chat thread */}
-          <div className="flex flex-col gap-4 overflow-hidden h-full">
-            <Card className="rounded-2xl border p-0 bg-zinc-950 border-zinc-800 flex flex-col h-full overflow-hidden">
+          <div className="flex flex-col gap-4 overflow-hidden min-h-0 h-full">
+            <Card className="rounded-2xl border p-0 bg-zinc-950 border-zinc-800 flex flex-col h-full overflow-hidden min-h-0">
               {!selectedMessage ? (
                 <div className="p-6">
                   <p className="text-sm font-semibold text-white">Select a conversation to open the chat.</p>
@@ -1417,7 +1479,7 @@ export function StaffDashboard({
                   </div>
 
                   {/* Messages area */}
-                  <div className="flex-1 overflow-auto p-4 space-y-4" ref={messagesContainerRef}>
+                  <div className="flex-1 overflow-auto p-4 space-y-4 min-h-0" ref={messagesContainerRef}>
                     <div className="flex items-start gap-3">
                       <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-semibold">{(selectedMessage.user_email || String(selectedMessage.user_id)).slice(0,2).toUpperCase()}</div>
                       <div className="bg-zinc-900 p-3 rounded-2xl max-w-[75%]">
@@ -1434,7 +1496,7 @@ export function StaffDashboard({
                       const senderName = profile.full_name || `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || profile.email || "Staff"
 
                       return (
-                        <div key={index} className="flex items-start gap-3 justify-end">
+                        <div key={index} className="flex items-start gap-3 justify-end relative">
                           <div className="bg-[#E2AC28]/10 p-3 rounded-2xl max-w-[75%] text-sm text-zinc-100">
                             <div className="mb-2 flex items-center justify-end gap-2">
                               {senderAvatar ? (
@@ -1449,6 +1511,17 @@ export function StaffDashboard({
                             <p>{reply}</p>
                             <p className="text-[10px] text-zinc-500 mt-2">{new Date().toLocaleDateString()} at {new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>
                           </div>
+                          <div className="absolute right-0 top-0">
+                            <button type="button" onClick={() => setOpenMessageMenuId(openMessageMenuId === `${selectedMessageId}-${index}` ? null : `${selectedMessageId}-${index}`)} className="p-1 rounded hover:bg-zinc-800">
+                              <MoreHorizontal className="h-4 w-4 text-zinc-400" />
+                            </button>
+                            {openMessageMenuId === `${selectedMessageId}-${index}` && (
+                              <div className="mt-8 rounded bg-zinc-900 border border-zinc-800 p-2 text-sm flex flex-col gap-1 shadow-lg">
+                                <button type="button" onClick={() => { handleStaffReplyToMessage(selectedMessageId ?? "", reply, getMessageSenderName(selectedMessage)); setOpenMessageMenuId(null) }} className="text-left px-2 py-1 hover:bg-zinc-800">Reply</button>
+                                <button type="button" onClick={() => { handleDeleteStaffReply(selectedMessageId ?? "", index); setOpenMessageMenuId(null) }} className="text-left px-2 py-1 text-red-400 hover:bg-zinc-800">Delete</button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )
                     })}
@@ -1456,13 +1529,30 @@ export function StaffDashboard({
 
                   {/* Reply input (sticky at bottom) */}
                   <div className="p-4 border-t border-zinc-800 bg-zinc-950">
+                    {replyingTo && (
+                      <div className="mb-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-200">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Replying to {replyingTo.author ?? "message"}</p>
+                            <p className="mt-2 line-clamp-2 text-sm text-zinc-100">{replyingTo.message}</p>
+                          </div>
+                          <button type="button" onClick={() => setReplyingTo(null)} className="p-1 rounded hover:bg-zinc-800">
+                            <XCircle className="h-4 w-4 text-zinc-400" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <form onSubmit={handleStaffReply} className="flex items-center gap-3">
+                      <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleStaffFileSelect} />
+                      <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-full border border-zinc-800 bg-zinc-900 p-2 hover:bg-zinc-800">
+                        <Image className="h-4 w-4 text-zinc-300" />
+                      </button>
                       <Textarea
                         rows={2}
                         value={replyDraft}
                         onChange={(e) => setReplyDraft(e.target.value)}
                         className="flex-1 resize-none bg-zinc-900 border-zinc-800"
-                        placeholder="Write your reply..."
+                        placeholder={staffFile ? `Attach: ${staffFile.name}` : "Write your reply..."}
                       />
                       <Button type="submit" size="sm" className="bg-[#E2AC28] text-black">Send</Button>
                     </form>
@@ -1520,14 +1610,14 @@ function ScheduleForm({
     notes: string
   }) => Promise<void>
 }) {
-  const { loading, setLoading } = useSubmitting()
+  const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [title, setTitle] = useState("")
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
-  const [selectedTiers, setSelectedTiers] = useState<string[]>(ALL_6_TIERS)
+  const [selectedTiers, setSelectedTiers] = useState<string[]>(Array.from(ALL_6_TIERS))
   const [coach, setCoach] = useState("")
   const [notes, setNotes] = useState("")
 
@@ -1655,7 +1745,7 @@ function TitleContentForm({
   submitLabel: string
   onCreate: (title: string, content: string) => Promise<void>
 }) {
-  const { loading, setLoading } = useSubmitting()
+  const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
@@ -1720,7 +1810,7 @@ function TitleContentForm({
 }
 
 function CoachProfileForm({ onCreate }: { onCreate: (payload: { name: string; description: string; pic_url: string; role_title: string }) => Promise<void> }) {
-  const { loading, setLoading } = useSubmitting()
+  const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
@@ -1804,7 +1894,7 @@ function CoachProfileForm({ onCreate }: { onCreate: (payload: { name: string; de
 }
 
 function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; category: string; price: number; description: string; pic_url: string; stock: number; unit: string }) => Promise<void> }) {
-  const { loading, setLoading } = useSubmitting()
+  const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
@@ -1881,7 +1971,7 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
 }
 
 function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string; category: string; description: string; image_url: string; recommended_for_tier: string; specs: string }) => Promise<void> }) {
-  const { loading, setLoading } = useSubmitting()
+  const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
@@ -1985,7 +2075,7 @@ function AssessmentForm({
   members: Profile[]
   onCreate: (payload: { userId: string; level: string; feedback: string; date: string; score: number }) => Promise<void>
 }) {
-  const { loading, setLoading } = useSubmitting()
+  const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)

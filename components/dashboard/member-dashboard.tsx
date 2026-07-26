@@ -1,7 +1,6 @@
                                                 "use client"
 
                                                 import { useMemo, useState, useEffect, useRef } from "react"
-                                                import Link from "next/link"
                                                 import { createClient } from "@/lib/supabase/client"
                                                 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
                                                 import { Badge, Button, Card } from "@/components/ui/primitives"
@@ -32,8 +31,7 @@
                                                   Info,
                                                   Mail,
                                                   CheckCircle,
-                                                  XCircle,
-                                                  SendHorizonal,
+                                                  SendHorizontal,
                                                   Sun,
                                                   Moon,
                                                   Settings,
@@ -41,6 +39,7 @@
                                                   MinusCircle,
                                                   GraduationCap,
                                                   Image,
+                                                  MoreHorizontal,
                                                   LifeBuoy,
                                                 } from "lucide-react"
 
@@ -132,11 +131,13 @@
                                                   const [assessments, setAssessments] = useState<Assessment[]>(initialAssessments)
                                                   const [coaches, setCoaches] = useState<StaffProfile[]>(initialCoaches)
                                                   const [gearGuides, setGearGuides] = useState<EquipmentRecommendation[]>(initialGearGuides)
-                                                  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(initialTickets)
                                                   const [messagesList, setMessagesList] = useState<(SupportTicket & { convoId?: string })[]>(
                                                     Array.isArray(initialTickets) ? initialTickets.map((t) => ({ ...t, convoId: t.id || t.subject || "_general_" })) : []
                                                   )
                                                   const [ticketReplies, setTicketReplies] = useState<Record<string, Array<{ id: string; ticket_id: string; sender_id: string; message: string; created_at: string }>>>({})
+                                                  const fileInputRef = useRef<HTMLInputElement | null>(null)
+                                                  const [replyingTo, setReplyingTo] = useState<{ id: string; message: string; author?: string } | null>(null)
+                                                  const [openMessageMenuId, setOpenMessageMenuId] = useState<string | null>(null)
                                                   
                                                   const [selectedConvoId, setSelectedConvoId] = useState<string | null>(
                                                     Array.isArray(initialTickets) && initialTickets.length ? (initialTickets[initialTickets.length - 1].id || initialTickets[initialTickets.length - 1].subject || "_general_") : null
@@ -526,11 +527,9 @@
                                                     })()
 
                                                     return () => { mounted = false }
-                                                  }, [active, profile.id])
+                                                  }, [active, profile.id, selectedMessageId, supabase])
 
                                                   useEffect(() => {
-                                                    window.scrollTo({ top: 0, behavior: "auto" })
-
                                                     if (active !== "messages") return
 
                                                     const frame = window.requestAnimationFrame(() => {
@@ -544,7 +543,7 @@
                                                     })
 
                                                     return () => window.cancelAnimationFrame(frame)
-                                                  }, [active, selectedConvoId, messagesList.length])
+                                                  }, [active, selectedConvoId, messagesList.length, selectedMessageId, supabase])
 
                                                   // Set up real-time listener for support ticket responses - only listen for external updates, not own messages
                                                   useEffect(() => {
@@ -596,16 +595,18 @@
                                                           },
                                                           (payload: any) => {
                                                             const reply = payload.new as { id?: string; ticket_id?: string; sender_id?: string; message?: string; created_at?: string } | undefined
-                                                            if (!reply?.ticket_id || !reply.id) return
+                                                            const replyId = reply?.id
+                                                            const ticketId = reply?.ticket_id
+                                                            if (!replyId || !ticketId) return
 
-                                                            const key = String(reply.ticket_id)
+                                                            const key = String(ticketId)
                                                             setTicketReplies((prev) => ({
                                                               ...prev,
                                                               [key]: [
                                                                 ...(prev[key] || []),
                                                                 {
-                                                                  id: reply.id,
-                                                                  ticket_id: reply.ticket_id,
+                                                                  id: replyId,
+                                                                  ticket_id: ticketId,
                                                                   sender_id: reply.sender_id ?? "",
                                                                   message: reply.message ?? "",
                                                                   created_at: reply.created_at ?? new Date().toISOString(),
@@ -704,7 +705,8 @@
 
                                                     const activeConversationId = selectedConvoId || selectedMessage?.convoId || selectedMessage?.subject || `support-${Date.now()}`
                                                     const activeConversationSubject = selectedMessage?.subject || (selectedConvoId ? selectedConvoId : "Member message")
-                                                    const messageText = chatInput.trim()
+                                                    const replyPrefix = replyingTo ? `Replying to ${replyingTo.author ?? 'them'}: "${String(replyingTo.message).slice(0, 120)}"\n` : ""
+                                                    const messageText = `${replyPrefix}${chatInput.trim()}`
                                                     const optimisticMessage: SupportTicket = {
                                                       id: `local-${Date.now()}`,
                                                       user_id: profile.id,
@@ -738,7 +740,68 @@
                                                     } catch (err) {
                                                       console.error("Failed to send chat message:", err)
                                                       showToast("We couldn't save that message. Please try again.")
+                                                    } finally {
+                                                      setReplyingTo(null)
                                                     }
+                                                   
+                                                  }
+
+                                                  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+                                                    const file = e.target.files?.[0]
+                                                    if (!file) return
+                                                    // simple upload flow to server endpoint
+                                                    const fd = new FormData()
+                                                    fd.append("file", file)
+                                                    try {
+                                                      const res = await fetch("/api/support/upload", { method: "POST", body: fd })
+                                                      const json = await res.json()
+                                                      if (!res.ok) {
+                                                        showToast(json?.error || "Upload failed")
+                                                        return
+                                                      }
+                                                      const url = json?.data?.publicUrl || json?.data?.url
+                                                      if (!url) return
+                                                      // send a message with the file link
+                                                      const activeConversationId = selectedConvoId || selectedMessage?.convoId || selectedMessage?.subject || `support-${Date.now()}`
+                                                      const activeConversationSubject = selectedMessage?.subject || (selectedConvoId ? selectedConvoId : "Member message")
+                                                      const optimisticMessage: SupportTicket = {
+                                                        id: `local-${Date.now()}`,
+                                                        user_id: profile.id,
+                                                        user_email: profile.email || "",
+                                                        subject: activeConversationSubject,
+                                                        message: `File: ${file.name} - ${url}`,
+                                                        status: "open",
+                                                        created_at: new Date().toISOString(),
+                                                      }
+                                                      const annotated = { ...optimisticMessage, convoId: activeConversationId }
+                                                      setMessagesList((prev) => [...prev, annotated])
+                                                      setSelectedConvoId(activeConversationId)
+                                                      setSelectedMessageId(String(annotated.id))
+
+                                                      // attempt to persist
+                                                      await createSupportTicket({ subject: activeConversationSubject, message: optimisticMessage.message })
+                                                    } catch (err) {
+                                                      console.error("File upload failed:", err)
+                                                      showToast("File upload failed")
+                                                    } finally {
+                                                      if (fileInputRef.current) fileInputRef.current.value = ""
+                                                    }
+                                                  }
+
+                                                  async function deleteMessageById(id: string) {
+                                                    // optimistic remove
+                                                    setMessagesList((prev) => prev.filter((m) => String(m.id) !== String(id)))
+                                                    try {
+                                                      await fetch("/api/support/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+                                                    } catch (err) {
+                                                      console.error("Delete failed:", err)
+                                                    }
+                                                  }
+
+                                                  function handleReplyToMessage(entry: any) {
+                                                    setReplyingTo({ id: String(entry.id), message: entry.message, author: entry.sender_email || (entry.sender_id ? getProfileDisplayName(allProfiles.find(p=>p.id===entry.sender_id)) : 'Support') })
+                                                    const composer = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Type a message..."]')
+                                                    composer?.focus()
                                                   }
 
                                                   async function handleUpdateAssetLink(table: "staff_profiles" | "equipment_recommendations", id: string, field: string, url: string) {
@@ -785,7 +848,7 @@
                                                     const annotatedTicket = { ...optimisticTicket, convoId: conversationId } as SupportTicket & { convoId: string }
                                                     setSupportCategory(category)
                                                     setSupportMessage("")
-                                                    setSupportTickets((prev) => [annotatedTicket, ...prev])
+                                                    setMessagesList((prev) => [annotatedTicket, ...prev])
                                                     setSupportStatus("Success! System routing confirmation generated.")
                                                     setMessagesList((prev) => [...prev, annotatedTicket])
                                                     setSelectedConvoId(conversationId)
@@ -800,7 +863,7 @@
                                                       })
 
                                                       if (savedTicket) {
-                                                        setSupportTickets((prev) => prev.map((item) => item.id === optimisticTicket.id ? savedTicket : item))
+                                                        setMessagesList((prev) => prev.map((item) => item.id === optimisticTicket.id ? savedTicket : item))
                                                         setMessagesList((prev) => prev.map((item) => {
                                                           if (String(item.id) !== String(optimisticTicket.id)) return item
                                                           return {
@@ -853,7 +916,7 @@
                                                       })
 
                                                       const result = await handleJsonResponse(response)
-                                                      let inserted = Array.isArray(result.data) ? result.data[0] : result.data
+                                                      const inserted = Array.isArray(result.data) ? result.data[0] : result.data
 
                                                       if (response.ok && inserted) {
                                                         setBookings((prev) => [...prev, inserted as Booking])
@@ -884,55 +947,6 @@
                                                     } finally {
                                                       setPendingId(null)
                                                     }
-                                                  }
-
-                                                  async function handlePurchaseRequest(item: ShopItem) {
-                                                    showConfirmation(
-                                                      "Purchase Request",
-                                                      `Send a request for \"${item.name}\" to the team leader? Instagram will also be opened for direct DM.`,
-                                                      async () => {
-                                                        setConfirmLoading(true)
-                                                        try {
-                                                          const conversationId = `purchase-${Date.now()}`
-                                                          const conversationSubject = `Purchase Request: ${item.name}`
-                                                          const optimisticTicket: SupportTicket = {
-                                                            id: `local-${Date.now()}`,
-                                                            user_id: profile.id,
-                                                            user_email: profile.email || "",
-                                                            subject: conversationSubject,
-                                                            message: `Member ${displayName} requests to purchase ${item.name} (${item.category}). Please follow up via Instagram.`,
-                                                            status: "open",
-                                                            created_at: new Date().toISOString(),
-                                                          }
-                                                          const annotatedTicket = { ...optimisticTicket, convoId: conversationId } as SupportTicket & { convoId: string }
-                                                          setSupportTickets((prev) => [annotatedTicket, ...prev])
-                                                          setMessagesList((prev) => [...prev, annotatedTicket])
-                                                          setSelectedConvoId(conversationId)
-                                                          setSelectedMessageId(String(annotatedTicket.id))
-                                                          setActive("messages")
-
-                                                          const response = await fetch("/api/support", {
-                                                            method: "POST",
-                                                            credentials: "same-origin",
-                                                            headers: { "Content-Type": "application/json" },
-                                                            body: JSON.stringify({
-                                                              subject: conversationSubject,
-                                                              message: `Member ${displayName} requests to purchase ${item.name} (${item.category}). Please follow up via Instagram.`,
-                                                            }),
-                                                          })
-
-                                                          const result = await handleJsonResponse(response)
-                                                          if (!response.ok) {
-                                                            console.warn("Purchase request API returned an error, but continuing to open Instagram:", result)
-                                                          }
-
-                                                          showToast("✓ Purchase request sent. Opening Instagram...")
-                                                          window.open("https://instagram.com/wolvesbadminton", "_blank")
-                                                        } finally {
-                                                          setConfirmLoading(false)
-                                                        }
-                                                      },
-                                                    )
                                                   }
 
                                                   async function deleteBookingRemotely(booking: Booking) {
@@ -1076,6 +1090,7 @@
                                                     cleanupExpiredBookings()
                                                     const interval = setInterval(cleanupExpiredBookings, 60000) // Check every 60 seconds
                                                     return () => clearInterval(interval)
+                                                    // eslint-disable-next-line react-hooks/exhaustive-deps
                                                   }, [bookings, schedule])
 
                                                   // Fetch resources when resources tab is active
@@ -1154,7 +1169,7 @@
                                                         subtitle={profile.email ?? ""}
                                                         badgeLabel={isStaff ? "Status: Management Staff" : `Tier: ${profile.level ?? "For Fun"}`}
                                                       >
-                                                        <div className={`w-full min-h-screen ${theme.bg} p-6 -m-6 box-border`}>
+                                                        <div className={`w-full h-screen overflow-hidden ${theme.bg} p-6 -m-6 box-border`}>
                                                           
                                                           {/* OVERVIEW MODULE */}
                                                           {active === "overview" && (
@@ -1391,7 +1406,7 @@
                                                                     <div className="bg-amber-500/5 border border-amber-500/20 p-3 rounded-sm flex gap-3 items-start">
                                                                       <CheckCircle className="h-4 w-4 text-[#E2AC28] shrink-0 mt-0.5" />
                                                                       <div className="text-[11px] leading-relaxed text-zinc-400 font-mono">
-                                                                        <span className="text-zinc-200 font-bold">Roster Commitment:</span> Proceeding with this placement will reserve your slot inside the club's ledger array. Ensure this complies with your tier classification path.
+                                                                        <span className="text-zinc-200 font-bold">Roster Commitment:</span> Proceeding with this placement will reserve your slot inside the club&apos;s ledger array. Ensure this complies with your tier classification path.
                                                                       </div>
                                                                     </div>
 
@@ -1465,7 +1480,7 @@
                                                                         </div>
                                                                         <span className={`text-[10px] font-mono ${theme.textMuted}`}>{formatDate(as.date)}</span>
                                                                       </div>
-                                                                      <p className={`text-xs ${theme.textSecondary} leading-relaxed bg-zinc-500/5 p-3 rounded-sm font-mono`}>"{as.feedback}"</p>
+                                                                      <p className={`text-xs ${theme.textSecondary} leading-relaxed bg-zinc-500/5 p-3 rounded-sm font-mono`}>&quot;{as.feedback}&quot;</p>
                                                                     </Card>
                                                                   ))}
                                                                 </div>
@@ -1805,7 +1820,7 @@
                                                                             onClick={() => openGuideInquiry(g.title, g.brand)}
                                                                             className="border-[#E2AC28]/30 bg-[#E2AC28]/10 text-[#E2AC28] hover:bg-[#E2AC28]/20"
                                                                           >
-                                                                            <SendHorizonal className="h-3.5 w-3.5" />
+                                                                            <SendHorizontal className="h-3.5 w-3.5" />
                                                                             Ask about this guide
                                                                           </Button>
                                                                         </div>
@@ -1986,7 +2001,7 @@
 
                                                           {/* CONTACT & SUPPORT HUB */}
                                                           {active === "messages" && (
-                                                            <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-5 h-[800px]">
+                                                            <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-5 h-full min-h-0">
                                                               <div className={`rounded-2xl border ${theme.cardBorder} ${theme.cardBg} p-4 flex flex-col gap-3 overflow-hidden`}>
                                                                 <div className="shrink-0">
                                                                     <div className="flex items-center gap-3">
@@ -2106,10 +2121,21 @@
                                                                                       )}
                                                                                     </div>
                                                                                   )}
-                                                                                  <p className="mt-1 whitespace-pre-line text-sm">{entry.message}</p>
-                                                                                  <p className={`mt-2 text-[10px] ${isMine ? "text-black/60" : "text-zinc-500"}`}>
-                                                                                    {new Date(entry.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                                                                                  </p>
+                                                                                          <p className="mt-1 whitespace-pre-line text-sm">{entry.message}</p>
+                                                                                          <div className="mt-2 flex items-center gap-2">
+                                                                                            <p className={`text-[10px] ${isMine ? "text-black/60" : "text-zinc-500"}`}>
+                                                                                              {new Date(entry.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                                                                                            </p>
+                                                                                            <button type="button" onClick={() => setOpenMessageMenuId(openMessageMenuId === String(entry.id) ? null : String(entry.id))} className="p-1 rounded hover:bg-zinc-800">
+                                                                                              <MoreHorizontal className="h-4 w-4 text-zinc-400" />
+                                                                                            </button>
+                                                                                            {openMessageMenuId === String(entry.id) && (
+                                                                                              <div className="ml-2 rounded bg-zinc-900 border border-zinc-800 p-2 text-sm flex flex-col gap-1">
+                                                                                                <button type="button" onClick={() => { handleReplyToMessage(entry); setOpenMessageMenuId(null) }} className="text-left px-2 py-1 hover:bg-zinc-800">Reply</button>
+                                                                                                <button type="button" onClick={() => { deleteMessageById(String(entry.id)); setOpenMessageMenuId(null) }} className="text-left px-2 py-1 text-red-400 hover:bg-zinc-800">Delete</button>
+                                                                                              </div>
+                                                                                            )}
+                                                                                          </div>
                                                                                 </div>
                                                                               </div>
                                                                             </div>
@@ -2123,6 +2149,10 @@
 
                                                                 <div className="border-t border-zinc-800/70 bg-zinc-950/70 p-4 shrink-0 mt-0">
                                                                   <form onSubmit={sendChatMessage} className="flex items-end gap-2">
+                                                                    <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileSelect} />
+                                                                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 rounded-full hover:bg-zinc-800">
+                                                                      <Image className="h-5 w-5 text-zinc-300" />
+                                                                    </button>
                                                                     <textarea
                                                                       rows={2}
                                                                       value={chatInput}
@@ -2137,7 +2167,7 @@
                                                                       placeholder="Type a message..."
                                                                     />
                                                                     <Button type="submit" size="sm" className="h-10 w-10 rounded-full bg-[#E2AC28] p-0 text-black hover:bg-[#d4a428]">
-                                                                      <SendHorizonal className="h-4 w-4" />
+                                                                      <SendHorizontal className="h-4 w-4" />
                                                                     </Button>
                                                                   </form>
                                                                 </div>

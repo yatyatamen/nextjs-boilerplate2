@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
 import { Card, Button } from "@/components/ui/primitives"
 import { isValidSchoolEmail, ALLOWED_DOMAIN } from "@/lib/types"
 import { CalendarDays, Trophy, Megaphone, ShoppingBag, Mail, Lock, Loader2 } from "lucide-react"
@@ -10,7 +9,6 @@ import { CalendarDays, Trophy, Megaphone, ShoppingBag, Mail, Lock, Loader2 } fro
 const DOMAIN_ERROR = `Only YRDSB school email addresses (${ALLOWED_DOMAIN}) are allowed.`
 
 export default function LoginPage() {
-  const router = useRouter()
   const supabase = createClient()
   const [isRegister, setIsRegister] = useState(false)
   const [email, setEmail] = useState("")

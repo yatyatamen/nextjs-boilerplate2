@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server"
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
-    const body = await request.json().catch(() => ({}))
+    const body = await _request.json().catch(() => ({}))
     const itemId = body?.itemId
     const itemName = body?.itemName
     const category = body?.category

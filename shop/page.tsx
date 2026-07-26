@@ -23,16 +23,17 @@ export default function OrderRequestPage() {
   const [userId, setUserId] = useState<string | null>(null)
 
   useEffect(() => {
-    ;(async () => {
+    (async () => {
       try {
         const { data } = await supabase.auth.getUser()
         if (data?.user) setUserId(data.user.id)
         // full name may be stored in user_metadata depending on auth setup
         if (data?.user?.user_metadata?.full_name) setFullName(data.user.user_metadata.full_name)
-      } catch (err) {
+      } catch (_err) {
         // ignore
       }
     })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -66,8 +67,8 @@ export default function OrderRequestPage() {
         console.warn("Order API error:", json)
         alert("Unable to submit order request. Please try again later.")
       }
-    } catch (err) {
-      console.error(err)
+    } catch (_err) {
+      console.error("Unexpected error submitting order request")
       alert("Unexpected error submitting order request.")
     } finally {
       setLoading(false)
