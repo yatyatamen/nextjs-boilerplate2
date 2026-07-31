@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button, Input, Label, Card } from "@/components/ui/primitives"
 import { Lock, Loader2, ArrowLeft } from "lucide-react"
@@ -85,6 +86,7 @@ async function getActiveRecoverySession(supabase: ReturnType<typeof createClient
 }
 
 export default function ResetPasswordPage() {
+  const router = useRouter()
   const supabase = createClient()
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -225,7 +227,7 @@ export default function ResetPasswordPage() {
         setPassword("")
         setConfirmPassword("")
         window.setTimeout(() => {
-          window.location.href = "/auth/reset-password/success"
+          router.push("/auth/reset-password/success")
         }, 800)
       }
     } finally {
