@@ -26,6 +26,22 @@ function hasRecoveryParams() {
   )
 }
 
+function getRecoveryTokens() {
+  if (typeof window === "undefined") return null
+
+  const searchParams = new URLSearchParams(window.location.search)
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""))
+
+  const accessToken = searchParams.get("access_token") ?? hashParams.get("access_token")
+  const refreshToken = searchParams.get("refresh_token") ?? hashParams.get("refresh_token")
+
+  if (accessToken && refreshToken) {
+    return { accessToken, refreshToken }
+  }
+
+  return null
+}
+
 export default function ResetPasswordPage() {
   const supabase = createClient()
   const [password, setPassword] = useState("")
@@ -35,6 +51,7 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
   const [isLinkReady, setIsLinkReady] = useState(false)
   const [verifyingLink, setVerifyingLink] = useState(true)
+  const [accountEmail, setAccountEmail] = useState<string | null>(null)
 
   useEffect(() => {
     let isMounted = true
@@ -59,12 +76,48 @@ export default function ResetPasswordPage() {
       const searchParams = new URLSearchParams(window.location.search)
       const code = searchParams.get("code")
       const hasRecoveryLink = hasRecoveryParams()
+      const recoveryTokens = getRecoveryTokens()
+
+      if (recoveryTokens) {
+        const { data, error } = await supabase.auth.setSession({
+          access_token: recoveryTokens.accessToken,
+          refresh_token: recoveryTokens.refreshToken,
+        })
+
+        if (!isMounted) return
+
+        if (!error && data.session) {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser()
+
+          if (!isMounted) return
+
+          setAccountEmail(user?.email ?? null)
+          setIsLinkReady(true)
+          setVerifyingLink(false)
+          setMessage("Reset link verified. Please enter your new password.")
+          setStatus("idle")
+
+          if (typeof window !== "undefined") {
+            window.history.replaceState({}, "", window.location.pathname + window.location.search)
+          }
+          return
+        }
+      }
 
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (!isMounted) return
 
         if (!error) {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser()
+
+          if (!isMounted) return
+
+          setAccountEmail(user?.email ?? null)
           setIsLinkReady(true)
           setVerifyingLink(false)
           setMessage("Reset link verified. Please enter your new password.")
@@ -77,11 +130,19 @@ export default function ResetPasswordPage() {
       if (!isMounted) return
 
       if (session || hasRecoveryLink) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (!isMounted) return
+
+        setAccountEmail(user?.email ?? null)
         setIsLinkReady(true)
         setVerifyingLink(false)
         setMessage("Reset link verified. Please enter your new password.")
         setStatus("idle")
       } else {
+        setAccountEmail(null)
         setIsLinkReady(false)
         setVerifyingLink(false)
         setMessage("This reset link is invalid or has expired. Please request a new reset email.")
@@ -156,6 +217,11 @@ export default function ResetPasswordPage() {
             <p className="mt-2 text-sm text-zinc-400">
               Enter your new password after clicking the link in your email.
             </p>
+            {accountEmail && (
+              <p className="mt-2 text-sm text-[#14B8A6]">
+                Resetting password for {accountEmail}
+              </p>
+            )}
           </div>
 
           <form className="space-y-5" onSubmit={handleSubmit} noValidate>

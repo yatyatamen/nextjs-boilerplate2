@@ -50,7 +50,7 @@ export default function LoginPage() {
       hash.includes("refresh_token")
 
     if (isRecoveryLink) {
-      const nextUrl = `/reset-password/continue${window.location.search}${window.location.hash}`
+      const nextUrl = `/reset-password${window.location.search}${window.location.hash}`
       router.replace(nextUrl)
     }
   }, [router])
