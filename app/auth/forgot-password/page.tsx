@@ -16,14 +16,14 @@ function getResetRedirectUrl() {
   const configuredUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
 
   if (configuredUrl) {
-    return configuredUrl.replace(/\/$/, "") + "/reset-password"
+    return `${configuredUrl.replace(/\/$/, "")}/auth/reset-password`
   }
 
   if (typeof window !== "undefined") {
-    return `${window.location.origin}/reset-password`
+    return `${window.location.origin}/auth/reset-password`
   }
 
-  return `${FALLBACK_PRODUCTION_URL}/reset-password`
+  return `${FALLBACK_PRODUCTION_URL}/auth/reset-password`
 }
 
 export default function ForgotPasswordPage() {

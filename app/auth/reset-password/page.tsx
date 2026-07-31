@@ -221,12 +221,12 @@ export default function ResetPasswordPage() {
       } else {
         redirectingRef.current = true
         setStatus("success")
-        setMessage("Password reset successful! You’ll be redirected to the sign-in page in 3 seconds.")
+        setMessage("Password reset successful! Redirecting to the confirmation page...")
         setPassword("")
         setConfirmPassword("")
         window.setTimeout(() => {
-          window.location.href = "/"
-        }, 3000)
+          window.location.href = "/auth/reset-password/success"
+        }, 800)
       }
     } finally {
       setLoading(false)
