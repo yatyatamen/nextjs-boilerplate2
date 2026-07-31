@@ -1497,7 +1497,7 @@ export function StaffDashboard({
 
                       return (
                         <div key={index} className="flex items-start gap-3 justify-end relative">
-                          <div className="bg-[#E2AC28]/10 p-3 rounded-2xl max-w-[75%] text-sm text-zinc-100">
+                          <div className="max-w-[75%] rounded-2xl border border-[#E2AC28]/30 bg-zinc-900/95 p-3 text-sm text-zinc-100 shadow-sm">
                             <div className="mb-2 flex items-center justify-end gap-2">
                               {senderAvatar ? (
                                 <img src={senderAvatar} alt={senderName} className="h-7 w-7 rounded-full border border-zinc-700 object-cover" />
@@ -1509,16 +1509,17 @@ export function StaffDashboard({
                               <p className="text-[11px] uppercase tracking-[0.2em] text-[#E2AC28]">{senderName}</p>
                             </div>
                             <p>{reply}</p>
-                            <p className="text-[10px] text-zinc-500 mt-2">{new Date().toLocaleDateString()} at {new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>
+                            <p className="mt-2 text-[10px] text-zinc-400">{new Date().toLocaleDateString()} at {new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>
                           </div>
                           <div className="absolute right-0 top-0">
-                            <button type="button" onClick={() => setOpenMessageMenuId(openMessageMenuId === `${selectedMessageId}-${index}` ? null : `${selectedMessageId}-${index}`)} className="p-1 rounded hover:bg-zinc-800">
-                              <MoreHorizontal className="h-4 w-4 text-zinc-400" />
+                            <button type="button" onClick={() => setOpenMessageMenuId(openMessageMenuId === `${selectedMessageId}-${index}` ? null : `${selectedMessageId}-${index}`)} className="p-1 text-zinc-100 transition hover:text-white">
+                              <MoreHorizontal className="h-4 w-4" />
                             </button>
                             {openMessageMenuId === `${selectedMessageId}-${index}` && (
-                              <div className="mt-8 rounded bg-zinc-900 border border-zinc-800 p-2 text-sm flex flex-col gap-1 shadow-lg">
-                                <button type="button" onClick={() => { handleStaffReplyToMessage(selectedMessageId ?? "", reply, getMessageSenderName(selectedMessage)); setOpenMessageMenuId(null) }} className="text-left px-2 py-1 hover:bg-zinc-800">Reply</button>
-                                <button type="button" onClick={() => { handleDeleteStaffReply(selectedMessageId ?? "", index); setOpenMessageMenuId(null) }} className="text-left px-2 py-1 text-red-400 hover:bg-zinc-800">Delete</button>
+                              <div className="mt-8 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm shadow-2xl">
+                                <button type="button" onClick={() => { handleDeleteStaffReply(selectedMessageId ?? "", index); setOpenMessageMenuId(null) }} className="w-full rounded-lg px-2 py-1.5 text-left text-zinc-100 transition hover:bg-zinc-800 hover:text-white">
+                                  Delete
+                                </button>
                               </div>
                             )}
                           </div>

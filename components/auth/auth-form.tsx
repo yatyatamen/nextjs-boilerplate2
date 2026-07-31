@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -10,6 +11,24 @@ import { AlertCircle, Loader2, Mail } from "lucide-react"
 type Mode = "login" | "register"
 
 const DOMAIN_ERROR = `Only YRDSB school email addresses (${ALLOWED_DOMAIN}) are allowed.`
+
+function isDuplicateEmailError(error: { message?: string; status?: number } | null | undefined) {
+  const message = `${error?.message ?? ""}`.toLowerCase()
+  const rawError = `${JSON.stringify(error) ?? ""}`.toLowerCase()
+  return (
+    message.includes("already registered") ||
+    message.includes("already exists") ||
+    message.includes("already in use") ||
+    message.includes("user already registered") ||
+    rawError.includes("already registered") ||
+    rawError.includes("already exists") ||
+    rawError.includes("already in use") ||
+    rawError.includes("user already registered") ||
+    error?.status === 400 ||
+    error?.status === 409 ||
+    error?.status === 422
+  )
+}
 
 export function AuthForm() {
   const router = useRouter()
@@ -65,6 +84,21 @@ export function AuthForm() {
     router.refresh()
   }
 
+  async function emailAlreadyExists(email: string) {
+    try {
+      const response = await fetch(`/api/auth/check-email?email=${encodeURIComponent(email)}`)
+      if (!response.ok) {
+        console.warn("Email existence check failed", await response.text())
+        return false
+      }
+      const json = await response.json()
+      return json.exists === true
+    } catch (error) {
+      console.warn("Email existence check request failed", error)
+      return false
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setFormError(null)
@@ -77,6 +111,14 @@ export function AuthForm() {
       if (mode === "register") {
         if (!isValidSchoolEmail(normalizedEmail)) {
           setEmailError(DOMAIN_ERROR)
+          setLoading(false)
+          return
+        }
+
+        const exists = await emailAlreadyExists(normalizedEmail)
+        if (exists) {
+          setFormError("This email is already in use. Please sign in instead.")
+          setMode("login")
           setLoading(false)
           return
         }
@@ -101,20 +143,27 @@ export function AuthForm() {
             },
           },
         })
+        console.debug("supabase signUp response", { data, error })
 
-        if (error) {
-          if (error.message.toLowerCase().includes("already registered") || error.status === 422) {
-            setFormError("An account with this email already exists. Please sign in instead.")
+        if (
+          error ||
+          (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0)
+        ) {
+          if (isDuplicateEmailError(error) || (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0)) {
+            setFormError("This email is already in use. Please sign in instead.")
+            setMode("login")
           } else {
-            setFormError(error.message)
+            setFormError(error?.message ?? "An account could not be created. Please try again.")
           }
+          setLoading(false)
           return
         }
 
         const user = data.user
         if (user) {
           if (user.identities && user.identities.length === 0) {
-            setFormError("An account with this email already exists. Please sign in instead.")
+            setFormError("This email is already in use. Please sign in instead.")
+            setMode("login")
             return
           }
 
@@ -230,10 +279,14 @@ export function AuthForm() {
             autoComplete={mode === "login" ? "current-password" : "new-password"}
             required
           />
-          {mode === "register" && (
-            <p className="text-xs text-muted-foreground">
-              Use at least 6 characters.
-            </p>
+          {mode === "register" ? (
+            <p className="text-xs text-muted-foreground">Use at least 6 characters.</p>
+          ) : (
+            <div className="flex items-center justify-between gap-2 text-right text-xs">
+              <Link href="/auth/forgot-password" className="text-[#14B8A6] hover:text-white">
+                Forgot your password?
+              </Link>
+            </div>
           )}
         </div>
 

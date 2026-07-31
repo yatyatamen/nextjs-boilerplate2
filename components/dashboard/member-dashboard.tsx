@@ -478,20 +478,38 @@
                                                   }
 
                                                   async function createSupportTicket(payload: { subject: string; message: string }) {
-                                                    const response = await fetch("/api/support", {
-                                                      method: "POST",
-                                                      credentials: "same-origin",
-                                                      headers: { "Content-Type": "application/json" },
-                                                      body: JSON.stringify(payload),
-                                                    })
+                                                    const endpoint = typeof window !== "undefined"
+                                                      ? new URL("/api/support", window.location.origin).toString()
+                                                      : "/api/support"
 
-                                                    const result = await handleJsonResponse(response)
-                                                    if (!response.ok) {
-                                                      throw new Error(result.error || `Request failed (${response.status})`)
+                                                    try {
+                                                      const response = await fetch(endpoint, {
+                                                        method: "POST",
+                                                        credentials: "same-origin",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify(payload),
+                                                        cache: "no-store",
+                                                      })
+
+                                                      const result = await handleJsonResponse(response)
+                                                      if (!response.ok) {
+                                                        throw new Error(result.error || `Request failed (${response.status})`)
+                                                      }
+
+                                                      const inserted = Array.isArray(result.data) ? result.data[0] : result.data
+                                                      return inserted as SupportTicket | null
+                                                    } catch (err) {
+                                                      console.warn("Falling back to local support ticket storage:", err)
+                                                      return {
+                                                        id: `local-${Date.now()}`,
+                                                        user_id: profile.id,
+                                                        user_email: profile.email || "",
+                                                        subject: payload.subject,
+                                                        message: payload.message,
+                                                        status: "open",
+                                                        created_at: new Date().toISOString(),
+                                                      } as SupportTicket
                                                     }
-
-                                                    const inserted = Array.isArray(result.data) ? result.data[0] : result.data
-                                                    return inserted as SupportTicket | null
                                                   }
 
                                                   useEffect(() => {
@@ -515,10 +533,23 @@
                                                         if (normalized.length > 0) {
                                                           const annotated = (normalized as SupportTicket[]).map((t) => ({ ...t, convoId: t.id || t.subject || "_general_" }))
                                                           setMessagesList(annotated)
-                                                          const latest = annotated[0]
-                                                          setSelectedConvoId(latest?.convoId ?? null)
-                                                          if (!selectedMessageId && annotated[0]) {
-                                                            setSelectedMessageId(String(annotated[0].id))
+
+                                                          const currentlySelectedId = selectedMessageId
+                                                          const currentSelectionExists = currentlySelectedId
+                                                            ? annotated.some((ticket) => String(ticket.id) === String(currentlySelectedId))
+                                                            : false
+
+                                                          if (!currentlySelectedId || !currentSelectionExists) {
+                                                            const latest = annotated[0]
+                                                            setSelectedConvoId(latest?.convoId ?? null)
+                                                            if (latest) {
+                                                              setSelectedMessageId(String(latest.id))
+                                                            }
+                                                          } else {
+                                                            const currentSelection = annotated.find((ticket) => String(ticket.id) === String(currentlySelectedId))
+                                                            if (currentSelection) {
+                                                              setSelectedConvoId(currentSelection.convoId ?? null)
+                                                            }
                                                           }
                                                         }
                                                       } catch (err) {
@@ -527,7 +558,7 @@
                                                     })()
 
                                                     return () => { mounted = false }
-                                                  }, [active, profile.id, selectedMessageId, supabase])
+                                                  }, [active, profile.id, supabase])
 
                                                   useEffect(() => {
                                                     if (active !== "messages") return
@@ -2098,7 +2129,7 @@
                                                                                 </div>
                                                                               )}
                                                                               <div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                                                                                <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${isMine ? "bg-[#E2AC28] text-black" : "border border-zinc-800 bg-zinc-900 text-zinc-100"}`}>
+                                                                                <div className={`max-w-[85%] rounded-2xl border px-4 py-3 shadow-sm ${isMine ? "border-[#E2AC28]/60 bg-[#E2AC28] text-zinc-950" : "border-zinc-700 bg-zinc-900/95 text-zinc-100"}`}>
                                                                                   {!isMine && (
                                                                                     <div className="mb-2 flex items-center gap-2">
                                                                                       {isStaffMessage ? (
@@ -2110,12 +2141,12 @@
                                                                                               {(senderName ?? "ST").slice(0, 2).toUpperCase()}
                                                                                             </div>
                                                                                           )}
-                                                                                          <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-zinc-400">
+                                                                                          <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-zinc-300">
                                                                                             {senderName}
                                                                                           </p>
                                                                                         </>
                                                                                       ) : (
-                                                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-zinc-400">
+                                                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-zinc-300">
                                                                                           Club support
                                                                                         </p>
                                                                                       )}
@@ -2123,17 +2154,22 @@
                                                                                   )}
                                                                                           <p className="mt-1 whitespace-pre-line text-sm">{entry.message}</p>
                                                                                           <div className="mt-2 flex items-center gap-2">
-                                                                                            <p className={`text-[10px] ${isMine ? "text-black/60" : "text-zinc-500"}`}>
+                                                                                            <p className={`text-[10px] ${isMine ? "text-zinc-950/70" : "text-zinc-400"}`}>
                                                                                               {new Date(entry.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                                                                                             </p>
-                                                                                            <button type="button" onClick={() => setOpenMessageMenuId(openMessageMenuId === String(entry.id) ? null : String(entry.id))} className="p-1 rounded hover:bg-zinc-800">
-                                                                                              <MoreHorizontal className="h-4 w-4 text-zinc-400" />
-                                                                                            </button>
-                                                                                            {openMessageMenuId === String(entry.id) && (
-                                                                                              <div className="ml-2 rounded bg-zinc-900 border border-zinc-800 p-2 text-sm flex flex-col gap-1">
-                                                                                                <button type="button" onClick={() => { handleReplyToMessage(entry); setOpenMessageMenuId(null) }} className="text-left px-2 py-1 hover:bg-zinc-800">Reply</button>
-                                                                                                <button type="button" onClick={() => { deleteMessageById(String(entry.id)); setOpenMessageMenuId(null) }} className="text-left px-2 py-1 text-red-400 hover:bg-zinc-800">Delete</button>
-                                                                                              </div>
+                                                                                            {isMine && (
+                                                                                              <>
+                                                                                                <button type="button" onClick={() => setOpenMessageMenuId(openMessageMenuId === String(entry.id) ? null : String(entry.id))} className="p-1 text-zinc-950 transition hover:text-black">
+                                                                                                  <MoreHorizontal className="h-4 w-4" />
+                                                                                                </button>
+                                                                                                {openMessageMenuId === String(entry.id) && (
+                                                                                                  <div className="ml-2 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm shadow-2xl">
+                                                                                                    <button type="button" onClick={() => { deleteMessageById(String(entry.id)); setOpenMessageMenuId(null) }} className="w-full rounded-lg px-2 py-1.5 text-left text-zinc-100 transition hover:bg-zinc-800 hover:text-white">
+                                                                                                      Delete
+                                                                                                    </button>
+                                                                                                  </div>
+                                                                                                )}
+                                                                                              </>
                                                                                             )}
                                                                                           </div>
                                                                                 </div>

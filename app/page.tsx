@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Card, Button } from "@/components/ui/primitives"
 import { isValidSchoolEmail, ALLOWED_DOMAIN } from "@/lib/types"
@@ -8,13 +10,65 @@ import { CalendarDays, Trophy, Megaphone, ShoppingBag, Mail, Lock, Loader2 } fro
 
 const DOMAIN_ERROR = `Only YRDSB school email addresses (${ALLOWED_DOMAIN}) are allowed.`
 
+function isDuplicateEmailError(error: { message?: string; status?: number } | null | undefined) {
+  const message = `${error?.message ?? ""}`.toLowerCase()
+  const rawError = `${JSON.stringify(error) ?? ""}`.toLowerCase()
+  return (
+    message.includes("already registered") ||
+    message.includes("already exists") ||
+    message.includes("already in use") ||
+    message.includes("user already registered") ||
+    rawError.includes("already registered") ||
+    rawError.includes("already exists") ||
+    rawError.includes("already in use") ||
+    rawError.includes("user already registered") ||
+    error?.status === 400 ||
+    error?.status === 409 ||
+    error?.status === 422
+  )
+}
+
 export default function LoginPage() {
   const supabase = createClient()
+  const router = useRouter()
   const [isRegister, setIsRegister] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const searchParams = new URLSearchParams(window.location.search)
+    const hash = window.location.hash
+    const isRecoveryLink =
+      searchParams.get("type") === "recovery" ||
+      searchParams.get("code") !== null ||
+      hash.includes("type=recovery") ||
+      hash.includes("access_token") ||
+      hash.includes("refresh_token")
+
+    if (isRecoveryLink) {
+      const nextUrl = `/reset-password/continue${window.location.search}${window.location.hash}`
+      router.replace(nextUrl)
+    }
+  }, [router])
+
+  async function emailAlreadyExists(email: string) {
+    try {
+      const response = await fetch(`/api/auth/check-email?email=${encodeURIComponent(email)}`)
+      if (!response.ok) {
+        console.warn("Email existence check failed", await response.text())
+        return false
+      }
+      const json = await response.json()
+      return json.exists === true
+    } catch (error) {
+      console.warn("Email existence check request failed", error)
+      return false
+    }
+  }
 
   async function handleAuth(e: React.FormEvent) {
     e.preventDefault()
@@ -30,12 +84,31 @@ export default function LoginPage() {
         return
       }
 
-      const { error } = await supabase.auth.signUp({ email: normalizedEmail, password })
-      if (error) {
+      const exists = await emailAlreadyExists(normalizedEmail)
+      if (exists) {
+        setError("This email is already in use. Please sign in instead.")
+        setIsRegister(false)
+        setLoading(false)
+        return
+      }
+
+      const { data, error } = await supabase.auth.signUp({ email: normalizedEmail, password })
+      console.debug("supabase signUp response", { data, error })
+
+      const duplicateSignup =
+        isDuplicateEmailError(error) ||
+        (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0)
+
+      if (duplicateSignup) {
+        setError("This email is already in use. Please sign in instead.")
+        setIsRegister(false)
+        setLoading(false)
+      } else if (error) {
         setError(error.message)
         setLoading(false)
       } else {
         setError("Registration successful! Please check your email or try logging in.")
+        setIsRegister(false)
         setLoading(false)
       }
     } else {
@@ -173,6 +246,15 @@ export default function LoginPage() {
                   />
                 </div>
               </div>
+
+              {!isRegister && (
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-right text-xs font-mono text-[#14B8A6] hover:text-white"
+                >
+                  Reset password
+                </Link>
+              )}
 
               <Button
                 type="submit"
