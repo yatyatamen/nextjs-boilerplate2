@@ -9,6 +9,8 @@ import { Mail, Loader2, ArrowLeft } from "lucide-react"
 
 const BACKGROUND_IMAGE =
   "https://jmlhdtltucwhxrrunenl.supabase.co/storage/v1/object/public/pics/Screenshot%202026-07-14%201459121.png"
+const FALLBACK_PRODUCTION_URL =
+  "https://wci-badminton-club-git-main-wcibadmintonclub.vercel.app"
 
 function getResetRedirectUrl() {
   const configuredUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
@@ -21,7 +23,7 @@ function getResetRedirectUrl() {
     return `${window.location.origin}/reset-password`
   }
 
-  return "/reset-password"
+  return `${FALLBACK_PRODUCTION_URL}/reset-password`
 }
 
 export default function ForgotPasswordPage() {

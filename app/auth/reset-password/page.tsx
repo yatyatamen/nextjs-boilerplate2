@@ -100,7 +100,10 @@ export default function ResetPasswordPage() {
           setStatus("idle")
 
           if (typeof window !== "undefined") {
-            window.history.replaceState({}, "", window.location.pathname + window.location.search)
+            const nextUrl = new URL(window.location.href)
+            nextUrl.searchParams.delete("code")
+            nextUrl.hash = ""
+            window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}`)
           }
           return
         }
@@ -122,6 +125,13 @@ export default function ResetPasswordPage() {
           setVerifyingLink(false)
           setMessage("Reset link verified. Please enter your new password.")
           setStatus("idle")
+
+          if (typeof window !== "undefined") {
+            const nextUrl = new URL(window.location.href)
+            nextUrl.searchParams.delete("code")
+            nextUrl.hash = ""
+            window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}`)
+          }
           return
         }
       }
