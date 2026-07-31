@@ -219,10 +219,10 @@ export default function ResetPasswordPage() {
         setMessage(error.message)
       } else {
         setStatus("success")
-        setMessage("Your password has been updated. Redirecting you back to sign in...")
+        setMessage("Your password has been updated successfully. You’ll be redirected to sign in in 3 seconds.")
         window.setTimeout(() => {
           window.location.href = "/"
-        }, 1200)
+        }, 3000)
       }
     } finally {
       setLoading(false)
