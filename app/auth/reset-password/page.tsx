@@ -42,6 +42,48 @@ function getRecoveryTokens() {
   return null
 }
 
+async function getActiveRecoverySession(supabase: ReturnType<typeof createClient>) {
+  const searchParams = new URLSearchParams(window.location.search)
+  const code = searchParams.get("code")
+  const hasRecoveryLink = hasRecoveryParams()
+  const recoveryTokens = getRecoveryTokens()
+
+  if (recoveryTokens) {
+    const { data, error } = await supabase.auth.setSession({
+      access_token: recoveryTokens.accessToken,
+      refresh_token: recoveryTokens.refreshToken,
+    })
+
+    if (!error && data.session) {
+      return data.session
+    }
+  }
+
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code)
+
+    if (!error) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (session) {
+        return session
+      }
+    }
+  }
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  if (session) {
+    return session
+  }
+
+  return hasRecoveryLink ? null : null
+}
+
 export default function ResetPasswordPage() {
   const supabase = createClient()
   const [password, setPassword] = useState("")
@@ -59,87 +101,48 @@ export default function ResetPasswordPage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return
 
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || session) {
-        setIsLinkReady(true)
-        setVerifyingLink(false)
-        setMessage("Reset link verified. Please enter your new password.")
-        setStatus("idle")
-      } else if (event === "SIGNED_OUT") {
-        setIsLinkReady(false)
-        setVerifyingLink(false)
-        setMessage("This reset link is invalid or has expired. Please request a new reset email.")
-        setStatus("error")
-      }
+      void (async () => {
+        if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || session) {
+          const {
+            data: { session: activeSession },
+          } = await supabase.auth.getSession()
+
+          if (!isMounted) return
+
+          if (activeSession) {
+            const {
+              data: { user },
+            } = await supabase.auth.getUser()
+
+            if (!isMounted) return
+
+            setAccountEmail(user?.email ?? null)
+            setIsLinkReady(true)
+            setVerifyingLink(false)
+            setMessage("Reset link verified. Please enter your new password.")
+            setStatus("idle")
+          } else {
+            setAccountEmail(null)
+            setIsLinkReady(false)
+            setVerifyingLink(false)
+            setMessage("This reset link is invalid or has expired. Please request a new reset email.")
+            setStatus("error")
+          }
+        } else if (event === "SIGNED_OUT") {
+          setIsLinkReady(false)
+          setVerifyingLink(false)
+          setMessage("This reset link is invalid or has expired. Please request a new reset email.")
+          setStatus("error")
+        }
+      })()
     })
 
     const verifyRecoveryLink = async () => {
-      const searchParams = new URLSearchParams(window.location.search)
-      const code = searchParams.get("code")
-      const hasRecoveryLink = hasRecoveryParams()
-      const recoveryTokens = getRecoveryTokens()
+      const session = await getActiveRecoverySession(supabase)
 
-      if (recoveryTokens) {
-        const { data, error } = await supabase.auth.setSession({
-          access_token: recoveryTokens.accessToken,
-          refresh_token: recoveryTokens.refreshToken,
-        })
-
-        if (!isMounted) return
-
-        if (!error && data.session) {
-          const {
-            data: { user },
-          } = await supabase.auth.getUser()
-
-          if (!isMounted) return
-
-          setAccountEmail(user?.email ?? null)
-          setIsLinkReady(true)
-          setVerifyingLink(false)
-          setMessage("Reset link verified. Please enter your new password.")
-          setStatus("idle")
-
-          if (typeof window !== "undefined") {
-            const nextUrl = new URL(window.location.href)
-            nextUrl.searchParams.delete("code")
-            nextUrl.hash = ""
-            window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}`)
-          }
-          return
-        }
-      }
-
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
-        if (!isMounted) return
-
-        if (!error) {
-          const {
-            data: { user },
-          } = await supabase.auth.getUser()
-
-          if (!isMounted) return
-
-          setAccountEmail(user?.email ?? null)
-          setIsLinkReady(true)
-          setVerifyingLink(false)
-          setMessage("Reset link verified. Please enter your new password.")
-          setStatus("idle")
-
-          if (typeof window !== "undefined") {
-            const nextUrl = new URL(window.location.href)
-            nextUrl.searchParams.delete("code")
-            nextUrl.hash = ""
-            window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}`)
-          }
-          return
-        }
-      }
-
-      const { data: { session } } = await supabase.auth.getSession()
       if (!isMounted) return
 
-      if (session || hasRecoveryLink) {
+      if (session) {
         const {
           data: { user },
         } = await supabase.auth.getUser()
@@ -151,6 +154,13 @@ export default function ResetPasswordPage() {
         setVerifyingLink(false)
         setMessage("Reset link verified. Please enter your new password.")
         setStatus("idle")
+
+        if (typeof window !== "undefined") {
+          const nextUrl = new URL(window.location.href)
+          nextUrl.searchParams.delete("code")
+          nextUrl.hash = ""
+          window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}`)
+        }
       } else {
         setAccountEmail(null)
         setIsLinkReady(false)
@@ -192,19 +202,31 @@ export default function ResetPasswordPage() {
     }
 
     setLoading(true)
-    const { error } = await supabase.auth.updateUser({ password })
 
-    if (error) {
-      setStatus("error")
-      setMessage(error.message)
-    } else {
-      setStatus("success")
-      setMessage("Your password has been updated. Redirecting you back to sign in...")
-      window.setTimeout(() => {
-        window.location.href = "/"
-      }, 1200)
+    try {
+      const session = await getActiveRecoverySession(supabase)
+
+      if (!session) {
+        setStatus("error")
+        setMessage("Your reset link could not be verified. Please request a new reset email.")
+        return
+      }
+
+      const { error } = await supabase.auth.updateUser({ password })
+
+      if (error) {
+        setStatus("error")
+        setMessage(error.message)
+      } else {
+        setStatus("success")
+        setMessage("Your password has been updated. Redirecting you back to sign in...")
+        window.setTimeout(() => {
+          window.location.href = "/"
+        }, 1200)
+      }
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (
