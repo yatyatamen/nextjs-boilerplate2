@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Button, Input, Label, Card } from "@/components/ui/primitives"
@@ -94,12 +94,13 @@ export default function ResetPasswordPage() {
   const [isLinkReady, setIsLinkReady] = useState(false)
   const [verifyingLink, setVerifyingLink] = useState(true)
   const [accountEmail, setAccountEmail] = useState<string | null>(null)
+  const redirectingRef = useRef(false)
 
   useEffect(() => {
     let isMounted = true
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!isMounted) return
+      if (!isMounted || redirectingRef.current) return
 
       void (async () => {
         if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || session) {
@@ -218,6 +219,7 @@ export default function ResetPasswordPage() {
         setStatus("error")
         setMessage(error.message)
       } else {
+        redirectingRef.current = true
         setStatus("success")
         setMessage("Password reset successful! You’ll be redirected to the sign-in page in 3 seconds.")
         setPassword("")
