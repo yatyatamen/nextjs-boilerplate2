@@ -219,7 +219,9 @@ export default function ResetPasswordPage() {
         setMessage(error.message)
       } else {
         setStatus("success")
-        setMessage("Your password has been updated successfully. You’ll be redirected to sign in in 3 seconds.")
+        setMessage("Password reset successful! You’ll be redirected to the sign-in page in 3 seconds.")
+        setPassword("")
+        setConfirmPassword("")
         window.setTimeout(() => {
           window.location.href = "/"
         }, 3000)
@@ -290,7 +292,9 @@ export default function ResetPasswordPage() {
                 className={`rounded-lg border px-4 py-3 text-sm ${
                   status === "success"
                     ? "border-emerald-900/50 bg-emerald-950/20 text-emerald-300"
-                    : "border-red-900/50 bg-red-950/20 text-red-300"
+                    : status === "error"
+                      ? "border-red-900/50 bg-red-950/20 text-red-300"
+                      : "border-emerald-900/50 bg-emerald-950/20 text-emerald-300"
                 }`}
               >
                 {message}
