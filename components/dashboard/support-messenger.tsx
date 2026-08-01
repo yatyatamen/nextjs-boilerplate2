@@ -78,9 +78,28 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   const conversationMessages = useMemo(() => {
     if (!selectedTicket) return []
 
-    const threadGroup = groupedThreads.find(
+    // Try to find the exact thread group
+    let threadGroup = groupedThreads.find(
       (thread) => String(thread.latestTicket.id) === String(selectedTicketId),
     )
+
+    // Fallback: if not found, reconstruct by matching subject and user
+    if (!threadGroup) {
+      const matchingTickets = tickets.filter(
+        (ticket) =>
+          (ticket.subject || "Support request").toLowerCase() ===
+            (selectedTicket.subject || "Support request").toLowerCase() &&
+          String(ticket.user_id || profile.id) === String(selectedTicket.user_id || profile.id),
+      )
+      if (matchingTickets.length > 0) {
+        threadGroup = {
+          key: "",
+          subject: selectedTicket.subject || "Support request",
+          tickets: matchingTickets,
+          latestTicket: selectedTicket,
+        }
+      }
+    }
 
     const items: Array<{
       id: string
@@ -90,7 +109,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
       createdAt: string
     }> = []
 
-    if (threadGroup && threadGroup.tickets.length > 0) {
+    if (threadGroup?.tickets && threadGroup.tickets.length > 0) {
       // Sort tickets by created_at chronologically
       const sortedTickets = [...threadGroup.tickets].sort(
         (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
@@ -139,7 +158,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     }
 
     return items.sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
-  }, [groupedThreads, replies, selectedTicket, selectedTicketId])
+  }, [groupedThreads, profile.id, replies, selectedTicket, selectedTicketId, tickets])
 
   async function loadTickets() {
     setLoading(true)
