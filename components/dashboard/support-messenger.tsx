@@ -39,7 +39,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   const [replies, setReplies] = useState<Record<string, SupportReply[]>>({})
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [busyReplyId, setBusyReplyId] = useState<string | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   const groupedThreads = useMemo(() => {
     const groups = new Map<string, { key: string; subject: string; tickets: SupportTicket[]; latestTicket: SupportTicket }>()
@@ -199,9 +199,11 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
 
   useEffect(() => {
     // Scroll to bottom whenever conversation messages change
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
-    }
+    setTimeout(() => {
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+      }
+    }, 0)
   }, [conversationMessages])
 
   useEffect(() => {
@@ -394,7 +396,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
               </Button>
             </div>
 
-            <div className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(226,172,40,0.08),_transparent_50%)] p-4 space-y-3">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(226,172,40,0.08),_transparent_50%)] p-4 space-y-3">
               {conversationMessages.length === 0 ? (
                 <div className="flex h-full items-center justify-center">
                   <p className="text-sm text-zinc-500">No messages yet. Start the conversation below.</p>
@@ -420,7 +422,6 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                       </div>
                     )
                   })}
-                  <div ref={messagesEndRef} />
                 </>
               )}
             </div>
