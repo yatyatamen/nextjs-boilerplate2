@@ -78,25 +78,62 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   const conversationMessages = useMemo(() => {
     if (!selectedTicket) return []
 
-    const items = [
-      {
+    const threadGroup = groupedThreads.find(
+      (thread) => String(thread.latestTicket.id) === String(selectedTicketId),
+    )
+
+    const items: Array<{
+      id: string
+      kind: "ticket" | "reply"
+      senderId: string
+      message: string
+      createdAt: string
+    }> = []
+
+    if (threadGroup) {
+      for (const ticket of threadGroup.tickets) {
+        items.push({
+          id: `ticket-${ticket.id}`,
+          kind: "ticket",
+          senderId: ticket.user_id || "",
+          message: ticket.message,
+          createdAt: ticket.created_at,
+        })
+
+        const ticketReplies = replies[ticket.id] || []
+        for (const reply of ticketReplies) {
+          items.push({
+            id: reply.id,
+            kind: "reply",
+            senderId: reply.sender_id,
+            message: reply.message,
+            createdAt: reply.created_at,
+          })
+        }
+      }
+    } else if (selectedTicket) {
+      items.push({
         id: `ticket-${selectedTicket.id}`,
-        kind: "ticket" as const,
+        kind: "ticket",
         senderId: selectedTicket.user_id || "",
         message: selectedTicket.message,
         createdAt: selectedTicket.created_at,
-      },
-      ...((replies[selectedTicket.id] || []).map((reply) => ({
-        id: reply.id,
-        kind: "reply" as const,
-        senderId: reply.sender_id,
-        message: reply.message,
-        createdAt: reply.created_at,
-      }))),
-    ]
+      })
+
+      const ticketReplies = replies[selectedTicket.id] || []
+      for (const reply of ticketReplies) {
+        items.push({
+          id: reply.id,
+          kind: "reply",
+          senderId: reply.sender_id,
+          message: reply.message,
+          createdAt: reply.created_at,
+        })
+      }
+    }
 
     return items.sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
-  }, [replies, selectedTicket])
+  }, [groupedThreads, replies, selectedTicket, selectedTicketId])
 
   async function loadTickets() {
     setLoading(true)
@@ -137,8 +174,19 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   useEffect(() => {
     if (!selectedTicketId) return
     if (selectedTicketId.startsWith("local-")) return
-    void loadReplies(selectedTicketId)
-  }, [selectedTicketId])
+
+    const threadGroup = groupedThreads.find(
+      (thread) => String(thread.latestTicket.id) === String(selectedTicketId),
+    )
+
+    if (threadGroup) {
+      for (const ticket of threadGroup.tickets) {
+        void loadReplies(String(ticket.id))
+      }
+    } else {
+      void loadReplies(selectedTicketId)
+    }
+  }, [selectedTicketId, groupedThreads])
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
@@ -311,30 +359,32 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
               </Button>
             </div>
 
-            <div className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(226,172,40,0.08),_transparent_50%)] p-4">
-              <div className="mx-auto flex max-w-3xl flex-col gap-3">
-                {conversationMessages.map((entry) => {
+            <div className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(226,172,40,0.08),_transparent_50%)] p-4 space-y-3">
+              {conversationMessages.length === 0 ? (
+                <div className="flex h-full items-center justify-center">
+                  <p className="text-sm text-zinc-500">No messages yet. Start the conversation below.</p>
+                </div>
+              ) : (
+                conversationMessages.map((entry) => {
                   const isOutgoing = entry.kind === "ticket" ? !isStaff : entry.senderId === profile.id
                   return (
-                    <div key={entry.id} className={`flex ${isOutgoing ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[80%] rounded-2xl border px-3 py-2 shadow-sm ${isOutgoing ? "border-[#E2AC28]/50 bg-[#E2AC28] text-zinc-950" : "border-zinc-800 bg-zinc-900/95 text-zinc-100"}`}>
-                        <div className="mb-1 flex items-center justify-between gap-3">
-                          <p className={`text-[10px] font-semibold uppercase tracking-[0.2em] ${isOutgoing ? "text-zinc-700/70" : "text-zinc-400"}`}>
-                            {isOutgoing ? "You" : isStaff ? "Member" : "Club staff"}
-                          </p>
-                          {entry.kind === "reply" && isStaff && (
-                            <button type="button" onClick={() => handleDeleteReply(entry.id)} className="text-zinc-400 hover:text-red-400">
-                              {busyReplyId === entry.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                            </button>
-                          )}
-                        </div>
-                        <p className="whitespace-pre-line text-sm">{entry.message}</p>
-                        <p className={`mt-2 text-[10px] ${isOutgoing ? "text-zinc-700/70" : "text-zinc-500"}`}>{formatTime(entry.createdAt)}</p>
+                    <div key={entry.id} className={`flex ${isOutgoing ? "justify-end" : "justify-start"} gap-2`}>
+                      <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${isOutgoing ? "rounded-br-none border border-[#E2AC28]/40 bg-[#E2AC28] text-zinc-900" : "rounded-bl-none border border-zinc-700 bg-zinc-900 text-zinc-100"}`}>
+                        <p className={`mb-1 text-[10px] font-bold uppercase tracking-wider ${isOutgoing ? "text-zinc-800/70" : "text-zinc-400"}`}>
+                          {isOutgoing ? "You" : isStaff ? "Member" : "Staff"}
+                        </p>
+                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{entry.message}</p>
+                        <p className={`mt-1 text-[10px] ${isOutgoing ? "text-zinc-800/60" : "text-zinc-500"}`}>{formatTime(entry.createdAt)}</p>
+                        {entry.kind === "reply" && isStaff && (
+                          <button type="button" onClick={() => handleDeleteReply(entry.id)} className={`mt-1 text-[10px] font-semibold ${isOutgoing ? "text-zinc-800/50 hover:text-zinc-800" : "text-zinc-500 hover:text-red-400"}`}>
+                            {busyReplyId === entry.id ? "Deleting..." : "Delete"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   )
-                })}
-              </div>
+                })
+              )}
             </div>
 
             <div className="border-t border-zinc-800 bg-zinc-950/80 p-4">
