@@ -171,16 +171,19 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error || "Unable to delete message")
-      setTickets((prev) => prev.filter((entry) => String(entry.id) !== String(ticketId)))
+      setTickets((prev) => {
+        const nextTickets = prev.filter((entry) => String(entry.id) !== String(ticketId))
+        if (selectedTicketId === ticketId) {
+          const nextTicket = nextTickets[0]
+          setSelectedTicketId(nextTicket ? String(nextTicket.id) : null)
+        }
+        return nextTickets
+      })
       setReplies((prev) => {
         const next = { ...prev }
         delete next[ticketId]
         return next
       })
-      if (selectedTicketId === ticketId) {
-        const nextTicket = tickets.find((entry) => String(entry.id) !== String(ticketId))
-        setSelectedTicketId(nextTicket ? String(nextTicket.id) : null)
-      }
       setStatus({ type: "success", message: "Message deleted" })
     } catch (error) {
       setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to delete message" })

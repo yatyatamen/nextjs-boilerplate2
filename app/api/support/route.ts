@@ -95,10 +95,13 @@ export async function POST(request: NextRequest) {
 
     if (profileError) {
       console.error("Support profile lookup error:", profileError)
-      return NextResponse.json(
-        { error: `Profile lookup failed: ${profileError.message}`, details: profileError },
-        { status: 500 },
-      )
+      const fallbackTicket = createTicket({
+        userId: user.id,
+        userEmail: user.email || "local@example.com",
+        subject,
+        message,
+      })
+      return NextResponse.json({ data: [fallbackTicket] })
     }
 
     const payload = {

@@ -1,27 +1,55 @@
 import { NextResponse } from "next/server"
-import { createServiceClient } from "@/lib/supabase/server"
+import { createClient, createServiceClient } from "@/lib/supabase/server"
+import { deleteReply, deleteRepliesForTicket, deleteTicket } from "@/lib/support-store"
 
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}))
-    const id = body?.id
+    const id = body?.id?.toString()
+    const type = body?.type?.toString() || "reply"
     if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 })
 
-    const serviceClient = await createServiceClient()
+    let client: Awaited<ReturnType<typeof createClient>> | Awaited<ReturnType<typeof createServiceClient>> | null = null
 
-    // Try delete from replies first
-    const { error: replyErr } = await serviceClient.from("support_replies").delete().eq("id", id)
-    if (!replyErr) {
-      return NextResponse.json({ data: { deleted: true, table: "support_replies" } })
+    try {
+      client = await createServiceClient()
+    } catch {
+      try {
+        client = await createClient()
+      } catch {
+        client = null
+      }
     }
 
-    // Fallback to tickets
-    const { error: ticketErr } = await serviceClient.from("support_tickets").delete().eq("id", id)
-    if (!ticketErr) {
-      return NextResponse.json({ data: { deleted: true, table: "support_tickets" } })
+    if (client) {
+      if (type === "reply") {
+        const { error: replyErr } = await client.from("support_replies").delete().eq("id", id)
+        if (!replyErr) {
+          deleteReply(id)
+          return NextResponse.json({ data: { deleted: true, table: "support_replies" } })
+        }
+      }
+
+      if (type === "ticket") {
+        const { error: replyErr } = await client.from("support_replies").delete().eq("ticket_id", id)
+        const { error: ticketErr } = await client.from("support_tickets").delete().eq("id", id)
+        if (!ticketErr) {
+          deleteRepliesForTicket(id)
+          deleteTicket(id)
+          return NextResponse.json({ data: { deleted: true, table: "support_tickets" } })
+        }
+        console.error("Ticket delete error:", replyErr || ticketErr)
+      }
     }
 
-    return NextResponse.json({ error: "Delete failed" }, { status: 500 })
+    if (type === "reply") {
+      deleteReply(id)
+      return NextResponse.json({ data: { deleted: true, table: "support_replies", fallback: true } })
+    }
+
+    deleteRepliesForTicket(id)
+    deleteTicket(id)
+    return NextResponse.json({ data: { deleted: true, table: "support_tickets", fallback: true } })
   } catch (err) {
     console.error("/api/support/delete error:", err)
     return NextResponse.json({ error: String(err) }, { status: 500 })

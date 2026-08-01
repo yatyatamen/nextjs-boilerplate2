@@ -64,6 +64,25 @@ export function deleteTicket(ticketId: string) {
   return ticketStore.delete(ticketId)
 }
 
+export function deleteRepliesForTicket(ticketId: string) {
+  return replyStore.delete(ticketId)
+}
+
+export function deleteReply(replyId: string) {
+  for (const [ticketId, replies] of replyStore.entries()) {
+    const nextReplies = replies.filter((reply) => reply.id !== replyId)
+    if (nextReplies.length !== replies.length) {
+      if (nextReplies.length > 0) {
+        replyStore.set(ticketId, nextReplies)
+      } else {
+        replyStore.delete(ticketId)
+      }
+      return true
+    }
+  }
+  return false
+}
+
 export function deleteTicketsBySubject(subject: string) {
   const ids: string[] = []
   for (const [id, ticket] of ticketStore.entries()) {
