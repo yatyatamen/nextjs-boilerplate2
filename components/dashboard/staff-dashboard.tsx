@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
+import { SupportMessenger } from "@/components/dashboard/support-messenger"
 import {
   Badge,
   Button,
@@ -1425,145 +1426,7 @@ export function StaffDashboard({
       )}
 
       {active === "messages" && (
-        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5 h-full min-h-0">
-          {/* Conversations list */}
-          <div className="flex flex-col gap-4 overflow-hidden min-h-0">
-            <div className="shrink-0">
-              <SectionHeader title="Messages" desc="Member conversations — chat-style view." />
-            </div>
-            {messages.length === 0 ? (
-              <Card className="p-6 shrink-0">
-                <p className="text-sm text-muted-foreground">No conversations yet.</p>
-              </Card>
-            ) : (
-              <div className="space-y-2 overflow-y-auto flex-1">
-                {messages.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setSelectedMessageId(String(m.id))}
-                    className={`flex items-start gap-3 w-full rounded-xl border p-3 text-left ${selectedMessageId === String(m.id) ? "border-[#E2AC28] bg-zinc-950" : "border-zinc-800 bg-zinc-900/90 hover:bg-zinc-950"}`}
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-sm">{getMessageSenderName(m).slice(0,2).toUpperCase()}</div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-semibold text-white truncate">{getMessageSenderName(m)}</p>
-                        <span className="text-[10px] text-zinc-500">{new Date(m.created_at || "").toLocaleDateString()}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{m.subject || m.message}</p>
-                      <p className="text-[10px] text-zinc-500 mt-2">{m.user_email || m.user_id}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Chat thread */}
-          <div className="flex flex-col gap-4 overflow-hidden min-h-0 h-full">
-            <Card className="rounded-2xl border p-0 bg-zinc-950 border-zinc-800 flex flex-col h-full overflow-hidden min-h-0">
-              {!selectedMessage ? (
-                <div className="p-6">
-                  <p className="text-sm font-semibold text-white">Select a conversation to open the chat.</p>
-                  <p className="text-xs text-muted-foreground mt-2">This view behaves like a messaging app — click a thread to reply.</p>
-                </div>
-              ) : (
-                <div className="flex flex-col h-full">
-                  {/* Header */}
-                  <div className="flex items-center justify-between p-4 border-b border-zinc-800">
-                    <div>
-                      <p className="text-sm font-semibold text-white">{selectedMessage.subject || "Conversation"}</p>
-                      <p className="text-xs text-muted-foreground">{getMessageSenderName(selectedMessage)}</p>
-                    </div>
-                    <div className="text-xs text-zinc-500">{selectedMessage.status}</div>
-                  </div>
-
-                  {/* Messages area */}
-                  <div className="flex-1 overflow-auto p-4 space-y-4 min-h-0" ref={messagesContainerRef}>
-                    <div className="flex items-start gap-3">
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-semibold">{(selectedMessage.user_email || String(selectedMessage.user_id)).slice(0,2).toUpperCase()}</div>
-                      <div className="bg-zinc-900 p-3 rounded-2xl max-w-[75%]">
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-[#E2AC28] mb-2">{getMessageSenderName(selectedMessage)}</p>
-                        <p className="text-sm text-zinc-100 whitespace-pre-line">{selectedMessage.message}</p>
-                        <p className="text-[10px] text-zinc-500 mt-2">
-                          {new Date(selectedMessage.created_at || "").toLocaleDateString()} at {new Date(selectedMessage.created_at || "").toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                        </p>
-                      </div>
-                    </div>
-
-                    {(localReplies[selectedMessageId ?? ""] || []).map((reply, index) => {
-                      const senderAvatar = getProfileAvatar(profile)
-                      const senderName = profile.full_name || `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || profile.email || "Staff"
-
-                      return (
-                        <div key={index} className="flex items-start gap-3 justify-end relative">
-                          <div className="max-w-[75%] rounded-2xl border border-[#E2AC28]/30 bg-zinc-900/95 p-3 text-sm text-zinc-100 shadow-sm">
-                            <div className="mb-2 flex items-center justify-end gap-2">
-                              {senderAvatar ? (
-                                <img src={senderAvatar} alt={senderName} className="h-7 w-7 rounded-full border border-zinc-700 object-cover" />
-                              ) : (
-                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#E2AC28]/20 text-[10px] font-semibold text-[#E2AC28]">
-                                  {senderName.slice(0, 2).toUpperCase()}
-                                </div>
-                              )}
-                              <p className="text-[11px] uppercase tracking-[0.2em] text-[#E2AC28]">{senderName}</p>
-                            </div>
-                            <p>{reply}</p>
-                            <p className="mt-2 text-[10px] text-zinc-400">{new Date().toLocaleDateString()} at {new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>
-                          </div>
-                          <div className="absolute right-0 top-0">
-                            <button type="button" onClick={() => setOpenMessageMenuId(openMessageMenuId === `${selectedMessageId}-${index}` ? null : `${selectedMessageId}-${index}`)} className="p-1 text-zinc-100 transition hover:text-white">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </button>
-                            {openMessageMenuId === `${selectedMessageId}-${index}` && (
-                              <div className="mt-8 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm shadow-2xl">
-                                <button type="button" onClick={() => { handleDeleteStaffReply(selectedMessageId ?? "", index); setOpenMessageMenuId(null) }} className="w-full rounded-lg px-2 py-1.5 text-left text-zinc-100 transition hover:bg-zinc-800 hover:text-white">
-                                  Delete
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  {/* Reply input (sticky at bottom) */}
-                  <div className="p-4 border-t border-zinc-800 bg-zinc-950">
-                    {replyingTo && (
-                      <div className="mb-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-200">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Replying to {replyingTo.author ?? "message"}</p>
-                            <p className="mt-2 line-clamp-2 text-sm text-zinc-100">{replyingTo.message}</p>
-                          </div>
-                          <button type="button" onClick={() => setReplyingTo(null)} className="p-1 rounded hover:bg-zinc-800">
-                            <XCircle className="h-4 w-4 text-zinc-400" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    <form onSubmit={handleStaffReply} className="flex items-center gap-3">
-                      <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleStaffFileSelect} />
-                      <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-full border border-zinc-800 bg-zinc-900 p-2 hover:bg-zinc-800">
-                        <Image className="h-4 w-4 text-zinc-300" />
-                      </button>
-                      <Textarea
-                        rows={2}
-                        value={replyDraft}
-                        onChange={(e) => setReplyDraft(e.target.value)}
-                        className="flex-1 resize-none bg-zinc-900 border-zinc-800"
-                        placeholder={staffFile ? `Attach: ${staffFile.name}` : "Write your reply..."}
-                      />
-                      <Button type="submit" size="sm" className="bg-[#E2AC28] text-black">Send</Button>
-                    </form>
-                    <p className="text-[11px] text-zinc-500 mt-2">Replies are stored locally in this view and not sent as emails.</p>
-                  </div>
-                </div>
-              )}
-            </Card>
-          </div>
-        </div>
+        <SupportMessenger profile={profile} initialTickets={messages as SupportTicket[]} isStaff />
       )}
 
       <ConfirmationDialog

@@ -3,6 +3,7 @@
                                                 import { useMemo, useState, useEffect, useRef } from "react"
                                                 import { createClient } from "@/lib/supabase/client"
                                                 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
+import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                 import { Badge, Button, Card } from "@/components/ui/primitives"
                                                 import type {
                                                   Profile,
@@ -820,10 +821,27 @@
                                                   }
 
                                                   async function deleteMessageById(id: string) {
-                                                    // optimistic remove
-                                                    setMessagesList((prev) => prev.filter((m) => String(m.id) !== String(id)))
+                                                    const normalizedId = String(id)
+                                                    const targetMessage = messagesList.find((message) => String(message.id) === normalizedId)
+
+                                                    if (!targetMessage) return
+
+                                                    setMessagesList((prev) => prev.filter((message) => String(message.id) !== normalizedId))
+
+                                                    if (normalizedId.startsWith("local-")) {
+                                                      return
+                                                    }
+
                                                     try {
-                                                      await fetch("/api/support/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+                                                      const response = await fetch("/api/support/delete", {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({ id: normalizedId }),
+                                                      })
+
+                                                      if (!response.ok) {
+                                                        console.warn("Delete endpoint returned an error", await response.text())
+                                                      }
                                                     } catch (err) {
                                                       console.error("Delete failed:", err)
                                                     }
@@ -2032,183 +2050,7 @@
 
                                                           {/* CONTACT & SUPPORT HUB */}
                                                           {active === "messages" && (
-                                                            <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-5 h-full min-h-0">
-                                                              <div className={`rounded-2xl border ${theme.cardBorder} ${theme.cardBg} p-4 flex flex-col gap-3 overflow-hidden`}>
-                                                                <div className="shrink-0">
-                                                                    <div className="flex items-center gap-3">
-                                                                      <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Chats</h2>
-                                                                    </div>
-                                                                    <p className="text-[11px] text-zinc-500 mt-1">Continuous support conversations with the club team.</p>
-                                                                </div>
-
-                                                                <div className="flex flex-col gap-2 w-full overflow-y-auto flex-1">
-                                                                  {(() => {
-                                                                    const convos = orderedConversations
-                                                                    if (convos.length === 0) {
-                                                                      return (
-                                                                        <div className="max-w-full rounded-xl border p-3 text-left bg-zinc-950/70">
-                                                                          <p className="text-sm font-semibold text-white">Club Support</p>
-                                                                          <p className="text-[11px] text-zinc-500 mt-1">Start a new chat with the team.</p>
-                                                                        </div>
-                                                                      )
-                                                                    }
-
-                                                                    return convos.map((c) => {
-                                                                      const isSelected = selectedConvoId === (c.convoId ?? c.subject ?? '_')
-                                                                      return (
-                                                                        <button
-                                                                          key={c.id}
-                                                                          type="button"
-                                                                          onClick={() => {
-                                                                            setSelectedConvoId(c.convoId ?? c.subject ?? '_')
-                                                                            setSelectedMessageId(c.id ? String(c.id) : null)
-                                                                          }}
-                                                                          className={`w-full text-left rounded-xl border p-3 transition ${isSelected ? 'border-[#E2AC28] bg-zinc-900' : 'border-zinc-800 bg-zinc-950/70'}`}
-                                                                        >
-                                                                          <div className="flex items-center justify-between gap-2">
-                                                                            <p className="text-sm font-semibold text-white">{c.subject || 'Club Support'}</p>
-                                                                            <Badge className={`text-[10px] px-2 py-1 ${c.status === 'resolved' ? 'bg-green-600/20 text-green-500' : 'bg-yellow-600/20 text-yellow-500'}`}>
-                                                                              {c.status || 'open'}
-                                                                            </Badge>
-                                                                          </div>
-                                                                          <p className="text-[11px] text-zinc-500 mt-1 truncate">{c.message}</p>
-                                                                        </button>
-                                                                      )
-                                                                    })
-                                                                  })()}
-                                                                </div>
-                                                              </div>
-
-                                                            <div className={`flex min-h-full flex-col overflow-hidden rounded-2xl border ${theme.cardBorder} ${theme.cardBg}`}>
-                                                                <div className="border-b border-zinc-800/70 bg-zinc-950/60 px-4 py-4 shrink-0">
-                                                                  <div className="flex items-center justify-between gap-3">
-                                                                    <div className="flex items-center gap-3">
-                                                                      <div>
-                                                                        <h3 className="text-sm font-bold text-white">Club Support</h3>
-                                                                        <p className="text-[11px] text-zinc-500">Usually replies in a few minutes</p>
-                                                                      </div>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
-                                                                      <span className="h-2 w-2 rounded-full bg-emerald-400" /> Online
-                                                                    </div>
-                                                                  </div>
-                                                                </div>
-
-
-                                                                <div className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(226,172,40,0.08),_transparent_50%)] p-4" data-messages-scroll-container>
-                                                                  {(() => {
-                                                                    const visible = selectedConvoId ? messagesList.filter((m) => m.convoId === selectedConvoId) : messagesList
-                                                                    if (visible.length === 0) {
-                                                                      return (
-                                                                        <div className="flex h-full items-center justify-center">
-                                                                          <div className="max-w-sm rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-center text-sm text-zinc-300">
-                                                                            Start a chat and we’ll keep everything in one continuous conversation.
-                                                                          </div>
-                                                                        </div>
-                                                                      )
-                                                                    }
-
-                                                                    return (
-                                                                      <div className="space-y-3">
-                                                                        {conversationEntries.map((entry, index) => {
-                                                                          const isMine = entry.isMine
-                                                                          const prevEntry = index > 0 ? conversationEntries[index - 1] : null
-                                                                          const showDateSeparator = !prevEntry || new Date(prevEntry.created_at).toDateString() !== new Date(entry.created_at).toDateString()
-                                                                          const senderProfile = entry.sender_id ? allProfiles.find((profileEntry) => profileEntry.id === entry.sender_id) : null
-                                                                          const isStaffMessage = entry.kind === "reply" && senderProfile?.role === "staff"
-                                                                          const senderName = isStaffMessage ? getProfileDisplayName(senderProfile) : null
-                                                                          const senderAvatar = isStaffMessage ? getProfileAvatar(senderProfile) : null
-
-                                                                          return (
-                                                                            <div key={entry.id}>
-                                                                              {showDateSeparator && (
-                                                                                <div className="flex justify-center py-2 mb-2">
-                                                                                  <p className="text-[11px] text-zinc-500 font-medium bg-zinc-900/50 px-3 py-1 rounded-full">
-                                                                                    {new Date(entry.created_at).toLocaleDateString()}
-                                                                                  </p>
-                                                                                </div>
-                                                                              )}
-                                                                              <div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                                                                                <div className={`max-w-[85%] rounded-2xl border px-4 py-3 shadow-sm ${isMine ? "border-[#E2AC28]/60 bg-[#E2AC28] text-zinc-950" : "border-zinc-700 bg-zinc-900/95 text-zinc-100"}`}>
-                                                                                  {!isMine && (
-                                                                                    <div className="mb-2 flex items-center gap-2">
-                                                                                      {isStaffMessage ? (
-                                                                                        <>
-                                                                                          {senderAvatar ? (
-                                                                                            <img src={senderAvatar} alt={senderName ?? "Staff"} className="h-7 w-7 rounded-full border border-zinc-700 object-cover" />
-                                                                                          ) : (
-                                                                                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#E2AC28]/20 text-[10px] font-semibold text-[#E2AC28]">
-                                                                                              {(senderName ?? "ST").slice(0, 2).toUpperCase()}
-                                                                                            </div>
-                                                                                          )}
-                                                                                          <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-zinc-300">
-                                                                                            {senderName}
-                                                                                          </p>
-                                                                                        </>
-                                                                                      ) : (
-                                                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-zinc-300">
-                                                                                          Club support
-                                                                                        </p>
-                                                                                      )}
-                                                                                    </div>
-                                                                                  )}
-                                                                                          <p className="mt-1 whitespace-pre-line text-sm">{entry.message}</p>
-                                                                                          <div className="mt-2 flex items-center gap-2">
-                                                                                            <p className={`text-[10px] ${isMine ? "text-zinc-950/70" : "text-zinc-400"}`}>
-                                                                                              {new Date(entry.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                                                                                            </p>
-                                                                                            {isMine && (
-                                                                                              <>
-                                                                                                <button type="button" onClick={() => setOpenMessageMenuId(openMessageMenuId === String(entry.id) ? null : String(entry.id))} className="p-1 text-zinc-950 transition hover:text-black">
-                                                                                                  <MoreHorizontal className="h-4 w-4" />
-                                                                                                </button>
-                                                                                                {openMessageMenuId === String(entry.id) && (
-                                                                                                  <div className="ml-2 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm shadow-2xl">
-                                                                                                    <button type="button" onClick={() => { deleteMessageById(String(entry.id)); setOpenMessageMenuId(null) }} className="w-full rounded-lg px-2 py-1.5 text-left text-zinc-100 transition hover:bg-zinc-800 hover:text-white">
-                                                                                                      Delete
-                                                                                                    </button>
-                                                                                                  </div>
-                                                                                                )}
-                                                                                              </>
-                                                                                            )}
-                                                                                          </div>
-                                                                                </div>
-                                                                              </div>
-                                                                            </div>
-                                                                          )
-                                                                        })}
-                                                                        <div ref={messagesEndRef} />
-                                                                      </div>
-                                                                    )
-                                                                  })()}
-                                                                </div>
-
-                                                                <div className="border-t border-zinc-800/70 bg-zinc-950/70 p-4 shrink-0 mt-0">
-                                                                  <form onSubmit={sendChatMessage} className="flex items-end gap-2">
-                                                                    <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileSelect} />
-                                                                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 rounded-full hover:bg-zinc-800">
-                                                                      <Image className="h-5 w-5 text-zinc-300" />
-                                                                    </button>
-                                                                    <textarea
-                                                                      rows={2}
-                                                                      value={chatInput}
-                                                                      onChange={(e) => setChatInput(e.target.value)}
-                                                                      onKeyPress={(e) => {
-                                                                        if (e.key === "Enter" && !e.shiftKey) {
-                                                                          e.preventDefault()
-                                                                          sendChatMessage(e as any)
-                                                                        }
-                                                                      }}
-                                                                      className={`flex-1 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none ${theme.inputBg}`}
-                                                                      placeholder="Type a message..."
-                                                                    />
-                                                                    <Button type="submit" size="sm" className="h-10 w-10 rounded-full bg-[#E2AC28] p-0 text-black hover:bg-[#d4a428]">
-                                                                      <SendHorizontal className="h-4 w-4" />
-                                                                    </Button>
-                                                                  </form>
-                                                                </div>
-                                                              </div>
-                                                            </div>
+                                                            <SupportMessenger profile={profile} initialTickets={messagesList as SupportTicket[]} isStaff={false} />
                                                           )}
                                                           {active === "support" && (
                                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

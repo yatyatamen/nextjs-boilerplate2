@@ -1,0 +1,306 @@
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
+import { Button, Card, Textarea, Badge } from "@/components/ui/primitives"
+import type { Profile, SupportTicket } from "@/lib/types"
+import { Loader2, MessageCircleMore, SendHorizontal, Trash2 } from "lucide-react"
+
+type SupportReply = {
+  id: string
+  ticket_id: string
+  sender_id: string
+  message: string
+  created_at: string
+}
+
+type SupportMessengerProps = {
+  profile: Profile
+  initialTickets?: SupportTicket[]
+  isStaff?: boolean
+}
+
+function formatTime(value?: string | null) {
+  if (!value) return "just now"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "just now"
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
+export function SupportMessenger({ profile, initialTickets = [], isStaff = false }: SupportMessengerProps) {
+  const [tickets, setTickets] = useState<SupportTicket[]>(initialTickets)
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(initialTickets[0]?.id ?? null)
+  const [draft, setDraft] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [replies, setReplies] = useState<Record<string, SupportReply[]>>({})
+  const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const [busyReplyId, setBusyReplyId] = useState<string | null>(null)
+
+  const selectedTicket = useMemo(
+    () => tickets.find((ticket) => String(ticket.id) === String(selectedTicketId)) ?? null,
+    [selectedTicketId, tickets],
+  )
+
+  async function loadTickets() {
+    setLoading(true)
+    try {
+      const res = await fetch("/api/support", { credentials: "same-origin" })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error || "Unable to load messages")
+      const data = Array.isArray(json?.data) ? json.data : []
+      setTickets(data)
+      if (!selectedTicketId && data[0]) {
+        setSelectedTicketId(String(data[0].id))
+      }
+    } catch (error) {
+      setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to load messages" })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function loadReplies(ticketId: string) {
+    if (!ticketId) return
+    try {
+      const res = await fetch(`/api/support/reply?ticketId=${encodeURIComponent(ticketId)}`, { credentials: "same-origin" })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error || "Unable to load replies")
+      const data = Array.isArray(json?.data) ? json.data : []
+      setReplies((prev) => ({ ...prev, [ticketId]: data }))
+    } catch (error) {
+      setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to load replies" })
+    }
+  }
+
+  useEffect(() => {
+    void loadTickets()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!selectedTicketId) return
+    if (selectedTicketId.startsWith("local-")) return
+    void loadReplies(selectedTicketId)
+  }, [selectedTicketId])
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault()
+    const trimmed = draft.trim()
+    if (!trimmed) return
+
+    setLoading(true)
+    try {
+      let res: Response
+      let json: any
+
+      if (isStaff && selectedTicket) {
+        res = await fetch("/api/support/reply", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ticketId: selectedTicket.id, message: trimmed }),
+        })
+        json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(json?.error || "Unable to send reply")
+        const newReply = {
+          id: json?.data?.id || `reply-${Date.now()}`,
+          ticket_id: selectedTicket.id,
+          sender_id: profile.id,
+          message: trimmed,
+          created_at: new Date().toISOString(),
+        }
+        setReplies((prev) => ({ ...prev, [selectedTicket.id]: [...(prev[selectedTicket.id] || []), newReply] }))
+        setStatus({ type: "success", message: "Reply sent" })
+      } else {
+        res = await fetch("/api/support", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subject: "Support request", message: trimmed }),
+        })
+        json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(json?.error || "Unable to send message")
+        const created = Array.isArray(json?.data) ? json.data[0] : json?.data
+        if (created) {
+          setTickets((prev) => [created, ...prev])
+          setSelectedTicketId(String(created.id))
+          setStatus({ type: "success", message: "Message sent" })
+        }
+      }
+      setDraft("")
+    } catch (error) {
+      setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to send message" })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleDeleteReply(replyId: string) {
+    if (!selectedTicketId) return
+    setBusyReplyId(replyId)
+    try {
+      const res = await fetch("/api/support/delete", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: replyId, type: "reply" }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error || "Unable to delete reply")
+      setReplies((prev) => ({ ...prev, [selectedTicketId]: (prev[selectedTicketId] || []).filter((entry) => entry.id !== replyId) }))
+      setStatus({ type: "success", message: "Reply deleted" })
+    } catch (error) {
+      setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to delete reply" })
+    } finally {
+      setBusyReplyId(null)
+    }
+  }
+
+  async function handleDeleteTicket(ticketId: string) {
+    setBusyReplyId(ticketId)
+    try {
+      const res = await fetch("/api/support/delete", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: ticketId, type: "ticket" }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error || "Unable to delete message")
+      setTickets((prev) => prev.filter((entry) => String(entry.id) !== String(ticketId)))
+      setReplies((prev) => {
+        const next = { ...prev }
+        delete next[ticketId]
+        return next
+      })
+      if (selectedTicketId === ticketId) {
+        const nextTicket = tickets.find((entry) => String(entry.id) !== String(ticketId))
+        setSelectedTicketId(nextTicket ? String(nextTicket.id) : null)
+      }
+      setStatus({ type: "success", message: "Message deleted" })
+    } catch (error) {
+      setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to delete message" })
+    } finally {
+      setBusyReplyId(null)
+    }
+  }
+
+  return (
+    <div className="grid h-full min-h-[520px] grid-cols-1 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+      <Card className="flex h-full flex-col overflow-hidden border-zinc-800 bg-zinc-950/80 p-0">
+        <div className="border-b border-zinc-800 p-4">
+          <div className="flex items-center gap-2">
+            <MessageCircleMore className="h-4 w-4 text-[#E2AC28]" />
+            <h3 className="text-sm font-semibold text-white">{isStaff ? "Support inbox" : "Your messages"}</h3>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">Messages are stored in the club support system and can be deleted anytime.</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3">
+          {tickets.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-zinc-800 p-4 text-sm text-zinc-400">
+              No messages yet. Start a new conversation below.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {tickets.map((ticket) => {
+                const isActive = String(ticket.id) === String(selectedTicketId)
+                return (
+                  <button
+                    key={ticket.id}
+                    type="button"
+                    onClick={() => setSelectedTicketId(String(ticket.id))}
+                    className={`w-full rounded-xl border p-3 text-left transition ${isActive ? "border-[#E2AC28] bg-zinc-900" : "border-zinc-800 bg-zinc-950/70 hover:bg-zinc-900"}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{ticket.subject || "Support request"}</p>
+                        <p className="mt-1 text-xs text-zinc-500">{ticket.message}</p>
+                      </div>
+                      <Badge variant={ticket.status === "resolved" ? "accent" : "default"}>{ticket.status || "open"}</Badge>
+                    </div>
+                    <p className="mt-2 text-[11px] text-zinc-500">{formatTime(ticket.created_at)}</p>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card className="flex h-full flex-col overflow-hidden border-zinc-800 bg-zinc-950/80 p-0">
+        {selectedTicket ? (
+          <>
+            <div className="flex items-center justify-between border-b border-zinc-800 p-4">
+              <div>
+                <h3 className="text-sm font-semibold text-white">{selectedTicket.subject || "Support request"}</h3>
+                <p className="text-xs text-zinc-500">{selectedTicket.user_email || profile.email}</p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-zinc-400 hover:text-red-400"
+                onClick={() => handleDeleteTicket(selectedTicket.id)}
+                disabled={busyReplyId === selectedTicket.id}
+              >
+                {busyReplyId === selectedTicket.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(226,172,40,0.08),_transparent_50%)] p-4">
+              <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3">
+                <p className="text-[11px] uppercase tracking-[0.25em] text-[#E2AC28]">{isStaff ? "Staff note" : "Your message"}</p>
+                <p className="mt-2 whitespace-pre-line text-sm text-zinc-100">{selectedTicket.message}</p>
+                <p className="mt-2 text-[10px] text-zinc-500">{formatTime(selectedTicket.created_at)}</p>
+              </div>
+
+              {(replies[selectedTicket.id] || []).map((reply) => (
+                <div key={reply.id} className="mb-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] uppercase tracking-[0.25em] text-zinc-400">{reply.sender_id === profile.id ? "You" : "Club staff"}</p>
+                    {isStaff && (
+                      <button type="button" onClick={() => handleDeleteReply(reply.id)} className="text-zinc-400 hover:text-red-400">
+                        {busyReplyId === reply.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-2 whitespace-pre-line text-sm text-zinc-100">{reply.message}</p>
+                  <p className="mt-2 text-[10px] text-zinc-500">{formatTime(reply.created_at)}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t border-zinc-800 bg-zinc-950/80 p-4">
+              {status && (
+                <p className={`mb-3 text-sm ${status.type === "success" ? "text-emerald-400" : "text-red-400"}`}>{status.message}</p>
+              )}
+              <form onSubmit={handleSend} className="flex flex-col gap-2">
+                <Textarea
+                  rows={3}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  placeholder={isStaff ? "Write a reply to the member" : "Write a new support message"}
+                  className="border-zinc-800 bg-zinc-900"
+                />
+                <div className="flex items-center justify-end">
+                  <Button type="submit" size="sm" className="bg-[#E2AC28] text-black" disabled={loading}>
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </>
+        ) : (
+          <div className="flex h-full items-center justify-center p-6 text-center text-sm text-zinc-400">
+            Select a message to view it.
+          </div>
+        )}
+      </Card>
+    </div>
+  )
+}
