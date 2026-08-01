@@ -28,6 +28,9 @@ export async function POST(request: Request) {
           deleteReply(id)
           return NextResponse.json({ data: { deleted: true, table: "support_replies" } })
         }
+
+        console.error("Reply delete error:", replyErr)
+        return NextResponse.json({ error: "Unable to delete reply from support system" }, { status: 500 })
       }
 
       if (type === "ticket") {
@@ -38,18 +41,13 @@ export async function POST(request: Request) {
           deleteTicket(id)
           return NextResponse.json({ data: { deleted: true, table: "support_tickets" } })
         }
+
         console.error("Ticket delete error:", replyErr || ticketErr)
+        return NextResponse.json({ error: "Unable to delete message from support system" }, { status: 500 })
       }
     }
 
-    if (type === "reply") {
-      deleteReply(id)
-      return NextResponse.json({ data: { deleted: true, table: "support_replies", fallback: true } })
-    }
-
-    deleteRepliesForTicket(id)
-    deleteTicket(id)
-    return NextResponse.json({ data: { deleted: true, table: "support_tickets", fallback: true } })
+    return NextResponse.json({ error: "Support system delete is unavailable" }, { status: 500 })
   } catch (err) {
     console.error("/api/support/delete error:", err)
     return NextResponse.json({ error: String(err) }, { status: 500 })

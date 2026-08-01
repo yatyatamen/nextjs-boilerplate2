@@ -401,23 +401,6 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                 <h3 className="text-sm font-semibold text-white">{selectedTicket.subject || "Support request"}</h3>
                 <p className="text-xs text-zinc-500">{selectedTicket.user_email || profile.email}</p>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="text-zinc-400 hover:text-red-400"
-                onClick={() => handleDeleteTicket(selectedTicket.id)}
-                disabled={busyReplyId === selectedTicket.id}
-              >
-                {busyReplyId === selectedTicket.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <Trash2 className="h-4 w-4" />
-                    <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide">Delete</span>
-                  </>
-                )}
-              </Button>
             </div>
 
             <div ref={messagesContainerRef} className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(226,172,40,0.08),_transparent_50%)] p-4 space-y-3">

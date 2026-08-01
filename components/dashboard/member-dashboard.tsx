@@ -826,9 +826,8 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
 
                                                     if (!targetMessage) return
 
-                                                    setMessagesList((prev) => prev.filter((message) => String(message.id) !== normalizedId))
-
                                                     if (normalizedId.startsWith("local-")) {
+                                                      setMessagesList((prev) => prev.filter((message) => String(message.id) !== normalizedId))
                                                       return
                                                     }
 
@@ -841,7 +840,10 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
 
                                                       if (!response.ok) {
                                                         console.warn("Delete endpoint returned an error", await response.text())
+                                                        return
                                                       }
+
+                                                      setMessagesList((prev) => prev.filter((message) => String(message.id) !== normalizedId))
                                                     } catch (err) {
                                                       console.error("Delete failed:", err)
                                                     }
