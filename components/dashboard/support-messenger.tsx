@@ -17,6 +17,7 @@ type SupportMessengerProps = {
   profile: Profile
   initialTickets?: SupportTicket[]
   isStaff?: boolean
+  onTicketsChange?: (tickets: SupportTicket[]) => void
 }
 
 function formatTime(value?: string | null) {
@@ -31,7 +32,7 @@ function formatTime(value?: string | null) {
   })
 }
 
-export function SupportMessenger({ profile, initialTickets = [], isStaff = false }: SupportMessengerProps) {
+export function SupportMessenger({ profile, initialTickets = [], isStaff = false, onTicketsChange }: SupportMessengerProps) {
   const [tickets, setTickets] = useState<SupportTicket[]>(initialTickets)
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(initialTickets[0]?.id ?? null)
   const [draft, setDraft] = useState("")
@@ -170,6 +171,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
       if (!res.ok) throw new Error(json?.error || "Unable to load messages")
       const data = Array.isArray(json?.data) ? json.data : []
       setTickets(data)
+      onTicketsChange?.(data)
       if (!selectedTicketId && data[0]) {
         setSelectedTicketId(String(data[0].id))
       }
@@ -197,6 +199,15 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     void loadTickets()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    setTickets(initialTickets)
+
+    if (!initialTickets.some((ticket) => String(ticket.id) === String(selectedTicketId))) {
+      const fallbackTicket = initialTickets[0]
+      setSelectedTicketId(fallbackTicket ? String(fallbackTicket.id) : null)
+    }
+  }, [initialTickets, selectedTicketId])
 
   useEffect(() => {
     // Scroll to bottom whenever conversation messages change
@@ -265,7 +276,11 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
         if (!res.ok) throw new Error(json?.error || "Unable to send message")
         const created = Array.isArray(json?.data) ? json.data[0] : json?.data
         if (created) {
-          setTickets((prev) => [created, ...prev])
+          setTickets((prev) => {
+            const next = [created, ...prev]
+            onTicketsChange?.(next)
+            return next
+          })
           setSelectedTicketId(String(created.id))
           setStatus({ type: "success", message: "Message sent" })
         }
@@ -316,6 +331,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           const nextTicket = nextTickets[0]
           setSelectedTicketId(nextTicket ? String(nextTicket.id) : null)
         }
+        onTicketsChange?.(nextTickets)
         return nextTickets
       })
       setReplies((prev) => {
@@ -393,7 +409,14 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                 onClick={() => handleDeleteTicket(selectedTicket.id)}
                 disabled={busyReplyId === selectedTicket.id}
               >
-                {busyReplyId === selectedTicket.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {busyReplyId === selectedTicket.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide">Delete</span>
+                  </>
+                )}
               </Button>
             </div>
 

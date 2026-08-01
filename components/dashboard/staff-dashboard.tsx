@@ -1426,7 +1426,12 @@ export function StaffDashboard({
       )}
 
       {active === "messages" && (
-        <SupportMessenger profile={profile} initialTickets={messages as SupportTicket[]} isStaff />
+        <SupportMessenger
+          profile={profile}
+          initialTickets={messages as SupportTicket[]}
+          isStaff
+          onTicketsChange={(nextTickets) => setMessages(nextTickets)}
+        />
       )}
 
       <ConfirmationDialog

@@ -836,7 +836,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                       const response = await fetch("/api/support/delete", {
                                                         method: "POST",
                                                         headers: { "Content-Type": "application/json" },
-                                                        body: JSON.stringify({ id: normalizedId }),
+                                                        body: JSON.stringify({ id: normalizedId, type: "ticket" }),
                                                       })
 
                                                       if (!response.ok) {
@@ -2050,7 +2050,12 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
 
                                                           {/* CONTACT & SUPPORT HUB */}
                                                           {active === "messages" && (
-                                                            <SupportMessenger profile={profile} initialTickets={messagesList as SupportTicket[]} isStaff={false} />
+                                                            <SupportMessenger
+                                                              profile={profile}
+                                                              initialTickets={messagesList as SupportTicket[]}
+                                                              isStaff={false}
+                                                              onTicketsChange={(nextTickets) => setMessagesList(nextTickets.map((ticket) => ({ ...ticket, convoId: ticket.id || ticket.subject || "_general_" })))}
+                                                            />
                                                           )}
                                                           {active === "support" && (
                                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
