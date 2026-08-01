@@ -40,10 +40,40 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [busyReplyId, setBusyReplyId] = useState<string | null>(null)
 
-  const selectedTicket = useMemo(
-    () => tickets.find((ticket) => String(ticket.id) === String(selectedTicketId)) ?? null,
-    [selectedTicketId, tickets],
-  )
+  const groupedThreads = useMemo(() => {
+    const groups = new Map<string, { key: string; subject: string; tickets: SupportTicket[]; latestTicket: SupportTicket }>()
+
+    for (const ticket of tickets) {
+      const subject = (ticket.subject || "Support request").trim() || "Support request"
+      const key = `${String(ticket.user_id || profile.id)}::${subject.toLowerCase()}`
+      const existing = groups.get(key)
+
+      if (existing) {
+        existing.tickets.push(ticket)
+        const currentTime = new Date(ticket.created_at).getTime()
+        const latestTime = new Date(existing.latestTicket.created_at).getTime()
+        if (Number.isFinite(currentTime) && (!Number.isFinite(latestTime) || currentTime > latestTime)) {
+          existing.latestTicket = ticket
+        }
+      } else {
+        groups.set(key, { key, subject, tickets: [ticket], latestTicket: ticket })
+      }
+    }
+
+    return Array.from(groups.values()).sort((left, right) => {
+      const leftTime = new Date(left.latestTicket.created_at).getTime()
+      const rightTime = new Date(right.latestTicket.created_at).getTime()
+      return rightTime - leftTime
+    })
+  }, [profile.id, tickets])
+
+  const selectedTicket = useMemo(() => {
+    const directMatch = tickets.find((ticket) => String(ticket.id) === String(selectedTicketId)) ?? null
+    if (directMatch) return directMatch
+
+    const groupedMatch = groupedThreads.find((thread) => String(thread.latestTicket.id) === String(selectedTicketId))
+    return groupedMatch?.latestTicket ?? null
+  }, [groupedThreads, selectedTicketId, tickets])
 
   async function loadTickets() {
     setLoading(true)
@@ -120,7 +150,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subject: "Support request", message: trimmed }),
+          body: JSON.stringify({ subject: selectedTicket?.subject || "Support request", message: trimmed }),
         })
         json = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(json?.error || "Unable to send message")
@@ -204,29 +234,32 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
         </div>
 
         <div className="flex-1 overflow-y-auto p-3">
-          {tickets.length === 0 ? (
+          {groupedThreads.length === 0 ? (
             <div className="rounded-xl border border-dashed border-zinc-800 p-4 text-sm text-zinc-400">
               No messages yet. Start a new conversation below.
             </div>
           ) : (
             <div className="space-y-2">
-              {tickets.map((ticket) => {
-                const isActive = String(ticket.id) === String(selectedTicketId)
+              {groupedThreads.map((thread) => {
+                const isActive = String(thread.latestTicket.id) === String(selectedTicketId)
                 return (
                   <button
-                    key={ticket.id}
+                    key={thread.key}
                     type="button"
-                    onClick={() => setSelectedTicketId(String(ticket.id))}
+                    onClick={() => setSelectedTicketId(String(thread.latestTicket.id))}
                     className={`w-full rounded-xl border p-3 text-left transition ${isActive ? "border-[#E2AC28] bg-zinc-900" : "border-zinc-800 bg-zinc-950/70 hover:bg-zinc-900"}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="text-sm font-semibold text-white">{ticket.subject || "Support request"}</p>
-                        <p className="mt-1 text-xs text-zinc-500">{ticket.message}</p>
+                        <p className="text-sm font-semibold text-white">{thread.subject || "Support request"}</p>
+                        <p className="mt-1 text-xs text-zinc-500">{thread.latestTicket.message}</p>
                       </div>
-                      <Badge variant={ticket.status === "resolved" ? "accent" : "default"}>{ticket.status || "open"}</Badge>
+                      <Badge variant={thread.latestTicket.status === "resolved" ? "accent" : "default"}>{thread.latestTicket.status || "open"}</Badge>
                     </div>
-                    <p className="mt-2 text-[11px] text-zinc-500">{formatTime(ticket.created_at)}</p>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <p className="text-[11px] text-zinc-500">{thread.tickets.length > 1 ? `${thread.tickets.length} messages in this chat` : "Single message"}</p>
+                      <p className="text-[11px] text-zinc-500">{formatTime(thread.latestTicket.created_at)}</p>
+                    </div>
                   </button>
                 )
               })}
@@ -261,6 +294,15 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                 <p className="mt-2 whitespace-pre-line text-sm text-zinc-100">{selectedTicket.message}</p>
                 <p className="mt-2 text-[10px] text-zinc-500">{formatTime(selectedTicket.created_at)}</p>
               </div>
+
+              {groupedThreads.find((thread) => String(thread.latestTicket.id) === String(selectedTicket.id))?.tickets.length ? (
+                <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 text-xs text-zinc-400">
+                  <p className="font-semibold text-zinc-200">
+                    {groupedThreads.find((thread) => String(thread.latestTicket.id) === String(selectedTicket.id))?.tickets.length} messages in this conversation
+                  </p>
+                  <p className="mt-1">Recent updates are grouped under the same chat entry.</p>
+                </div>
+              ) : null}
 
               {(replies[selectedTicket.id] || []).map((reply) => (
                 <div key={reply.id} className="mb-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3">
