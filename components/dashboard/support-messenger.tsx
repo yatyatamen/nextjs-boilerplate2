@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button, Card, Textarea, Badge } from "@/components/ui/primitives"
 import type { Profile, SupportTicket } from "@/lib/types"
-import { Loader2, MessageCircleMore, SendHorizontal, Trash2 } from "lucide-react"
+import { Loader2, MessageCircleMore, SendHorizontal, Trash2, MoreVertical } from "lucide-react"
 
 type SupportReply = {
   id: string
@@ -39,6 +39,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   const [replies, setReplies] = useState<Record<string, SupportReply[]>>({})
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [busyReplyId, setBusyReplyId] = useState<string | null>(null)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   const groupedThreads = useMemo(() => {
@@ -406,8 +407,8 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                   {conversationMessages.map((entry) => {
                     const isOutgoing = entry.kind === "ticket" ? !isStaff : entry.senderId === profile.id
                     return (
-                      <div key={entry.id} className={`flex ${isOutgoing ? "justify-end" : "justify-start"} gap-2`}>
-                        <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${isOutgoing ? "rounded-br-none border border-[#E2AC28]/40 bg-[#E2AC28] text-zinc-900" : "rounded-bl-none border border-zinc-700 bg-zinc-900 text-zinc-100"}`}>
+                      <div key={entry.id} className={`flex ${isOutgoing ? "justify-end" : "justify-start"} gap-2 group`}>
+                        <div className={`max-w-[75%] rounded-2xl px-4 py-2 relative ${isOutgoing ? "rounded-br-none border border-[#E2AC28]/40 bg-[#E2AC28] text-zinc-900" : "rounded-bl-none border border-zinc-700 bg-zinc-900 text-zinc-100"}`}>
                           <p className={`mb-1 text-[10px] font-bold uppercase tracking-wider ${isOutgoing ? "text-zinc-800/70" : "text-zinc-400"}`}>
                             {isOutgoing ? "You" : isStaff ? "Member" : "Staff"}
                           </p>
@@ -419,6 +420,36 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                             </button>
                           )}
                         </div>
+                        {isOutgoing && (
+                          <div className="relative flex items-start">
+                            <button
+                              type="button"
+                              onClick={() => setOpenMenuId(openMenuId === entry.id ? null : entry.id)}
+                              className="rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                            {openMenuId === entry.id && (
+                              <div className="absolute right-0 top-6 bg-zinc-900 border border-zinc-700 rounded-lg shadow-lg z-10">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (entry.kind === "ticket") {
+                                      handleDeleteTicket(entry.id.replace("ticket-", ""))
+                                    } else {
+                                      handleDeleteReply(entry.id)
+                                    }
+                                    setOpenMenuId(null)
+                                  }}
+                                  className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-400/10 first:rounded-t-md last:rounded-b-md flex items-center gap-2"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  Delete
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -430,19 +461,17 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
               {status && (
                 <p className={`mb-3 text-sm ${status.type === "success" ? "text-emerald-400" : "text-red-400"}`}>{status.message}</p>
               )}
-              <form onSubmit={handleSend} className="flex flex-col gap-2">
+              <form onSubmit={handleSend} className="flex gap-2 items-end">
                 <Textarea
                   rows={3}
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   placeholder={isStaff ? "Write a reply to the member" : "Write a new support message"}
-                  className="border-zinc-800 bg-zinc-900"
+                  className="flex-1 border-zinc-800 bg-zinc-900"
                 />
-                <div className="flex items-center justify-end">
-                  <Button type="submit" size="sm" className="bg-[#E2AC28] text-black" disabled={loading}>
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
-                  </Button>
-                </div>
+                <Button type="submit" size="sm" className="bg-[#E2AC28] text-black" disabled={loading}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
+                </Button>
               </form>
             </div>
           </>
