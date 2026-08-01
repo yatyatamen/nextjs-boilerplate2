@@ -90,8 +90,13 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
       createdAt: string
     }> = []
 
-    if (threadGroup) {
-      for (const ticket of threadGroup.tickets) {
+    if (threadGroup && threadGroup.tickets.length > 0) {
+      // Sort tickets by created_at chronologically
+      const sortedTickets = [...threadGroup.tickets].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      )
+
+      for (const ticket of sortedTickets) {
         items.push({
           id: `ticket-${ticket.id}`,
           kind: "ticket",
@@ -111,7 +116,8 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           })
         }
       }
-    } else if (selectedTicket) {
+    } else {
+      // Fallback for single ticket
       items.push({
         id: `ticket-${selectedTicket.id}`,
         kind: "ticket",
