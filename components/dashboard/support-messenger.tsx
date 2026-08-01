@@ -40,7 +40,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   const [replies, setReplies] = useState<Record<string, SupportReply[]>>({})
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [busyReplyId, setBusyReplyId] = useState<string | null>(null)
-  // removed open menu state since delete/menu UI was removed
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   const groupedThreads = useMemo(() => {
@@ -420,9 +420,37 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                           </p>
                           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{entry.message}</p>
                           <p className={`mt-1 text-[10px] ${isOutgoing ? "text-zinc-800/60" : "text-zinc-500"}`}>{formatTime(entry.createdAt)}</p>
-                          {/* delete button removed */}
                         </div>
-                        {/* outgoing menu removed */}
+                        {(isStaff || isOutgoing) && (
+                          <div className="relative flex items-start">
+                            <button
+                              type="button"
+                              onClick={() => setOpenMenuId(openMenuId === entry.id ? null : entry.id)}
+                              className="rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                            {openMenuId === entry.id && (
+                              <div className="absolute right-0 top-6 bg-zinc-900 border border-zinc-700 rounded-lg shadow-lg z-10">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (entry.kind === "ticket") {
+                                      handleDeleteTicket(entry.id.replace("ticket-", ""))
+                                    } else {
+                                      handleDeleteReply(entry.id)
+                                    }
+                                    setOpenMenuId(null)
+                                  }}
+                                  className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-400/10 first:rounded-t-md last:rounded-b-md flex items-center gap-2"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  Delete
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
