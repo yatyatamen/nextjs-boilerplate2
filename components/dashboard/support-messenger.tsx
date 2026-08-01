@@ -331,7 +331,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   }
 
   return (
-    <div className="grid h-full min-h-[520px] grid-cols-1 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+    <div className="grid h-screen max-h-screen grid-cols-1 gap-4 overflow-hidden xl:grid-cols-[300px_minmax(0,1fr)]">
       <Card className="flex h-full flex-col overflow-hidden border-zinc-800 bg-zinc-950/80 p-0">
         <div className="border-b border-zinc-800 p-4">
           <div className="flex items-center gap-2">
