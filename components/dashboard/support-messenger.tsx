@@ -75,6 +75,29 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     return groupedMatch?.latestTicket ?? null
   }, [groupedThreads, selectedTicketId, tickets])
 
+  const conversationMessages = useMemo(() => {
+    if (!selectedTicket) return []
+
+    const items = [
+      {
+        id: `ticket-${selectedTicket.id}`,
+        kind: "ticket" as const,
+        senderId: selectedTicket.user_id || "",
+        message: selectedTicket.message,
+        createdAt: selectedTicket.created_at,
+      },
+      ...((replies[selectedTicket.id] || []).map((reply) => ({
+        id: reply.id,
+        kind: "reply" as const,
+        senderId: reply.sender_id,
+        message: reply.message,
+        createdAt: reply.created_at,
+      }))),
+    ]
+
+    return items.sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
+  }, [replies, selectedTicket])
+
   async function loadTickets() {
     setLoading(true)
     try {
@@ -289,35 +312,29 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
             </div>
 
             <div className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(226,172,40,0.08),_transparent_50%)] p-4">
-              <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3">
-                <p className="text-[11px] uppercase tracking-[0.25em] text-[#E2AC28]">{isStaff ? "Staff note" : "Your message"}</p>
-                <p className="mt-2 whitespace-pre-line text-sm text-zinc-100">{selectedTicket.message}</p>
-                <p className="mt-2 text-[10px] text-zinc-500">{formatTime(selectedTicket.created_at)}</p>
+              <div className="mx-auto flex max-w-3xl flex-col gap-3">
+                {conversationMessages.map((entry) => {
+                  const isOutgoing = entry.kind === "ticket" ? !isStaff : entry.senderId === profile.id
+                  return (
+                    <div key={entry.id} className={`flex ${isOutgoing ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[80%] rounded-2xl border px-3 py-2 shadow-sm ${isOutgoing ? "border-[#E2AC28]/50 bg-[#E2AC28] text-zinc-950" : "border-zinc-800 bg-zinc-900/95 text-zinc-100"}`}>
+                        <div className="mb-1 flex items-center justify-between gap-3">
+                          <p className={`text-[10px] font-semibold uppercase tracking-[0.2em] ${isOutgoing ? "text-zinc-700/70" : "text-zinc-400"}`}>
+                            {isOutgoing ? "You" : isStaff ? "Member" : "Club staff"}
+                          </p>
+                          {entry.kind === "reply" && isStaff && (
+                            <button type="button" onClick={() => handleDeleteReply(entry.id)} className="text-zinc-400 hover:text-red-400">
+                              {busyReplyId === entry.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                            </button>
+                          )}
+                        </div>
+                        <p className="whitespace-pre-line text-sm">{entry.message}</p>
+                        <p className={`mt-2 text-[10px] ${isOutgoing ? "text-zinc-700/70" : "text-zinc-500"}`}>{formatTime(entry.createdAt)}</p>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-
-              {groupedThreads.find((thread) => String(thread.latestTicket.id) === String(selectedTicket.id))?.tickets.length ? (
-                <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 text-xs text-zinc-400">
-                  <p className="font-semibold text-zinc-200">
-                    {groupedThreads.find((thread) => String(thread.latestTicket.id) === String(selectedTicket.id))?.tickets.length} messages in this conversation
-                  </p>
-                  <p className="mt-1">Recent updates are grouped under the same chat entry.</p>
-                </div>
-              ) : null}
-
-              {(replies[selectedTicket.id] || []).map((reply) => (
-                <div key={reply.id} className="mb-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] uppercase tracking-[0.25em] text-zinc-400">{reply.sender_id === profile.id ? "You" : "Club staff"}</p>
-                    {isStaff && (
-                      <button type="button" onClick={() => handleDeleteReply(reply.id)} className="text-zinc-400 hover:text-red-400">
-                        {busyReplyId === reply.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                      </button>
-                    )}
-                  </div>
-                  <p className="mt-2 whitespace-pre-line text-sm text-zinc-100">{reply.message}</p>
-                  <p className="mt-2 text-[10px] text-zinc-500">{formatTime(reply.created_at)}</p>
-                </div>
-              ))}
             </div>
 
             <div className="border-t border-zinc-800 bg-zinc-950/80 p-4">
