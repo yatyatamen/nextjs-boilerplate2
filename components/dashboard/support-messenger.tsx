@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button, Card, Textarea, Badge } from "@/components/ui/primitives"
 import type { Profile, SupportTicket } from "@/lib/types"
 import { Loader2, MessageCircleMore, SendHorizontal, Trash2 } from "lucide-react"
@@ -39,6 +39,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   const [replies, setReplies] = useState<Record<string, SupportReply[]>>({})
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [busyReplyId, setBusyReplyId] = useState<string | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const groupedThreads = useMemo(() => {
     const groups = new Map<string, { key: string; subject: string; tickets: SupportTicket[]; latestTicket: SupportTicket }>()
@@ -195,6 +196,13 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     void loadTickets()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    // Scroll to bottom whenever conversation messages change
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [conversationMessages])
 
   useEffect(() => {
     if (!selectedTicketId) return
@@ -392,25 +400,28 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                   <p className="text-sm text-zinc-500">No messages yet. Start the conversation below.</p>
                 </div>
               ) : (
-                conversationMessages.map((entry) => {
-                  const isOutgoing = entry.kind === "ticket" ? !isStaff : entry.senderId === profile.id
-                  return (
-                    <div key={entry.id} className={`flex ${isOutgoing ? "justify-end" : "justify-start"} gap-2`}>
-                      <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${isOutgoing ? "rounded-br-none border border-[#E2AC28]/40 bg-[#E2AC28] text-zinc-900" : "rounded-bl-none border border-zinc-700 bg-zinc-900 text-zinc-100"}`}>
-                        <p className={`mb-1 text-[10px] font-bold uppercase tracking-wider ${isOutgoing ? "text-zinc-800/70" : "text-zinc-400"}`}>
-                          {isOutgoing ? "You" : isStaff ? "Member" : "Staff"}
-                        </p>
-                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{entry.message}</p>
-                        <p className={`mt-1 text-[10px] ${isOutgoing ? "text-zinc-800/60" : "text-zinc-500"}`}>{formatTime(entry.createdAt)}</p>
-                        {entry.kind === "reply" && isStaff && (
-                          <button type="button" onClick={() => handleDeleteReply(entry.id)} className={`mt-1 text-[10px] font-semibold ${isOutgoing ? "text-zinc-800/50 hover:text-zinc-800" : "text-zinc-500 hover:text-red-400"}`}>
-                            {busyReplyId === entry.id ? "Deleting..." : "Delete"}
-                          </button>
-                        )}
+                <>
+                  {conversationMessages.map((entry) => {
+                    const isOutgoing = entry.kind === "ticket" ? !isStaff : entry.senderId === profile.id
+                    return (
+                      <div key={entry.id} className={`flex ${isOutgoing ? "justify-end" : "justify-start"} gap-2`}>
+                        <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${isOutgoing ? "rounded-br-none border border-[#E2AC28]/40 bg-[#E2AC28] text-zinc-900" : "rounded-bl-none border border-zinc-700 bg-zinc-900 text-zinc-100"}`}>
+                          <p className={`mb-1 text-[10px] font-bold uppercase tracking-wider ${isOutgoing ? "text-zinc-800/70" : "text-zinc-400"}`}>
+                            {isOutgoing ? "You" : isStaff ? "Member" : "Staff"}
+                          </p>
+                          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{entry.message}</p>
+                          <p className={`mt-1 text-[10px] ${isOutgoing ? "text-zinc-800/60" : "text-zinc-500"}`}>{formatTime(entry.createdAt)}</p>
+                          {entry.kind === "reply" && isStaff && (
+                            <button type="button" onClick={() => handleDeleteReply(entry.id)} className={`mt-1 text-[10px] font-semibold ${isOutgoing ? "text-zinc-800/50 hover:text-zinc-800" : "text-zinc-500 hover:text-red-400"}`}>
+                              {busyReplyId === entry.id ? "Deleting..." : "Delete"}
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )
-                })
+                    )
+                  })}
+                  <div ref={messagesEndRef} />
+                </>
               )}
             </div>
 
