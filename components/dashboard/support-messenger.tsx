@@ -185,11 +185,13 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
       (thread) => String(thread.latestTicket.id) === String(selectedTicketId),
     )
 
-    if (threadGroup) {
+    if (threadGroup && threadGroup.tickets.length > 0) {
+      // Load replies for all tickets in the thread group
       for (const ticket of threadGroup.tickets) {
         void loadReplies(String(ticket.id))
       }
-    } else {
+    } else if (selectedTicketId) {
+      // Fallback: load replies for just this ticket
       void loadReplies(selectedTicketId)
     }
   }, [selectedTicketId, groupedThreads])
