@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button, Card, Textarea, Badge } from "@/components/ui/primitives"
 import type { Profile, SupportTicket } from "@/lib/types"
-import { createClient } from "@/lib/supabase/client"
-import { Loader2, MessageCircleMore, SendHorizontal, Trash2, MoreVertical, ImagePlus, X } from "lucide-react"
+import { Loader2, MessageCircleMore, SendHorizontal, Trash2, MoreVertical } from "lucide-react"
 
 type SupportReply = {
   id: string
@@ -36,37 +35,7 @@ function formatTime(value?: string | null) {
 function formatPreviewMessage(value?: string | null) {
   const normalized = (value || "").replace(/\s+/g, " ").trim()
   if (!normalized) return "No messages yet"
-  if (isImageUrl(normalized)) return "Photo"
   return normalized.length > 70 ? `${normalized.slice(0, 67)}...` : normalized
-}
-
-function isImageUrl(value: string) {
-  return /^(https?:\/\/).+\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(value.trim())
-}
-
-function splitMessageContent(message: string) {
-  const lines = message
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  const imageUrl = lines.find((line) => isImageUrl(line)) || null
-  const text = lines.filter((line) => !isImageUrl(line)).join("\n")
-
-  return { imageUrl, text }
-}
-
-function buildMessagePayload(text: string, imageUrl: string | null) {
-  if (!text && !imageUrl) return ""
-  if (!text) return imageUrl || ""
-  if (!imageUrl) return text
-  return `${text}\n\n${imageUrl}`
-}
-
-function getProfileDisplayName(profileLike: { full_name?: string | null; first_name?: string | null; last_name?: string | null } | null | undefined) {
-  if (!profileLike) return "Staff"
-  const fullName = [profileLike.first_name, profileLike.last_name].filter(Boolean).join(" ").trim()
-  return fullName || profileLike.full_name || "Staff"
 }
 
 export function SupportMessenger({ profile, initialTickets = [], isStaff = false, onTicketsChange }: SupportMessengerProps) {
@@ -78,12 +47,19 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
   const [busyReplyId, setBusyReplyId] = useState<string | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
-  const [readAtByThread, setReadAtByThread] = useState<Record<string, string>>({})
-  const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null)
-  const [uploadingImage, setUploadingImage] = useState(false)
-  const [senderProfiles, setSenderProfiles] = useState<Record<string, { id: string; full_name: string | null; first_name: string | null; last_name: string | null; avatar_url: string | null; role: string | null }>>({})
+  const [readThreads, setReadThreads] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {}
+
+    try {
+      const stored = window.localStorage.getItem(`support-messenger-read:${profile.id}:${isStaff ? "staff" : "member"}`)
+      return stored ? JSON.parse(stored) : {}
+    } catch {
+      return {}
+    }
+  })
   const messagesContainerRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const storageKey = `support-messenger-read:${profile.id}:${isStaff ? "staff" : "member"}`
 
   const groupedThreads = useMemo(() => {
     const groups = new Map<string, { key: string; subject: string; tickets: SupportTicket[]; latestTicket: SupportTicket }>()
@@ -108,17 +84,11 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     return Array.from(groups.values())
       .map((thread) => {
         const entries = thread.tickets.flatMap((ticket) => {
-          const ticketEntry = {
-            id: `ticket-${ticket.id}`,
-            createdAt: ticket.created_at,
-            message: ticket.message,
-            senderId: ticket.user_id || "",
-          }
+          const ticketEntry = { id: `ticket-${ticket.id}`, createdAt: ticket.created_at, message: ticket.message }
           const repliesForTicket = (replies[ticket.id] || []).map((reply) => ({
             id: reply.id,
             createdAt: reply.created_at,
             message: reply.message,
-            senderId: reply.sender_id,
           }))
           return [ticketEntry, ...repliesForTicket]
         })
@@ -134,8 +104,6 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           latestMessageText,
           latestMessageTime,
           latestActivityAt,
-          latestMessageSenderId: latestEntry?.senderId || thread.latestTicket.user_id || "",
-          totalMessages: entries.length,
         }
       })
       .sort((left, right) => right.latestActivityAt - left.latestActivityAt)
@@ -148,6 +116,17 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     const groupedMatch = groupedThreads.find((thread) => String(thread.latestTicket.id) === String(selectedTicketId))
     return groupedMatch?.latestTicket ?? null
   }, [groupedThreads, selectedTicketId, tickets])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(storageKey, JSON.stringify(readThreads))
+  }, [readThreads, storageKey])
+
+  useEffect(() => {
+    if (!selectedTicketId) return
+    const ticketId = String(selectedTicketId)
+    setReadThreads((prev) => ({ ...prev, [ticketId]: new Date().toISOString() }))
+  }, [selectedTicketId])
 
   const conversationMessages = useMemo(() => {
     if (!selectedTicket) return []
@@ -174,8 +153,6 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           latestMessageText: formatPreviewMessage(selectedTicket.message),
           latestMessageTime: selectedTicket.created_at,
           latestActivityAt: new Date(selectedTicket.created_at).getTime(),
-          latestMessageSenderId: selectedTicket.user_id || "",
-          totalMessages: matchingTickets.length,
         }
       }
     }
@@ -286,66 +263,6 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   }, [initialTickets, selectedTicketId])
 
   useEffect(() => {
-    if (!selectedTicketId) return
-
-    const selectedThread = groupedThreads.find((thread) => String(thread.latestTicket.id) === String(selectedTicketId))
-    if (!selectedThread) return
-
-    setReadAtByThread((prev) => {
-      if (prev[selectedThread.key]) return prev
-      return { ...prev, [selectedThread.key]: new Date().toISOString() }
-    })
-  }, [groupedThreads, selectedTicketId])
-
-  useEffect(() => {
-    const senderIds = Array.from(new Set(conversationMessages.map((entry) => entry.senderId).filter(Boolean)))
-    const ticketUserIds = Array.from(new Set(tickets.map((ticket) => ticket.user_id).filter(Boolean)))
-    const missingIds = Array.from(new Set([...senderIds, ...ticketUserIds])).filter(
-      (participantId) => participantId !== profile.id && !senderProfiles[participantId],
-    )
-
-    if (missingIds.length === 0) return
-
-    let isMounted = true
-
-    async function loadSenderProfiles() {
-      try {
-        const supabase = createClient()
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("id, full_name, first_name, last_name, avatar_url, role")
-          .in("id", missingIds)
-
-        if (error || !data) return
-
-        if (!isMounted) return
-
-        const nextProfiles = data.reduce<Record<string, { id: string; full_name: string | null; first_name: string | null; last_name: string | null; avatar_url: string | null; role: string | null }>>((acc, entry) => {
-          acc[entry.id] = {
-            id: entry.id,
-            full_name: entry.full_name ?? null,
-            first_name: entry.first_name ?? null,
-            last_name: entry.last_name ?? null,
-            avatar_url: entry.avatar_url ?? null,
-            role: entry.role ?? null,
-          }
-          return acc
-        }, {})
-
-        setSenderProfiles((prev) => ({ ...prev, ...nextProfiles }))
-      } catch {
-        // Ignore profile fetch failures and fall back to the generic label.
-      }
-    }
-
-    void loadSenderProfiles()
-
-    return () => {
-      isMounted = false
-    }
-  }, [conversationMessages, profile.id, senderProfiles, tickets])
-
-  useEffect(() => {
     // Scroll to bottom whenever conversation messages change
     setTimeout(() => {
       if (messagesContainerRef.current) {
@@ -373,44 +290,10 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     }
   }, [selectedTicketId, groupedThreads])
 
-  async function handlePhotoSelect(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    setUploadingImage(true)
-    setStatus(null)
-
-    try {
-      const formData = new FormData()
-      formData.append("file", file)
-
-      const res = await fetch("/api/support/upload", {
-        method: "POST",
-        credentials: "same-origin",
-        body: formData,
-      })
-      const json = await res.json().catch(() => ({}))
-
-      if (!res.ok) throw new Error(json?.error || "Unable to upload photo")
-
-      const publicUrl = json?.data?.publicUrl
-      if (!publicUrl) throw new Error("No photo URL returned")
-
-      setAttachedImageUrl(publicUrl)
-      setStatus({ type: "success", message: "Photo attached" })
-    } catch (error) {
-      setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to upload photo" })
-    } finally {
-      setUploadingImage(false)
-      event.target.value = ""
-    }
-  }
-
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
     const trimmed = draft.trim()
-    const payloadMessage = buildMessagePayload(trimmed, attachedImageUrl)
-    if (!payloadMessage) return
+    if (!trimmed) return
 
     setLoading(true)
     try {
@@ -422,7 +305,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticketId: selectedTicket.id, message: payloadMessage }),
+          body: JSON.stringify({ ticketId: selectedTicket.id, message: trimmed }),
         })
         json = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(json?.error || "Unable to send reply")
@@ -430,7 +313,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           id: json?.data?.id || `reply-${Date.now()}`,
           ticket_id: selectedTicket.id,
           sender_id: profile.id,
-          message: payloadMessage,
+          message: trimmed,
           created_at: new Date().toISOString(),
         }
         setReplies((prev) => ({ ...prev, [selectedTicket.id]: [...(prev[selectedTicket.id] || []), newReply] }))
@@ -440,7 +323,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subject: selectedTicket?.subject || "Support request", message: payloadMessage }),
+          body: JSON.stringify({ subject: selectedTicket?.subject || "Support request", message: trimmed }),
         })
         json = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(json?.error || "Unable to send message")
@@ -456,7 +339,6 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
         }
       }
       setDraft("")
-      setAttachedImageUrl(null)
     } catch (error) {
       setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to send message" })
     } finally {
@@ -519,8 +401,8 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   }
 
   return (
-    <div className="grid min-h-[560px] grid-cols-1 gap-4 overflow-hidden xl:grid-cols-[300px_minmax(0,1fr)]">
-      <Card className="flex min-h-[560px] flex-col overflow-hidden border-zinc-800 bg-zinc-950/80 p-0">
+    <div className="grid h-screen max-h-screen grid-cols-1 gap-4 overflow-hidden xl:grid-cols-[300px_minmax(0,1fr)]">
+      <Card className="flex h-full flex-col overflow-hidden border-zinc-800 bg-zinc-950/80 p-0">
         <div className="border-b border-zinc-800 p-4">
           <div className="flex items-center gap-2">
             <MessageCircleMore className="h-4 w-4 text-[#E2AC28]" />
@@ -538,22 +420,8 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
             <div className="space-y-2">
               {groupedThreads.map((thread) => {
                 const isActive = String(thread.latestTicket.id) === String(selectedTicketId)
-                const lastReadAt = readAtByThread[thread.key]
-                const lastReadTime = lastReadAt ? new Date(lastReadAt).getTime() : Number.NaN
-                const isUnread = !isActive && Boolean(thread.latestActivityAt) && (!Number.isFinite(lastReadTime) || thread.latestActivityAt > lastReadTime)
-                const latestSenderProfile = thread.latestMessageSenderId === profile.id
-                  ? null
-                  : senderProfiles[thread.latestMessageSenderId || ""] || null
-                const latestSenderLabel = thread.latestMessageSenderId === profile.id
-                  ? "You"
-                  : latestSenderProfile?.role === "staff"
-                    ? getProfileDisplayName(latestSenderProfile)
-                    : "Member"
-                const memberProfile = isStaff && thread.latestTicket.user_id ? senderProfiles[thread.latestTicket.user_id] : null
-                const memberLabel = isStaff
-                  ? (memberProfile ? getProfileDisplayName(memberProfile) : thread.latestTicket.user_email || "Member")
-                  : null
-
+                const lastReadAt = readThreads[String(thread.latestTicket.id)]
+                const hasUnread = Boolean(thread.latestMessageTime) && (!lastReadAt || new Date(thread.latestMessageTime).getTime() > new Date(lastReadAt).getTime())
                 return (
                   <button
                     key={thread.key}
@@ -564,23 +432,16 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-white">{thread.subject || "Support request"}</p>
-                          {isUnread ? <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-white" aria-label="Unread message" /> : null}
+                          <p className="text-sm font-semibold text-white">{thread.subject || "Support request"}</p>
+                          {hasUnread && !isActive ? <span className="h-2.5 w-2.5 rounded-full bg-white" /> : null}
                         </div>
-                        {isStaff && memberLabel ? (
-                          <p className="mt-1 truncate text-[11px] text-[#E2AC28]">Member: {memberLabel}</p>
-                        ) : null}
                         <p className="mt-1 truncate text-xs text-zinc-500">{thread.latestMessageText}</p>
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <p className="truncate text-[11px] text-zinc-400">From: {latestSenderLabel}</p>
-                          <p className="text-[11px] text-zinc-500">{formatTime(thread.latestMessageTime)}</p>
-                        </div>
                       </div>
                       <Badge variant={thread.latestTicket.status === "resolved" ? "accent" : "default"}>{thread.latestTicket.status || "open"}</Badge>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2">
-                      <p className="truncate text-[11px] text-zinc-500">{thread.totalMessages ?? 1} message{(thread.totalMessages ?? 1) === 1 ? "" : "s"}</p>
-                      <p className="text-[11px] text-zinc-500">{thread.totalMessages ?? 1} total</p>
+                      <p className="text-[11px] text-zinc-500">{thread.tickets.length > 1 ? `${thread.tickets.length} messages in this chat` : "Single message"}</p>
+                      <p className="text-[11px] text-zinc-500">{formatTime(thread.latestMessageTime)}</p>
                     </div>
                   </button>
                 )
@@ -590,7 +451,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
         </div>
       </Card>
 
-      <Card className="flex min-h-[560px] flex-col overflow-hidden border-zinc-800 bg-zinc-950/80 p-0">
+      <Card className="flex h-full flex-col overflow-hidden border-zinc-800 bg-zinc-950/80 p-0">
         {selectedTicket ? (
           <>
             <div className="flex items-center justify-between border-b border-zinc-800 p-4">
@@ -609,44 +470,13 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                 <>
                   {conversationMessages.map((entry) => {
                     const isOutgoing = entry.kind === "ticket" ? !isStaff : entry.senderId === profile.id
-                    const senderProfile = entry.senderId === profile.id
-                      ? profile.role === "staff"
-                        ? {
-                            id: profile.id,
-                            full_name: profile.full_name ?? null,
-                            first_name: profile.first_name ?? null,
-                            last_name: profile.last_name ?? null,
-                            avatar_url: profile.avatar_url ?? null,
-                            role: profile.role,
-                          }
-                        : null
-                      : senderProfiles[entry.senderId] || null
-                    const isStaffSender = senderProfile?.role === "staff"
-                    const senderName = isStaffSender ? getProfileDisplayName(senderProfile) : null
-                    const { imageUrl, text } = splitMessageContent(entry.message)
                     return (
                       <div key={entry.id} className={`flex ${isOutgoing ? "justify-end" : "justify-start"} gap-2 group`}>
                         <div className={`max-w-[75%] rounded-2xl px-4 py-2 relative ${isOutgoing ? "rounded-br-none border border-[#E2AC28]/40 bg-[#E2AC28] text-zinc-900" : "rounded-bl-none border border-zinc-700 bg-zinc-900 text-zinc-100"}`}>
-                          {isStaffSender ? (
-                            <div className="mb-2 flex items-center gap-2">
-                              {senderProfile?.avatar_url ? (
-                                <img src={senderProfile.avatar_url} alt={senderName || "Staff avatar"} className="h-7 w-7 rounded-full object-cover" />
-                              ) : (
-                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-[10px] font-semibold uppercase text-zinc-200">
-                                  {senderName ? senderName.slice(0, 2) : "ST"}
-                                </div>
-                              )}
-                              <p className={`text-[10px] font-bold uppercase tracking-wider ${isOutgoing ? "text-zinc-800/70" : "text-zinc-400"}`}>
-                                {senderName || "Staff"}
-                              </p>
-                            </div>
-                          ) : (
-                            <p className={`mb-1 text-[10px] font-bold uppercase tracking-wider ${isOutgoing ? "text-zinc-800/70" : "text-zinc-400"}`}>
-                              {isOutgoing ? "You" : isStaff ? "Member" : "Staff"}
-                            </p>
-                          )}
-                          {imageUrl ? <img src={imageUrl} alt="Attached support media" className="mt-2 max-h-64 w-full rounded-lg object-cover" /> : null}
-                          {text ? <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</p> : null}
+                          <p className={`mb-1 text-[10px] font-bold uppercase tracking-wider ${isOutgoing ? "text-zinc-800/70" : "text-zinc-400"}`}>
+                            {isOutgoing ? "You" : isStaff ? "Member" : "Staff"}
+                          </p>
+                          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{entry.message}</p>
                           <p className={`mt-1 text-[10px] ${isOutgoing ? "text-zinc-800/60" : "text-zinc-500"}`}>{formatTime(entry.createdAt)}</p>
                         </div>
                         {(isStaff || isOutgoing) && (
@@ -690,50 +520,17 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
               {status && (
                 <p className={`mb-3 text-sm ${status.type === "success" ? "text-emerald-400" : "text-red-400"}`}>{status.message}</p>
               )}
-              <form onSubmit={handleSend} className="flex flex-col gap-2">
-                {attachedImageUrl ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/80 p-2">
-                    <img src={attachedImageUrl} alt="Attached preview" className="h-12 w-12 rounded object-cover" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-zinc-300">Photo attached</p>
-                      <p className="truncate text-[11px] text-zinc-500">Ready to send</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setAttachedImageUrl(null)}
-                      className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-                      aria-label="Remove attached photo"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : null}
-                <div className="flex items-end gap-2">
-                  <Textarea
-                    rows={3}
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    placeholder={isStaff ? "Write a reply to the member" : "Write a new support message"}
-                    className="flex-1 border-zinc-800 bg-zinc-900 text-white placeholder:text-zinc-500 !text-white !placeholder:text-zinc-500"
-                  />
-                  {isStaff ? (
-                    <>
-                      <input ref={fileInputRef} type="file" accept="image/*" className="sr-only" onChange={handlePhotoSelect} />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-200 transition hover:bg-zinc-800"
-                        disabled={uploadingImage}
-                        aria-label="Attach a photo"
-                      >
-                        {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                      </button>
-                    </>
-                  ) : null}
-                  <Button type="submit" size="sm" className="bg-[#E2AC28] text-black" disabled={loading || uploadingImage}>
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
-                  </Button>
-                </div>
+              <form onSubmit={handleSend} className="flex gap-2 items-end">
+                <Textarea
+                  rows={3}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  placeholder={isStaff ? "Write a reply to the member" : "Write a new support message"}
+                  className="flex-1 border-zinc-800 bg-zinc-900"
+                />
+                <Button type="submit" size="sm" className="bg-[#E2AC28] text-black" disabled={loading}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
+                </Button>
               </form>
             </div>
           </>
