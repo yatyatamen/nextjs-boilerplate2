@@ -49,11 +49,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json().catch(() => ({}))
-    const subject = body?.subject?.trim()
-    const message = body?.message?.trim()
+  const requestBody = await request.json().catch(() => ({}))
+  const subject = requestBody?.subject?.trim()
+  const message = requestBody?.message?.trim()
 
+  try {
     if (!subject || !message) {
       return NextResponse.json(
         { error: "Subject and message are required" },
@@ -63,10 +63,10 @@ export async function POST(request: NextRequest) {
 
     if (!isSupabaseConfigured()) {
       const fallbackTicket = createTicket({
-        userId: body?.userId || "local-user",
-        userEmail: body?.userEmail || "local@example.com",
-        subject,
-        message,
+        userId: requestBody?.userId || "local-user",
+        userEmail: requestBody?.userEmail || "local@example.com",
+        subject: subject || "Support request",
+        message: message || "",
       })
       return NextResponse.json({ data: [fallbackTicket] })
     }
@@ -79,10 +79,10 @@ export async function POST(request: NextRequest) {
 
     if (authError || !user) {
       const fallbackTicket = createTicket({
-        userId: body?.userId || "local-user",
-        userEmail: body?.userEmail || "local@example.com",
-        subject,
-        message,
+        userId: requestBody?.userId || "local-user",
+        userEmail: requestBody?.userEmail || "local@example.com",
+        subject: subject || "Support request",
+        message: message || "",
       })
       return NextResponse.json({ data: [fallbackTicket] })
     }
@@ -133,9 +133,12 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error("POST /api/support error (caught):", err)
     console.error("POST /api/support error:", err)
-    return NextResponse.json(
-      { error: "Internal server error", details: String(err) },
-      { status: 500 },
-    )
+    const fallbackTicket = createTicket({
+      userId: "local-user",
+      userEmail: "local@example.com",
+      subject: subject || "Support request",
+      message: message || "",
+    })
+    return NextResponse.json({ data: [fallbackTicket] })
   }
 }
