@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button, Card, Textarea, Badge } from "@/components/ui/primitives"
 import type { Profile, SupportTicket } from "@/lib/types"
-import { Loader2, MessageCircleMore, SendHorizontal } from "lucide-react"
+import { ImagePlus, Loader2, MessageCircleMore, SendHorizontal } from "lucide-react"
 
 type SupportReply = {
   id: string
@@ -48,6 +48,23 @@ async function parseJsonResponse(res: Response) {
   }
 }
 
+function parseMessageContent(message: string) {
+  const trimmed = message.trim()
+  const imageMatch = trimmed.match(/^__IMAGE__:(https?:\/\/\S+)(?:\s*(.*))?$/)
+
+  if (imageMatch) {
+    return {
+      imageUrl: imageMatch[1],
+      caption: imageMatch[2]?.trim() || "",
+    }
+  }
+
+  return {
+    imageUrl: null as string | null,
+    caption: "",
+  }
+}
+
 export function SupportMessenger({ profile, initialTickets = [], isStaff = false, onTicketsChange }: SupportMessengerProps) {
   const [tickets, setTickets] = useState<SupportTicket[]>(initialTickets)
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(initialTickets[0]?.id ?? null)
@@ -55,6 +72,9 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   const [loading, setLoading] = useState(false)
   const [replies, setReplies] = useState<Record<string, SupportReply[]>>({})
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null)
+  const [pendingImageName, setPendingImageName] = useState<string | null>(null)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [readThreads, setReadThreads] = useState<Record<string, string>>(() => {
     if (typeof window === "undefined") return {}
 
@@ -66,6 +86,9 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     }
   })
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const shouldAutoScrollRef = useRef(true)
+  const lastSelectedTicketIdRef = useRef<string | null>(selectedTicketId)
 
   const storageKey = `support-messenger-read:${profile.id}:${isStaff ? "staff" : "member"}`
 
@@ -134,6 +157,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     if (!selectedTicketId) return
     const ticketId = String(selectedTicketId)
     setReadThreads((prev) => ({ ...prev, [ticketId]: new Date().toISOString() }))
+    shouldAutoScrollRef.current = true
   }, [selectedTicketId])
 
   const conversationMessages = useMemo(() => {
@@ -275,13 +299,27 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   }, [initialTickets, selectedTicketId])
 
   useEffect(() => {
-    // Scroll to bottom whenever conversation messages change
-    setTimeout(() => {
-      if (messagesContainerRef.current) {
-        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
-      }
-    }, 0)
-  }, [conversationMessages])
+    if (!messagesContainerRef.current) return
+
+    const container = messagesContainerRef.current
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 20
+
+    if (selectedTicketId !== lastSelectedTicketIdRef.current) {
+      shouldAutoScrollRef.current = true
+      lastSelectedTicketIdRef.current = selectedTicketId
+    }
+
+    if (shouldAutoScrollRef.current || isAtBottom) {
+      const frame = window.requestAnimationFrame(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+        }
+      })
+      return () => window.cancelAnimationFrame(frame)
+    }
+
+    return undefined
+  }, [conversationMessages, selectedTicketId])
 
   useEffect(() => {
     if (!selectedTicketId) return
@@ -302,16 +340,58 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     }
   }, [selectedTicketId, groupedThreads])
 
+  async function handleImageSelection(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith("image/")) {
+      setStatus({ type: "error", message: "Please choose an image file" })
+      if (imageInputRef.current) imageInputRef.current.value = ""
+      return
+    }
+
+    setIsUploadingImage(true)
+    setStatus(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const res = await fetch("/api/support/upload", {
+        method: "POST",
+        credentials: "same-origin",
+        body: formData,
+      })
+      const json = await parseJsonResponse(res)
+      if (!res.ok || !json?.data?.publicUrl) throw new Error(json?.error || "Unable to upload image")
+
+      setPendingImageUrl(String(json.data.publicUrl))
+      setPendingImageName(file.name)
+      setStatus({ type: "success", message: `Image ready: ${file.name}` })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to upload image"
+      setStatus({ type: "error", message })
+    } finally {
+      setIsUploadingImage(false)
+      if (imageInputRef.current) imageInputRef.current.value = ""
+    }
+  }
+
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
     setStatus(null)
     const trimmed = draft.trim()
-    if (!trimmed) return
+    const hasImageAttachment = Boolean(pendingImageUrl)
+    if (!trimmed && !hasImageAttachment) return
 
     if (!selectedTicket) {
       setStatus({ type: "error", message: "Select a conversation before sending" })
       return
     }
+
+    const payloadMessage = hasImageAttachment
+      ? `${trimmed ? `${trimmed}\n` : ""}__IMAGE__:${pendingImageUrl}`
+      : trimmed
 
     setLoading(true)
 
@@ -324,7 +404,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticketId: selectedTicket.id, message: trimmed }),
+          body: JSON.stringify({ ticketId: selectedTicket.id, message: payloadMessage }),
         })
         json = await parseJsonResponse(res)
         if (!res.ok) throw new Error(json?.error || "Unable to send reply")
@@ -332,17 +412,17 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           id: json?.data?.id || `reply-${Date.now()}`,
           ticket_id: selectedTicket.id,
           sender_id: profile.id,
-          message: trimmed,
+          message: payloadMessage,
           created_at: new Date().toISOString(),
         }
         setReplies((prev) => ({ ...prev, [selectedTicket.id]: [...(prev[selectedTicket.id] || []), newReply] }))
-        setStatus({ type: "success", message: "Reply sent" })
+        setStatus({ type: "success", message: hasImageAttachment ? "Image sent" : "Reply sent" })
       } else {
         res = await fetch("/api/support", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subject: selectedTicket.subject || "Support request", message: trimmed }),
+          body: JSON.stringify({ subject: selectedTicket.subject || "Support request", message: payloadMessage }),
         })
         json = await parseJsonResponse(res)
         if (!res.ok) throw new Error(json?.error || "Unable to send message")
@@ -354,17 +434,19 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
             return next
           })
           setSelectedTicketId(String(created.id))
-          setStatus({ type: "success", message: "Message sent" })
+          setStatus({ type: "success", message: hasImageAttachment ? "Image sent" : "Message sent" })
         }
       }
       setDraft("")
+      setPendingImageUrl(null)
+      setPendingImageName(null)
     } catch (error) {
       const fallback = {
         id: `local-${Date.now()}`,
         user_id: profile.id,
         user_email: profile.email || "",
         subject: selectedTicket.subject || "Support request",
-        message: trimmed,
+        message: payloadMessage,
         status: "open" as const,
         created_at: new Date().toISOString(),
       }
@@ -374,7 +456,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           id: `reply-${Date.now()}`,
           ticket_id: selectedTicket.id,
           sender_id: profile.id,
-          message: trimmed,
+          message: payloadMessage,
           created_at: new Date().toISOString(),
         }
         setReplies((prev) => ({ ...prev, [selectedTicket.id]: [...(prev[selectedTicket.id] || []), fallbackReply] }))
@@ -389,11 +471,52 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
         setStatus({ type: "success", message: "Message saved locally and will sync when connection is restored" })
       }
       setDraft("")
+      setPendingImageUrl(null)
+      setPendingImageName(null)
     } finally {
       setLoading(false)
     }
   }
 
+  async function handleDeleteSelectedTicket() {
+    if (!selectedTicket) return
+
+    const ticketId = String(selectedTicket.id)
+
+    if (ticketId.startsWith("local-")) {
+      setTickets((prev) => prev.filter((ticket) => String(ticket.id) !== ticketId))
+      onTicketsChange?.(tickets.filter((ticket) => String(ticket.id) !== ticketId))
+      setSelectedTicketId((prev) => {
+        const next = tickets.filter((ticket) => String(ticket.id) !== ticketId)
+        return next[0] ? String(next[0].id) : null
+      })
+      setStatus({ type: "success", message: "Local message removed" })
+      return
+    }
+
+    try {
+      const res = await fetch("/api/support/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: ticketId, type: "ticket" }),
+      })
+      if (!res.ok) {
+        const json = await parseJsonResponse(res)
+        throw new Error(json?.error || "Unable to delete message")
+      }
+
+      setTickets((prev) => prev.filter((ticket) => String(ticket.id) !== ticketId))
+      onTicketsChange?.(tickets.filter((ticket) => String(ticket.id) !== ticketId))
+      setSelectedTicketId((prev) => {
+        const next = tickets.filter((ticket) => String(ticket.id) !== ticketId)
+        return next[0] ? String(next[0].id) : null
+      })
+      setStatus({ type: "success", message: "Message deleted" })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to delete message"
+      setStatus({ type: "error", message })
+    }
+  }
 
   return (
     <div className="grid h-screen max-h-screen grid-cols-1 gap-4 overflow-hidden xl:grid-cols-[300px_minmax(0,1fr)]">
@@ -454,6 +577,13 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                 <h3 className="text-sm font-semibold text-white">{selectedTicket.subject || "Support request"}</h3>
                 <p className="text-xs text-zinc-500">{selectedTicket.user_email || profile.email}</p>
               </div>
+              <button
+                type="button"
+                onClick={handleDeleteSelectedTicket}
+                className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-semibold text-white transition hover:bg-zinc-800"
+              >
+                Delete
+              </button>
             </div>
 
             <div ref={messagesContainerRef} className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(226,172,40,0.08),_transparent_50%)] p-4 space-y-3">
@@ -465,16 +595,28 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                 <>
                   {conversationMessages.map((entry) => {
                     const isOutgoing = entry.kind === "ticket" ? !isStaff : entry.senderId === profile.id
+                    const { imageUrl, caption } = parseMessageContent(entry.message)
                     return (
                       <div key={entry.id} className={`flex ${isOutgoing ? "justify-end" : "justify-start"} gap-2 group`}>
                         <div className={`max-w-[75%] rounded-2xl px-4 py-2 relative ${isOutgoing ? "rounded-br-none border border-[#E2AC28]/40 bg-[#E2AC28] text-zinc-900" : "rounded-bl-none border border-zinc-700 bg-zinc-900 text-zinc-100"}`}>
                           <p className={`mb-1 text-[10px] font-bold uppercase tracking-wider ${isOutgoing ? "text-zinc-800/70" : "text-zinc-400"}`}>
                             {isOutgoing ? "You" : isStaff ? "Member" : "Staff"}
                           </p>
-                          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{entry.message}</p>
+                          {imageUrl ? (
+                            <div className="space-y-2">
+                              <img
+                                src={imageUrl}
+                                alt={caption || "Shared image"}
+                                className="max-w-full rounded-lg border border-zinc-700"
+                                loading="lazy"
+                              />
+                              {caption ? <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{caption}</p> : null}
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{entry.message}</p>
+                          )}
                           <p className={`mt-1 text-[10px] ${isOutgoing ? "text-zinc-800/60" : "text-zinc-500"}`}>{formatTime(entry.createdAt)}</p>
                         </div>
-                        {/* Delete controls removed */}
                       </div>
                     )
                   })}
@@ -486,20 +628,50 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
               {status && (
                 <p className={`mb-3 text-sm ${status.type === "success" ? "text-emerald-400" : "text-red-400"}`}>{status.message}</p>
               )}
-              <form onSubmit={handleSend} className="flex gap-2 items-end">
-                <Textarea
-                  rows={3}
-                  value={draft}
-                  onChange={(event) => {
-                    setDraft(event.target.value)
-                    if (status) setStatus(null)
-                  }}
-                  placeholder={isStaff ? "Write a reply to the member" : "Write a new support message"}
-                  className="flex-1 border-zinc-800 bg-zinc-900 text-white placeholder:text-zinc-500"
-                />
-                <Button type="submit" size="sm" className="bg-[#E2AC28] text-black" disabled={loading}>
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
-                </Button>
+              <form onSubmit={handleSend} className="flex flex-col gap-2">
+                <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelection} />
+                {pendingImageName ? (
+                  <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-300">
+                    <span>📷 {pendingImageName}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingImageName(null)
+                        setPendingImageUrl(null)
+                      }}
+                      className="text-xs text-zinc-500 hover:text-white"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                ) : null}
+                <div className="flex gap-2 items-end">
+                  <Textarea
+                    rows={3}
+                    value={draft}
+                    onChange={(event) => {
+                      setDraft(event.target.value)
+                      if (status) setStatus(null)
+                    }}
+                    placeholder={isStaff ? "Write a reply to the member" : "Write a new support message"}
+                    className="flex-1 border-zinc-800 bg-zinc-900 text-white placeholder:text-zinc-500"
+                  />
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-zinc-700 bg-zinc-900 text-zinc-100"
+                      onClick={() => imageInputRef.current?.click()}
+                      disabled={loading || isUploadingImage}
+                    >
+                      {isUploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                    </Button>
+                    <Button type="submit" size="sm" className="bg-[#E2AC28] text-black" disabled={loading || isUploadingImage}>
+                      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
               </form>
             </div>
           </>
