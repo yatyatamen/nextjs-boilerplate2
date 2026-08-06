@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button, Card, Textarea, Badge } from "@/components/ui/primitives"
 import type { Profile, SupportTicket } from "@/lib/types"
-import { Loader2, MessageCircleMore, SendHorizontal, Trash2, MoreVertical } from "lucide-react"
+import { Loader2, MessageCircleMore, SendHorizontal } from "lucide-react"
 
 type SupportReply = {
   id: string
@@ -38,6 +38,16 @@ function formatPreviewMessage(value?: string | null) {
   return normalized.length > 70 ? `${normalized.slice(0, 67)}...` : normalized
 }
 
+async function parseJsonResponse(res: Response) {
+  const text = await res.text().catch(() => "")
+  if (!text) return {}
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { error: text }
+  }
+}
+
 export function SupportMessenger({ profile, initialTickets = [], isStaff = false, onTicketsChange }: SupportMessengerProps) {
   const [tickets, setTickets] = useState<SupportTicket[]>(initialTickets)
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(initialTickets[0]?.id ?? null)
@@ -45,8 +55,6 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   const [loading, setLoading] = useState(false)
   const [replies, setReplies] = useState<Record<string, SupportReply[]>>({})
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
-  const [busyReplyId, setBusyReplyId] = useState<string | null>(null)
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [readThreads, setReadThreads] = useState<Record<string, string>>(() => {
     if (typeof window === "undefined") return {}
 
@@ -220,7 +228,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     setLoading(true)
     try {
       const res = await fetch("/api/support", { credentials: "same-origin" })
-      const json = await res.json().catch(() => ({}))
+      const json = await parseJsonResponse(res)
       if (!res.ok) throw new Error(json?.error || "Unable to load messages")
       const data = Array.isArray(json?.data) ? json.data : []
       setTickets(data)
@@ -229,7 +237,10 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
         setSelectedTicketId(String(data[0].id))
       }
     } catch (error) {
-      setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to load messages" })
+      const message = error instanceof Error ? error.message : "Unable to load messages"
+      if (tickets.length === 0 && initialTickets.length === 0) {
+        setStatus({ type: "error", message })
+      }
     } finally {
       setLoading(false)
     }
@@ -239,12 +250,13 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     if (!ticketId) return
     try {
       const res = await fetch(`/api/support/reply?ticketId=${encodeURIComponent(ticketId)}`, { credentials: "same-origin" })
-      const json = await res.json().catch(() => ({}))
+      const json = await parseJsonResponse(res)
       if (!res.ok) throw new Error(json?.error || "Unable to load replies")
       const data = Array.isArray(json?.data) ? json.data : []
       setReplies((prev) => ({ ...prev, [ticketId]: data }))
     } catch (error) {
-      setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to load replies" })
+      console.error("Failed to load replies:", error)
+      // Avoid showing stale reply-loading errors in the send bar while the user is composing.
     }
   }
 
@@ -292,6 +304,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
+    setStatus(null)
     const trimmed = draft.trim()
     if (!trimmed) return
 
@@ -313,7 +326,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ticketId: selectedTicket.id, message: trimmed }),
         })
-        json = await res.json().catch(() => ({}))
+        json = await parseJsonResponse(res)
         if (!res.ok) throw new Error(json?.error || "Unable to send reply")
         const newReply = {
           id: json?.data?.id || `reply-${Date.now()}`,
@@ -331,7 +344,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ subject: selectedTicket.subject || "Support request", message: trimmed }),
         })
-        json = await res.json().catch(() => ({}))
+        json = await parseJsonResponse(res)
         if (!res.ok) throw new Error(json?.error || "Unable to send message")
         const created = Array.isArray(json?.data) ? json.data[0] : json?.data
         if (created) {
@@ -381,59 +394,6 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     }
   }
 
-  async function handleDeleteReply(replyId: string) {
-    if (!selectedTicketId) return
-    setBusyReplyId(replyId)
-    try {
-      const res = await fetch("/api/support/delete", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: replyId, type: "reply" }),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json?.error || "Unable to delete reply")
-      setReplies((prev) => ({ ...prev, [selectedTicketId]: (prev[selectedTicketId] || []).filter((entry) => entry.id !== replyId) }))
-      setStatus({ type: "success", message: "Reply deleted" })
-    } catch (error) {
-      setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to delete reply" })
-    } finally {
-      setBusyReplyId(null)
-    }
-  }
-
-  async function handleDeleteTicket(ticketId: string) {
-    setBusyReplyId(ticketId)
-    try {
-      const res = await fetch("/api/support/delete", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: ticketId, type: "ticket" }),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json?.error || "Unable to delete message")
-      setTickets((prev) => {
-        const nextTickets = prev.filter((entry) => String(entry.id) !== String(ticketId))
-        if (selectedTicketId === ticketId) {
-          const nextTicket = nextTickets[0]
-          setSelectedTicketId(nextTicket ? String(nextTicket.id) : null)
-        }
-        onTicketsChange?.(nextTickets)
-        return nextTickets
-      })
-      setReplies((prev) => {
-        const next = { ...prev }
-        delete next[ticketId]
-        return next
-      })
-      setStatus({ type: "success", message: "Message deleted" })
-    } catch (error) {
-      setStatus({ type: "error", message: error instanceof Error ? error.message : "Unable to delete message" })
-    } finally {
-      setBusyReplyId(null)
-    }
-  }
 
   return (
     <div className="grid h-screen max-h-screen grid-cols-1 gap-4 overflow-hidden xl:grid-cols-[300px_minmax(0,1fr)]">
@@ -514,36 +474,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{entry.message}</p>
                           <p className={`mt-1 text-[10px] ${isOutgoing ? "text-zinc-800/60" : "text-zinc-500"}`}>{formatTime(entry.createdAt)}</p>
                         </div>
-                        {(isStaff || isOutgoing) && (
-                          <div className="relative flex items-start">
-                            <button
-                              type="button"
-                              onClick={() => setOpenMenuId(openMenuId === entry.id ? null : entry.id)}
-                              className="rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </button>
-                            {openMenuId === entry.id && (
-                              <div className="absolute right-0 top-6 bg-zinc-900 border border-zinc-700 rounded-lg shadow-lg z-10">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (entry.kind === "ticket") {
-                                      handleDeleteTicket(entry.id.replace("ticket-", ""))
-                                    } else {
-                                      handleDeleteReply(entry.id)
-                                    }
-                                    setOpenMenuId(null)
-                                  }}
-                                  className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-400/10 first:rounded-t-md last:rounded-b-md flex items-center gap-2"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                  Delete
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                        {/* Delete controls removed */}
                       </div>
                     )
                   })}
@@ -559,7 +490,10 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                 <Textarea
                   rows={3}
                   value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
+                  onChange={(event) => {
+                    setDraft(event.target.value)
+                    if (status) setStatus(null)
+                  }}
                   placeholder={isStaff ? "Write a reply to the member" : "Write a new support message"}
                   className="flex-1 border-zinc-800 bg-zinc-900"
                 />
