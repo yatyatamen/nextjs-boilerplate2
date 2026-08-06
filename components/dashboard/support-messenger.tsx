@@ -495,7 +495,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                     if (status) setStatus(null)
                   }}
                   placeholder={isStaff ? "Write a reply to the member" : "Write a new support message"}
-                  className="flex-1 border-zinc-800 bg-zinc-900"
+                  className="flex-1 border-zinc-800 bg-zinc-900 text-white placeholder:text-zinc-500"
                 />
                 <Button type="submit" size="sm" className="bg-[#E2AC28] text-black" disabled={loading}>
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
