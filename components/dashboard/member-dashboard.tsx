@@ -1220,7 +1220,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                         subtitle={profile.email ?? ""}
                                                         badgeLabel={isStaff ? "Status: Management Staff" : `Tier: ${profile.level ?? "For Fun"}`}
                                                       >
-                                                        <div className={`w-full h-screen overflow-hidden ${theme.bg} p-6 -m-6 box-border`}>
+                                                        <div className={`w-full min-h-screen overflow-y-auto ${theme.bg} p-6 box-border`}>
                                                           
                                                           {/* OVERVIEW MODULE */}
                                                           {active === "overview" && (
