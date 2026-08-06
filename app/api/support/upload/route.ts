@@ -27,13 +27,42 @@ export async function POST(request: NextRequest) {
     const bucket = "attachments"
 
     const arrayBuffer = await file.arrayBuffer()
-    const { error } = await supabaseClient.storage.from(bucket).upload(filename, new Uint8Array(arrayBuffer), {
+
+    let { error } = await supabaseClient.storage.from(bucket).upload(filename, new Uint8Array(arrayBuffer), {
       contentType: file.type || undefined,
     })
 
+    if (error && error.message?.toLowerCase().includes("bucket") && error.message?.toLowerCase().includes("not found")) {
+      try {
+        if ("createBucket" in supabaseClient.storage) {
+          const createBucketResult = await (supabaseClient.storage as any).createBucket(bucket, { public: true })
+          if (createBucketResult?.error) {
+            console.error("Supabase bucket creation error:", createBucketResult.error)
+            return NextResponse.json(
+              { error: `Bucket '${bucket}' was not found and could not be created automatically. Create it manually in Supabase Storage.` },
+              { status: 500 },
+            )
+          }
+
+          const retry = await supabaseClient.storage.from(bucket).upload(filename, new Uint8Array(arrayBuffer), {
+            contentType: file.type || undefined,
+          })
+          error = retry.error
+        }
+      } catch (createErr) {
+        console.error("Bucket creation fallback failed:", createErr)
+      }
+    }
+
     if (error) {
       console.error("Supabase storage upload error:", error)
-      return NextResponse.json({ error: error.message || "Upload failed" }, { status: 500 })
+      return NextResponse.json(
+        {
+          error: error.message || "Upload failed",
+          details: "Make sure the Supabase Storage bucket 'attachments' exists and is public.",
+        },
+        { status: 500 },
+      )
     }
 
     const publicUrl = supabaseClient.storage.from(bucket).getPublicUrl(filename).data?.publicUrl
