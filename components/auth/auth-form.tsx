@@ -78,6 +78,8 @@ export function AuthForm() {
     // Explicitly navigate based on the validated database string
     if (data.role === "staff") {
       router.push("/staff-dashboard")
+    } else if (data.role === "teacher") {
+      router.push("/teacher-dashboard")
     } else {
       router.push("/member-dashboard")
     }

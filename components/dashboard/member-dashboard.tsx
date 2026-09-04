@@ -1935,9 +1935,9 @@ import { LEVELS } from "@/lib/types"
                                                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                                                                   <div className="flex items-center gap-1 rounded-sm border border-zinc-700 bg-zinc-950/40 p-1">
                                                                     {([
+                                                                      { value: "compact", label: "Small" },
                                                                       { value: "large", label: "Large" },
-                                                                      { value: "list", label: "List" },
-                                                                      { value: "compact", label: "Small" }
+                                                                      { value: "list", label: "List" }
                                                                     ] as const).map((option) => (
                                                                       <button
                                                                         key={option.value}
@@ -2165,9 +2165,9 @@ import { LEVELS } from "@/lib/types"
                                                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                                                                   <div className="flex items-center gap-1 rounded-sm border border-zinc-700 bg-zinc-950/40 p-1">
                                                                     {([
+                                                                      { value: "compact", label: "Small" },
                                                                       { value: "large", label: "Large" },
-                                                                      { value: "list", label: "List" },
-                                                                      { value: "compact", label: "Small" }
+                                                                      { value: "list", label: "List" }
                                                                     ] as const).map((option) => (
                                                                       <button
                                                                         key={option.value}
