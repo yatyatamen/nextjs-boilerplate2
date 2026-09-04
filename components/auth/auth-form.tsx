@@ -59,6 +59,36 @@ export function AuthForm() {
     }
   }
 
+  async function ensureProfileDefaults(
+    supabase: ReturnType<typeof createClient>,
+    userId: string,
+    fullNameFromUser: string,
+    emailFromUser?: string | null,
+  ) {
+    const { data: existingProfile } = await supabase
+      .from("profiles")
+      .select("id, role, level, full_name, email")
+      .eq("id", userId)
+      .maybeSingle()
+
+    const normalizedRole = String(existingProfile?.role ?? "member").trim().toLowerCase() || "member"
+    const normalizedLevel = String(existingProfile?.level ?? "for fun").trim() || "for fun"
+
+    const upsertPayload = {
+      id: userId,
+      email: emailFromUser ?? existingProfile?.email ?? null,
+      full_name: fullNameFromUser.trim() || existingProfile?.full_name || null,
+      role: normalizedRole,
+      level: normalizedLevel,
+    }
+
+    const { error } = await supabase.from("profiles").upsert(upsertPayload, { onConflict: "id" })
+
+    if (error) {
+      console.warn("Profile default sync failed:", error.message)
+    }
+  }
+
   async function routeByRole(
     supabase: ReturnType<typeof createClient>,
     userId: string,
@@ -67,7 +97,7 @@ export function AuthForm() {
       .from("profiles")
       .select("role")
       .eq("id", userId)
-      .single()
+      .maybeSingle()
 
     if (error || !data) {
       console.error("Failed to fetch profile role:", error)
@@ -75,10 +105,11 @@ export function AuthForm() {
       return
     }
 
-    // Explicitly navigate based on the validated database string
-    if (data.role === "staff") {
+    const normalizedRole = String(data.role ?? "").trim().toLowerCase()
+
+    if (normalizedRole === "staff") {
       router.push("/staff-dashboard")
-    } else if (data.role === "teacher") {
+    } else if (normalizedRole === "teacher") {
       router.push("/teacher-dashboard")
     } else {
       router.push("/member-dashboard")
@@ -147,6 +178,10 @@ export function AuthForm() {
         })
         console.debug("supabase signUp response", { data, error })
 
+        if (data.user) {
+          await ensureProfileDefaults(supabase, data.user.id, fullName.trim(), normalizedEmail)
+        }
+
         if (
           error ||
           (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0)
@@ -189,6 +224,7 @@ export function AuthForm() {
           return
         }
         if (data.user) {
+          await ensureProfileDefaults(supabase, data.user.id, data.user.user_metadata?.full_name ?? "", data.user.email)
           await routeByRole(supabase, data.user.id)
         }
       }

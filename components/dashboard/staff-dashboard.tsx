@@ -651,6 +651,9 @@ export function StaffDashboard({
       return
     }
 
+    const confirmed = window.confirm(`Save this member update for ${fullName || member.email || "this member"}? This will update their name, level, and role.`)
+    if (!confirmed) return
+
     const previousMembers = members
     setMembers((prev) => prev.map((item) => (item.id === memberId ? { ...item, full_name: fullName, level, role } : item)))
 
@@ -893,16 +896,38 @@ export function StaffDashboard({
                   </div>
                   <div className="flex flex-col gap-3 sm:items-end">
                     <div className="flex items-center gap-2">
+                      <Label className="text-xs text-muted-foreground">Role</Label>
+                      <Select
+                        value={m.role ?? "member"}
+                        onChange={(e) => {
+                          const role = e.target.value as Profile["role"]
+                          setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, role } : x)))
+                        }}
+                        className="h-9 w-32"
+                      >
+                        {[
+                          "member",
+                          "for fun",
+                          "coach",
+                          "teacher",
+                          "staff",
+                          "admin",
+                        ].map((role) => (
+                          <option key={role} value={role}>{role}</option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-2">
                       <Label className="text-xs text-muted-foreground">Level</Label>
                       <Select
-                        value={m.level ?? ALL_TIERS[0]}
+                        value={m.level ?? LEVELS[0]}
                         onChange={(e) => {
                           const level = e.target.value
                           setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, level } : x)))
                         }}
                         className="h-9 w-40"
                       >
-                        {ALL_TIERS.map((l) => (
+                        {LEVELS.map((l) => (
                           <option key={l} value={l}>{l}</option>
                         ))}
                       </Select>
