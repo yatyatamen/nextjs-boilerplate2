@@ -101,7 +101,7 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     let isMounted = true
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: any) => {
       if (!isMounted || redirectingRef.current) return
 
       void (async () => {

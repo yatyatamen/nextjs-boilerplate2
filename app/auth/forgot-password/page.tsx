@@ -24,7 +24,11 @@ function getResetRedirectUrl() {
 }
 
 export default function ForgotPasswordPage() {
-  const supabase = createClient()
+  const hasSupabaseConfig = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  )
+
+  const supabase = hasSupabaseConfig ? createClient() : null
   const [email, setEmail] = useState("")
   const [emailError, setEmailError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -36,6 +40,12 @@ export default function ForgotPasswordPage() {
     setMessage(null)
     setStatus("idle")
     setEmailError(null)
+
+    if (!hasSupabaseConfig || !supabase) {
+      setStatus("error")
+      setMessage("Supabase is not configured yet. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local before using password reset.")
+      return
+    }
 
     const normalizedEmail = email.trim()
     if (!isValidSchoolEmail(normalizedEmail)) {
@@ -58,6 +68,40 @@ export default function ForgotPasswordPage() {
       )
     }
     setLoading(false)
+  }
+
+  if (!hasSupabaseConfig) {
+    return (
+      <div
+        className="min-h-screen w-full text-zinc-100 font-sans antialiased flex flex-col justify-center p-6 relative overflow-hidden"
+        style={{
+          backgroundImage: `url('${BACKGROUND_IMAGE}')`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundAttachment: "fixed",
+        }}
+      >
+        <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+        <main className="relative z-10 mx-auto w-full max-w-md">
+          <Card className="relative overflow-hidden rounded-xl border border-[#14B8A6]/30 bg-zinc-900/80 p-8 shadow-2xl shadow-[#14B8A6]/20">
+            <div className="mb-6">
+              <h1 className="text-2xl font-extrabold uppercase tracking-tight text-white">Reset your password</h1>
+              <p className="mt-2 text-sm text-zinc-400">
+                Supabase is not configured in this environment yet.
+              </p>
+            </div>
+            <div className="rounded-lg border border-red-900/50 bg-red-950/20 px-4 py-3 text-sm text-red-300">
+              Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local, then refresh the page.
+            </div>
+            <div className="mt-6 flex flex-col gap-3 text-center text-sm text-zinc-400">
+              <Link href="/" className="inline-flex items-center justify-center gap-2 text-[#14B8A6] hover:text-white">
+                <ArrowLeft className="h-4 w-4" /> Back to sign in
+              </Link>
+            </div>
+          </Card>
+        </main>
+      </div>
+    )
   }
 
   return (
