@@ -6,9 +6,15 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json().catch(() => ({}))
     const memberId = typeof body?.memberId === "string" ? body.memberId : undefined
     const fullName = typeof body?.fullName === "string" ? body.fullName.trim() : undefined
-    const level = typeof body?.level === "string" ? body.level.trim() : undefined
-    const role = typeof body?.role === "string" ? body.role.trim() : undefined
+    const rawLevel = typeof body?.level === "string" ? body.level.trim() : undefined
+    const rawRole = typeof body?.role === "string" ? body.role.trim() : undefined
     const memberLevel = typeof body?.member_level === "string" ? body.member_level.trim() : undefined
+
+    const validRoles = new Set(["staff", "teacher", "admin", "coach", "for fun", "member"])
+    const normalizedRole = rawRole && validRoles.has(rawRole.toLowerCase()) ? rawRole.toLowerCase() : undefined
+    const normalizedLevel = rawLevel && !validRoles.has(rawLevel.toLowerCase()) ? rawLevel : undefined
+    const level = normalizedLevel ?? (memberLevel && !validRoles.has(memberLevel.toLowerCase()) ? memberLevel : undefined)
+    const role = normalizedRole ?? (rawRole && validRoles.has(rawRole.toLowerCase()) ? rawRole.toLowerCase() : undefined)
 
     if (!memberId) {
       return NextResponse.json({ error: "memberId is required" }, { status: 400 })

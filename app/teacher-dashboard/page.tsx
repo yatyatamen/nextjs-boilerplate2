@@ -32,23 +32,15 @@ export default async function TeacherDashboardPage() {
     membersRes,
     scheduleRes,
     announcementsRes,
-    assessmentsRes,
     bookingsRes,
     attendanceRes,
-    gearRes,
-    resourcesRes,
-    shopRes,
     leadersRes,
   ] = await Promise.all([
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase.from("schedule").select("*").order("date", { ascending: true }),
     supabase.from("announcements").select("*").order("created_at", { ascending: false }),
-    supabase.from("assessments").select("*").order("date", { ascending: false }),
     supabase.from("bookings").select("*").eq("user_id", userData.user.id).order("created_at", { ascending: false }),
     supabase.from("attendance").select("*").order("marked_at", { ascending: false }),
-    supabase.from("equipment_recommendations").select("*").order("created_at", { ascending: false }),
-    supabase.from("resources").select("*").order("created_at", { ascending: false }),
-    supabase.from("shop_items").select("*").order("name", { ascending: true }),
     supabase.from("leader_profiles").select("*").order("created_at", { ascending: false }),
   ])
 
@@ -58,12 +50,8 @@ export default async function TeacherDashboardPage() {
       initialMembers={membersRes.data ?? []}
       initialSchedule={scheduleRes.data ?? []}
       initialAnnouncements={announcementsRes.data ?? []}
-      initialAssessments={assessmentsRes.data ?? []}
       initialBookings={bookingsRes.data ?? []}
       initialAttendanceRecords={attendanceRes.data ?? []}
-      initialGearGuides={gearRes.data ?? []}
-      initialResources={resourcesRes.data ?? []}
-      initialShopItems={shopRes.data ?? []}
       initialLeaders={leadersRes.data ?? []}
     />
   )

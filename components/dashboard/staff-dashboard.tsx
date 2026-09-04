@@ -651,42 +651,49 @@ export function StaffDashboard({
       return
     }
 
-    const confirmed = window.confirm(`Save this member update for ${fullName || member.email || "this member"}? This will update their name, level, and role.`)
-    if (!confirmed) return
+    const summary = `${fullName || member.email || "this member"} • ${role} • ${level ?? "No level"}`
 
-    const previousMembers = members
-    setMembers((prev) => prev.map((item) => (item.id === memberId ? { ...item, full_name: fullName, level, role } : item)))
+    showConfirmation(
+      "Save member update?",
+      `This will update ${summary}. Confirm to save these changes.`,
+      async () => {
+        closeConfirmation()
 
-    try {
-      const payload: { fullName?: string; level?: string; role?: string } = {}
-      if (fullName) payload.fullName = fullName
-      if (level) payload.level = level
-      payload.role = role
+        const previousMembers = members
+        setMembers((prev) => prev.map((item) => (item.id === memberId ? { ...item, full_name: fullName, level, role } : item)))
 
-      const updatedProfile = await updateMemberProfile(memberId, payload)
-      setMembers((prev) =>
-        prev.map((m) =>
-          m.id === memberId
-            ? {
-                ...m,
-                full_name: updatedProfile?.full_name ?? fullName,
-                level: updatedProfile?.level ?? (level ?? m.level),
-                role: updatedProfile?.role ?? (role ?? m.role),
-              }
-            : m,
-        ),
-      )
-      setMembersNameEdits((prev) => {
-        const next = { ...prev }
-        delete next[memberId]
-        return next
-      })
-      showToast("Member changes saved")
-    } catch (error) {
-      console.error("Failed to update member:", error)
-      setMembers(previousMembers)
-      showToast(error instanceof Error ? error.message : "Unable to save member changes")
-    }
+        try {
+          const payload: { fullName?: string; level?: string; role?: string } = {}
+          if (fullName) payload.fullName = fullName
+          if (level) payload.level = level
+          payload.role = role
+
+          const updatedProfile = await updateMemberProfile(memberId, payload)
+          setMembers((prev) =>
+            prev.map((m) =>
+              m.id === memberId
+                ? {
+                    ...m,
+                    full_name: updatedProfile?.full_name ?? fullName,
+                    level: updatedProfile?.level ?? (level ?? m.level),
+                    role: updatedProfile?.role ?? (role ?? m.role),
+                  }
+                : m,
+            ),
+          )
+          setMembersNameEdits((prev) => {
+            const next = { ...prev }
+            delete next[memberId]
+            return next
+          })
+          showToast("Member changes saved")
+        } catch (error) {
+          console.error("Failed to update member:", error)
+          setMembers(previousMembers)
+          showToast(error instanceof Error ? error.message : "Unable to save member changes")
+        }
+      },
+    )
   }
 
   async function markAttendance(booking: Booking, status: "present" | "absent" | "late") {
@@ -896,39 +903,27 @@ export function StaffDashboard({
                   </div>
                   <div className="flex flex-col gap-3 sm:items-end">
                     <div className="flex items-center gap-2">
-                      <Label className="text-xs text-muted-foreground">Role</Label>
+                      <Label className="text-xs text-muted-foreground">Role / Level</Label>
                       <Select
-                        value={m.role ?? "member"}
+                        value={m.role ?? m.level ?? "member"}
                         onChange={(e) => {
-                          const role = e.target.value as Profile["role"]
-                          setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, role } : x)))
-                        }}
-                        className="h-9 w-32"
-                      >
-                        {[
-                          "member",
-                          "for fun",
-                          "coach",
-                          "teacher",
-                          "staff",
-                          "admin",
-                        ].map((role) => (
-                          <option key={role} value={role}>{role}</option>
-                        ))}
-                      </Select>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-muted-foreground">Level</Label>
-                      <Select
-                        value={m.level ?? LEVELS[0]}
-                        onChange={(e) => {
-                          const level = e.target.value
-                          setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, level } : x)))
+                          const entry = e.target.value
+                          const roleOptions = new Set(["member", "for fun", "coach", "teacher", "staff", "admin"])
+
+                          setMembers((prev) =>
+                            prev.map((x) => {
+                              if (x.id !== m.id) return x
+                              if (roleOptions.has(entry)) {
+                                return { ...x, role: entry as Profile["role"], level: x.level ?? LEVELS[0] }
+                              }
+                              return { ...x, level: entry, role: x.role ?? "member" }
+                            }),
+                          )
                         }}
                         className="h-9 w-40"
                       >
-                        {LEVELS.map((l) => (
-                          <option key={l} value={l}>{l}</option>
+                        {ALL_TIERS.map((entry) => (
+                          <option key={entry} value={entry}>{entry}</option>
                         ))}
                       </Select>
                     </div>

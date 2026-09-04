@@ -1,32 +1,24 @@
 "use client"
 
 import { useState } from "react"
-
-import type { AttendanceRecord } from "@/lib/types"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
 import { Badge, Button, Card, Input, Label, Select, Textarea } from "@/components/ui/primitives"
 import type {
   Announcement,
-  Assessment,
+  AttendanceRecord,
   Booking,
   Profile,
   ScheduleSession,
-  EquipmentRecommendation,
-  ShopItem,
 } from "@/lib/types"
 import { LEVELS } from "@/lib/types"
 import {
-  BookOpen,
   CalendarDays,
-  GraduationCap,
   LayoutDashboard,
   LifeBuoy,
   Megaphone,
   Settings,
-  ShoppingBag,
   Ticket,
-  Trophy,
   UserCheck,
   Users,
 } from "lucide-react"
@@ -35,12 +27,8 @@ const NAV: NavItem[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "schedule", label: "Schedule", icon: CalendarDays },
   { key: "bookings", label: "My Bookings", icon: Ticket },
-  { key: "assessments", label: "Assessments", icon: GraduationCap },
   { key: "attendance", label: "Attendance", icon: UserCheck },
   { key: "leaders", label: "Our Leaders", icon: Users },
-  { key: "gear", label: "Equipment Guides", icon: Trophy },
-  { key: "resources", label: "Rubrics & PDFs", icon: BookOpen },
-  { key: "shop", label: "Wolves Shop", icon: ShoppingBag },
   { key: "support", label: "Contact & Support", icon: LifeBuoy },
   { key: "settings", label: "Settings", icon: Settings },
 ]
@@ -67,24 +55,16 @@ export function TeacherDashboard({
   initialMembers,
   initialSchedule,
   initialAnnouncements,
-  initialAssessments,
   initialBookings,
   initialAttendanceRecords,
-  initialGearGuides,
-  initialResources,
-  initialShopItems,
   initialLeaders,
 }: {
   profile: Profile
   initialMembers: Profile[]
   initialSchedule: ScheduleSession[]
   initialAnnouncements: Announcement[]
-  initialAssessments: Assessment[]
   initialBookings: Booking[]
   initialAttendanceRecords?: AttendanceRecord[]
-  initialGearGuides: EquipmentRecommendation[]
-  initialResources: { id: string; title: string | null; url: string | null; created_at: string }[]
-  initialShopItems: ShopItem[]
   initialLeaders: { id: string; name: string; role_title: string; bio: string | null; specialties: string[]; avatar_url: string | null }[]
 }) {
   const supabase = createClient()
@@ -92,7 +72,6 @@ export function TeacherDashboard({
   const [members, setMembers] = useState(initialMembers)
   const [schedule, setSchedule] = useState(initialSchedule)
   const [announcements, setAnnouncements] = useState(initialAnnouncements)
-  const [assessments, setAssessments] = useState(initialAssessments)
   const [bookings, setBookings] = useState(initialBookings)
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(initialAttendanceRecords ?? [])
 
@@ -102,13 +81,14 @@ export function TeacherDashboard({
   const [newScheduleCoach, setNewScheduleCoach] = useState(profile.full_name || profile.first_name || "Coach")
   const [newScheduleNotes, setNewScheduleNotes] = useState("")
 
-  const [newAssessmentUserId, setNewAssessmentUserId] = useState(initialMembers[0]?.id ?? "")
-  const [newAssessmentLevel, setNewAssessmentLevel] = useState("Bronze")
-  const [newAssessmentScore, setNewAssessmentScore] = useState(80)
-  const [newAssessmentFeedback, setNewAssessmentFeedback] = useState("")
-  const [newAssessmentDate, setNewAssessmentDate] = useState(new Date().toISOString().slice(0, 10))
-
   const displayName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || profile.email || "Teacher"
+
+  const latestGeneralAnnouncement = [...announcements]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+
+  const latestFeatureAnnouncement = [...announcements]
+    .filter((item) => (item.title ?? "").toLowerCase().includes("website") || (item.title ?? "").toLowerCase().includes("feature"))
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
 
   async function handleBookSession(sessionId: string) {
     const { data, error } = await supabase
@@ -151,31 +131,13 @@ export function TeacherDashboard({
     }
   }
 
-  async function handleCreateAssessment(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newAssessmentUserId || !newAssessmentFeedback.trim()) return
-
-    const { data, error } = await supabase
-      .from("assessments")
-      .insert({
-        user_id: newAssessmentUserId,
-        level: newAssessmentLevel,
-        feedback: newAssessmentFeedback.trim(),
-        score: newAssessmentScore,
-        date: newAssessmentDate,
-      })
-      .select()
-
+  async function deleteScheduleItem(id: string) {
+    const { error } = await supabase.from("schedule").delete().eq("id", id)
     if (error) {
-      alert(`Assessment DB Error: ${error.message}`)
+      alert(`Schedule delete failed: ${error.message}`)
       return
     }
-
-    if (data && data[0]) {
-      setAssessments((prev) => [data[0] as Assessment, ...prev])
-      setNewAssessmentFeedback("")
-      setNewAssessmentScore(80)
-    }
+    setSchedule((prev) => prev.filter((item) => item.id !== id))
   }
 
   async function markAttendance(booking: Booking, status: "present" | "absent" | "late") {
@@ -226,7 +188,7 @@ export function TeacherDashboard({
               <p className="text-sm text-sidebar-foreground/70">Teacher console</p>
               <h2 className="text-2xl font-bold">Welcome, {displayName}</h2>
               <p className="mt-1 text-sm text-sidebar-foreground/70">
-                Manage sessions, review student progress, and share learning resources with your classes.
+                Manage sessions, review student booking activity, and stay aligned with club updates.
               </p>
             </div>
           </Card>
@@ -234,10 +196,10 @@ export function TeacherDashboard({
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
             <StatCard label="Members" value={members.length} icon={Users} />
             <StatCard label="Sessions" value={schedule.length} icon={CalendarDays} />
-            <StatCard label="Assessments" value={assessments.length} icon={GraduationCap} />
+            <StatCard label="Bookings" value={bookings.length} icon={Ticket} />
           </div>
 
-          {announcements.length > 0 && (
+          {latestGeneralAnnouncement && (
             <Card className="p-6 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
               <div className="flex items-start gap-4">
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/20 text-primary">
@@ -245,11 +207,29 @@ export function TeacherDashboard({
                 </div>
                 <div className="flex-1">
                   <p className="text-xs font-semibold text-primary uppercase tracking-wide">Latest Announcement</p>
-                  <h3 className="mt-2 text-2xl font-bold text-foreground">{announcements[0].title}</h3>
+                  <h3 className="mt-2 text-2xl font-bold text-foreground">{latestGeneralAnnouncement.title}</h3>
                   <p className="mt-3 text-base leading-relaxed text-foreground/80 whitespace-pre-line">
-                    {announcements[0].content}
+                    {latestGeneralAnnouncement.content}
                   </p>
-                  <p className="mt-3 text-xs text-muted-foreground">Posted {formatDate(announcements[0].created_at)}</p>
+                  <p className="mt-3 text-xs text-muted-foreground">Posted {formatDate(latestGeneralAnnouncement.created_at)}</p>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {latestFeatureAnnouncement && (
+            <Card className="p-6 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/25">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-500">
+                  <Megaphone className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-emerald-500 uppercase tracking-wide">Website Feature Update</p>
+                  <h3 className="mt-2 text-2xl font-bold text-foreground">{latestFeatureAnnouncement.title}</h3>
+                  <p className="mt-3 text-base leading-relaxed text-foreground/80 whitespace-pre-line">
+                    {latestFeatureAnnouncement.content}
+                  </p>
+                  <p className="mt-3 text-xs text-muted-foreground">Posted {formatDate(latestFeatureAnnouncement.created_at)}</p>
                 </div>
               </div>
             </Card>
@@ -259,15 +239,10 @@ export function TeacherDashboard({
 
       {active === "schedule" && (
         <div className="space-y-6">
-          <SectionHeader title="Schedule Management" desc="Create sessions and book into available coaching slots." />
+          <SectionHeader title="Schedule Management" desc="Create coaching blocks and open sessions for members." />
 
           <Card className="p-5">
-            <form className="grid gap-4 md:grid-cols-2" onSubmit={(e) => {
-              e.preventDefault()
-              if (!newScheduleTitle.trim() || !newScheduleDate) return
-              if (!window.confirm("Post this schedule item? This action cannot be undone.")) return
-              void handleCreateSchedule(e)
-            }}>
+            <form className="grid gap-4 md:grid-cols-2" onSubmit={handleCreateSchedule}>
               <div className="md:col-span-2">
                 <Label>Session Title</Label>
                 <Input value={newScheduleTitle} onChange={(e) => setNewScheduleTitle(e.target.value)} required />
@@ -311,14 +286,15 @@ export function TeacherDashboard({
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge>{session.min_level || "All"}</Badge>
-                      <Button size="sm" variant="outline" onClick={() => {
-                        if (!window.confirm("Delete this schedule item? This action cannot be undone.")) return
-                        void (async () => {
-                          const { error } = await supabase.from("schedule").delete().eq("id", session.id)
-                          if (!error) setSchedule((prev) => prev.filter((item) => item.id !== session.id))
-                          else alert(`Schedule delete failed: ${error.message}`)
-                        })()
-                      }} className="text-xs">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          if (!window.confirm("Delete this schedule item? This action cannot be undone.")) return
+                          void deleteScheduleItem(session.id)
+                        }}
+                        className="text-xs"
+                      >
                         Delete
                       </Button>
                     </div>
@@ -334,7 +310,7 @@ export function TeacherDashboard({
                       disabled={alreadyBooked}
                       className="bg-[#40938c] text-black font-bold"
                     >
-                      {alreadyBooked ? "Booked" : "Book Session"}
+                      {alreadyBooked ? "Booked" : "Book Coaching Session"}
                     </Button>
                   </div>
                 </Card>
@@ -346,7 +322,7 @@ export function TeacherDashboard({
 
       {active === "bookings" && (
         <div>
-          <SectionHeader title="My Bookings" desc="Your upcoming session bookings and attendance." />
+          <SectionHeader title="My Bookings" desc="Your coaching and supervision bookings." />
           <div className="grid gap-4 md:grid-cols-2">
             {bookings.filter((booking) => booking.user_id === profile.id).map((booking) => {
               const session = schedule.find((item) => item.id === booking.session_id)
@@ -367,83 +343,9 @@ export function TeacherDashboard({
         </div>
       )}
 
-      {active === "assessments" && (
-        <div className="space-y-6">
-          <SectionHeader title="Assessment Review" desc="Post assessments and feedback for student progress records." />
-
-          <Card className="p-5">
-            <form className="grid gap-4 md:grid-cols-2" onSubmit={(e) => {
-              e.preventDefault()
-              if (!newAssessmentUserId || !newAssessmentFeedback.trim()) return
-              if (!window.confirm("Save this assessment? This action cannot be undone.")) return
-              void handleCreateAssessment(e)
-            }}>
-              <div>
-                <Label>Student</Label>
-                <Select value={newAssessmentUserId} onChange={(e) => setNewAssessmentUserId(e.target.value)}>
-                  {members.filter((member) => member.role === "member").map((member) => (
-                    <option key={member.id} value={member.id}>{member.full_name || member.email}</option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <Label>Level</Label>
-                <Select value={newAssessmentLevel} onChange={(e) => setNewAssessmentLevel(e.target.value)}>
-                  {LEVELS.map((tier) => (
-                    <option key={tier} value={tier}>{tier}</option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <Label>Score</Label>
-                <Input type="number" min={0} max={100} value={newAssessmentScore} onChange={(e) => setNewAssessmentScore(Number(e.target.value || 0))} />
-              </div>
-              <div>
-                <Label>Date</Label>
-                <Input type="date" value={newAssessmentDate} onChange={(e) => setNewAssessmentDate(e.target.value)} />
-              </div>
-              <div className="md:col-span-2">
-                <Label>Feedback</Label>
-                <Textarea value={newAssessmentFeedback} onChange={(e) => setNewAssessmentFeedback(e.target.value)} className="min-h-28" required />
-              </div>
-              <div className="md:col-span-2 flex justify-end">
-                <Button type="submit" className="bg-[#40938c] text-black font-bold">Save Assessment</Button>
-              </div>
-            </form>
-          </Card>
-
-          <div className="grid gap-4">
-            {assessments.map((assessment) => (
-              <Card key={assessment.id} className="p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{assessment.level || "Level"}</p>
-                    <p className="text-xs text-muted-foreground">{assessment.score ?? 0}/100</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs text-muted-foreground">{formatDate(assessment.date)}</p>
-                    <Button size="sm" variant="outline" onClick={() => {
-                      if (!window.confirm("Delete this assessment? This action cannot be undone.")) return
-                      void (async () => {
-                        const { error } = await supabase.from("assessments").delete().eq("id", assessment.id)
-                        if (!error) setAssessments((prev) => prev.filter((item) => item.id !== assessment.id))
-                        else alert(`Assessment delete failed: ${error.message}`)
-                      })()
-                    }} className="text-xs">
-                      Delete
-                    </Button>
-                  </div>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{assessment.feedback}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
       {active === "attendance" && (
         <div>
-          <SectionHeader title="Attendance" desc="Take attendance for booked sessions and keep it synced with the staff records." />
+          <SectionHeader title="Attendance" desc="Mark attendance for every session and keep it synced with staff records." />
           <div className="grid gap-4 md:grid-cols-2">
             {schedule.map((session) => {
               const sessionBookings = bookings.filter((booking) => booking.session_id === session.id)
@@ -457,35 +359,24 @@ export function TeacherDashboard({
                     ) : (
                       sessionBookings.map((booking) => {
                         const member = members.find((candidate) => candidate.id === booking.user_id)
+                        const existingStatus = attendanceRecords.find((record) => record.session_id === booking.session_id && record.user_id === booking.user_id)?.status
                         return (
-                          <div key={booking.id} className="rounded-md border border-border p-2">
+                          <div key={booking.id} className="rounded-md border border-border p-3">
                             <div className="flex items-start justify-between gap-3">
                               <div className="space-y-1">
                                 <p className="text-sm font-medium text-foreground">{member?.full_name || member?.email || "Unknown member"}</p>
-                                <p className="text-xs text-muted-foreground">Email: {member?.email || "N/A"}</p>
-                                <p className="text-xs text-muted-foreground">Level: {member?.level || "N/A"}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  Booked at: {booking.created_at ? new Date(booking.created_at).toLocaleString() : "N/A"}
-                                </p>
-                                {booking.notes && (
-                                  <p className="text-[10px] text-amber-600 dark:text-amber-300">Note: {booking.notes}</p>
-                                )}
+                                <p className="text-xs text-muted-foreground">{member?.email || "N/A"}</p>
+                                <p className="text-xs text-muted-foreground">Tier: {member?.level || "N/A"}</p>
+                                {booking.notes && <p className="text-[10px] text-amber-600 dark:text-amber-300">Note: {booking.notes}</p>}
                               </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  if (!window.confirm("Cancel this booking?")) return
-                                  void (async () => {
-                                    const { error } = await supabase.from("bookings").delete().eq("id", booking.id)
-                                    if (!error) {
-                                      setBookings((prev) => prev.filter((item) => item.id !== booking.id))
-                                    }
-                                  })()
-                                }}
-                              >
-                                Cancel
-                              </Button>
+                              <Badge className="border border-zinc-700 bg-zinc-900 text-zinc-200">
+                                {existingStatus || "pending"}
+                              </Badge>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Button size="sm" variant="outline" onClick={() => markAttendance(booking, "present")}>Present</Button>
+                              <Button size="sm" variant="outline" onClick={() => markAttendance(booking, "late")}>Late</Button>
+                              <Button size="sm" variant="outline" onClick={() => markAttendance(booking, "absent")}>Absent</Button>
                             </div>
                           </div>
                         )
@@ -501,7 +392,7 @@ export function TeacherDashboard({
 
       {active === "leaders" && (
         <div>
-          <SectionHeader title="Our Leaders" desc="Team profiles and coach information." />
+          <SectionHeader title="Our Leaders" desc="Team profiles and coaching information." />
           <div className="grid gap-4 md:grid-cols-2">
             {initialLeaders.map((leader) => (
               <Card key={leader.id} className="p-4">
@@ -514,64 +405,20 @@ export function TeacherDashboard({
         </div>
       )}
 
-      {active === "gear" && (
-        <div>
-          <SectionHeader title="Equipment Guides" desc="Browse recommended equipment and training tools." />
-          <div className="grid gap-4 md:grid-cols-2">
-            {initialGearGuides.map((guide) => (
-              <Card key={guide.id} className="p-4">
-                <p className="font-semibold text-foreground">{guide.title}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{guide.brand}</p>
-                <p className="mt-2 text-sm text-muted-foreground">{guide.why_recommend}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {active === "resources" && (
-        <div>
-          <SectionHeader title="Rubrics & PDFs" desc="Coach-created resources and printable guides." />
-          <div className="grid gap-4 md:grid-cols-2">
-            {initialResources.map((resource) => (
-              <Card key={resource.id} className="p-4">
-                <p className="font-semibold text-foreground">{resource.title}</p>
-                <Button className="mt-4" size="sm" onClick={() => window.open(resource.url || "", "_blank")}>View PDF</Button>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {active === "shop" && (
-        <div>
-          <SectionHeader title="Wolves Shop" desc="View club store items and gear available for purchase." />
-          <div className="grid gap-4 md:grid-cols-2">
-            {initialShopItems.map((item) => (
-              <Card key={item.id} className="p-4">
-                <p className="font-semibold text-foreground">{item.name}</p>
-                <p className="mt-1 text-sm text-muted-foreground">${item.price ?? 0}</p>
-                <p className="mt-2 text-sm text-muted-foreground">{item.description}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
       {active === "support" && (
         <div>
-          <SectionHeader title="Contact & Support" desc="How to reach the club or ask for help." />
+          <SectionHeader title="Contact & Support" desc="Use the club contact flow for help, questions, or support." />
           <Card className="p-6">
-            <p className="text-sm text-muted-foreground">Use the team contact flow and support channels to get help quickly.</p>
+            <p className="text-sm text-muted-foreground">Instagram DMs and contact support are available here the same as the member dashboard.</p>
           </Card>
         </div>
       )}
 
       {active === "settings" && (
         <div>
-          <SectionHeader title="Settings" desc="Teacher account preferences." />
+          <SectionHeader title="Settings" desc="Teacher account preferences and profile details." />
           <Card className="p-6">
-            <p className="text-sm text-muted-foreground">Your teacher profile is active and synced with the club portal.</p>
+            <p className="text-sm text-muted-foreground">Your teacher account is active and synced with the club portal.</p>
           </Card>
         </div>
       )}
