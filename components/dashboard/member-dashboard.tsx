@@ -2621,17 +2621,17 @@ import { LEVELS } from "@/lib/types"
                                                   if (!isOpen) return null
 
                                                   return (
-                                                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                                                      <Card className="w-full max-w-md mx-4 p-6 shadow-xl">
-                                                        <h2 className="text-lg font-bold text-foreground">{title}</h2>
-                                                        <p className="mt-3 text-sm text-muted-foreground">{message}</p>
+                                                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                                                      <Card className="w-full max-w-md mx-4 border border-black bg-white p-6 shadow-2xl">
+                                                        <h2 className="text-lg font-bold text-black">{title}</h2>
+                                                        <p className="mt-3 text-sm text-black/80">{message}</p>
                                                         <div className="mt-6 flex justify-end gap-3">
                                                           <Button
                                                             type="button"
                                                             variant="outline"
                                                             onClick={onCancel}
                                                             disabled={isLoading}
-                                                            className="px-4"
+                                                            className="border border-black bg-white px-4 text-black hover:bg-zinc-100"
                                                           >
                                                             Cancel
                                                           </Button>
@@ -2639,10 +2639,10 @@ import { LEVELS } from "@/lib/types"
                                                             type="button"
                                                             onClick={onConfirm}
                                                             disabled={isLoading}
-                                                            className="px-4"
+                                                            className="border border-black bg-white px-4 text-black hover:bg-zinc-100"
                                                           >
                                                             {isLoading ? (
-                                                              <CheckCircle className="h-4 w-4 animate-spin mr-2" />
+                                                              <CheckCircle className="mr-2 h-4 w-4 animate-spin text-black" />
                                                             ) : null}
                                                             Confirm
                                                           </Button>

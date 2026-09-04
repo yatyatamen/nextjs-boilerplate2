@@ -88,8 +88,12 @@ const NAV: NavItem[] = [
 const ALL_TIERS = [...ALL_ROLE_AND_TIER_OPTIONS]
 const TIME_SLOTS = ["3:20-4:30 PM", "3:20-4:45 PM", "3:20-5:00 PM", "3:20-5:15 PM"] as const
 const ATTENDANCE_FILTERS = ["all", "present", "absent", "late"] as const
+const ATTENDANCE_DAY_FILTERS = ["all", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const
+const ATTENDANCE_MONTH_FILTERS = ["all", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"] as const
 
 type AttendanceFilter = typeof ATTENDANCE_FILTERS[number]
+type AttendanceDayFilter = typeof ATTENDANCE_DAY_FILTERS[number]
+type AttendanceMonthFilter = typeof ATTENDANCE_MONTH_FILTERS[number]
 
 function SectionHeader({ title, desc }: { title: string; desc: string }) {
   return (
@@ -141,6 +145,20 @@ function parseImageUrls(value: string | null | undefined): string[] {
     .filter(Boolean)
 }
 
+function getWeekdayLabel(dateValue: string | null | undefined) {
+  if (!dateValue) return "Unknown"
+  const date = new Date(dateValue)
+  if (Number.isNaN(date.getTime())) return "Unknown"
+  return new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(date)
+}
+
+function getMonthLabel(dateValue: string | null | undefined) {
+  if (!dateValue) return "Unknown"
+  const date = new Date(dateValue)
+  if (Number.isNaN(date.getTime())) return "Unknown"
+  return new Intl.DateTimeFormat("en-US", { month: "long" }).format(date)
+}
+
 export function StaffDashboard({
   profile,
   initialMembers,
@@ -179,6 +197,10 @@ export function StaffDashboard({
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(initialAttendanceRecords ?? [])
   const [attendanceSelection, setAttendanceSelection] = useState<Record<string, "present" | "late" | "absent">>({})
   const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>("all")
+  const [attendanceDayFilter, setAttendanceDayFilter] = useState<AttendanceDayFilter>("all")
+  const [attendanceMonthFilter, setAttendanceMonthFilter] = useState<AttendanceMonthFilter>("all")
+  const [attendanceTierFilter, setAttendanceTierFilter] = useState<string>("all")
+  const [attendanceDateFilter, setAttendanceDateFilter] = useState<string>("all")
   const [attendanceViewMode, setAttendanceViewMode] = useState<"by-session" | "all-records">("by-session")
   const [selectedAttendanceMemberId, setSelectedAttendanceMemberId] = useState<string | null>(null)
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string | null>(null)
@@ -187,6 +209,7 @@ export function StaffDashboard({
   const [newResourceTitle, setNewResourceTitle] = useState("")
   const [newResourceUrl, setNewResourceUrl] = useState("")
   const [savingResource, setSavingResource] = useState(false)
+  const [memberSearch, setMemberSearch] = useState("")
   const [membersNameEdits, setMembersNameEdits] = useState<Record<string, string>>({})
   const [messages, setMessages] = useState<SupportTicket[]>([])
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
@@ -199,6 +222,7 @@ export function StaffDashboard({
   const [assessmentTierFilter, setAssessmentTierFilter] = useState<string>("all")
   const [assessmentSearch, setAssessmentSearch] = useState("")
   const [announcementSearch, setAnnouncementSearch] = useState("")
+  const [leaderProfiles, setLeaderProfiles] = useState<Array<{ id: string; name: string; description: string; pic_url?: string | null; role_title?: string | null; created_at?: string | null }>>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
@@ -208,25 +232,35 @@ export function StaffDashboard({
 
   // initialize attendanceSelection defaults when bookings or attendanceRecords change
   useEffect(() => {
-    const next: Record<string, "present" | "late" | "absent"> = { ...attendanceSelection }
-    bookings.forEach((b) => {
-      if (!next[b.id]) {
-        const record = attendanceRecords.find((r) => r.session_id === b.session_id && r.user_id === b.user_id)
-        next[b.id] = (record?.status as any) ?? "present"
-      }
+    const next: Record<string, "present" | "late" | "absent"> = {}
+    bookings.forEach((booking) => {
+      const record = attendanceRecords.find((r) => r.session_id === booking.session_id && r.user_id === booking.user_id)
+      next[booking.id] = (record?.status as any) ?? attendanceSelection[booking.id] ?? "present"
     })
-    // only update if there are additions
-    if (Object.keys(next).length !== Object.keys(attendanceSelection).length) {
-      setAttendanceSelection(next)
-    }
+
+    setAttendanceSelection((prev) => {
+      const prevKeys = Object.keys(prev)
+      const nextKeys = Object.keys(next)
+      const changed = prevKeys.length !== nextKeys.length || nextKeys.some((key) => prev[key] !== next[key])
+      return changed ? next : prev
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookings, attendanceRecords])
 
   const displayName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || profile.email || "Staff"
 
+  const normalizeCommentStatus = (status: SupportTicket["status"] | string | null | undefined) => {
+    if (!status) return "unread"
+    if (status === "resolved") return "solved"
+    if (status === "open") return "unsolved"
+    if (status === "solved" || status === "unsolved" || status === "unread") return status
+    return "unread"
+  }
+
   const filteredComments = messages.filter((message) => {
+    const normalized = normalizeCommentStatus(message.status)
     if (commentFilter === "all") return true
-    return message.status === commentFilter || (commentFilter === "solved" && message.status === "resolved") || (commentFilter === "unsolved" && message.status === "open")
+    return normalized === commentFilter
   })
 
   const latestGeneralAnnouncement = [...announcements]
@@ -291,6 +325,15 @@ export function StaffDashboard({
     setAnnouncements((prev) => prev.filter((item) => item.id !== id))
   }
 
+  async function deleteLeaderProfileItem(id: string) {
+    const { error } = await supabase.from("leader_profiles").delete().eq("id", id)
+    if (error) {
+      alert(`Profile delete failed: ${error.message}`)
+      return
+    }
+    setLeaderProfiles((prev) => prev.filter((item) => item.id !== id))
+  }
+
   async function deleteSupportTicketItem(id: string) {
     try {
       const response = await fetch("/api/support/delete", {
@@ -322,8 +365,32 @@ export function StaffDashboard({
     )
   }
 
-  function updateCommentStatus(id: string, nextStatus: SupportTicket["status"]) {
+  async function updateCommentStatusInDb(id: string, nextStatus: SupportTicket["status"]) {
+    const { error } = await supabase.from("support_tickets").update({ status: nextStatus }).eq("id", id)
+
+    if (error) {
+      throw new Error(error.message || "Unable to update comment status")
+    }
+
     setMessages((prev) => prev.map((message) => message.id === id ? { ...message, status: nextStatus } : message))
+    showToast("Comment status updated")
+  }
+
+  function updateCommentStatus(id: string, nextStatus: SupportTicket["status"]) {
+    const label = nextStatus === "solved" ? "Solved" : nextStatus === "unsolved" ? "Unsolved" : "Unread"
+    showConfirmation(
+      "Update comment status?",
+      `Mark this comment as ${label}? This will update the ticket record for the staff queue.`,
+      async () => {
+        closeConfirmation()
+        try {
+          await updateCommentStatusInDb(id, nextStatus)
+        } catch (error) {
+          console.error("Update comment status failed:", error)
+          showToast(error instanceof Error ? error.message : "Failed to update comment status")
+        }
+      },
+    )
   }
 
   function getMessageSenderName(message: SupportTicket | null | undefined) {
@@ -452,6 +519,25 @@ export function StaffDashboard({
     })()
     return () => { mounted = false }
   }, [active])
+
+  useEffect(() => {
+    if (active !== "profiles") return
+    let mounted = true
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from("leader_profiles")
+          .select("*")
+          .order("created_at", { ascending: false })
+        if (mounted && !error && data) {
+          setLeaderProfiles(data as typeof leaderProfiles)
+        }
+      } catch (_err) {
+        console.error("Failed to load leader profiles:")
+      }
+    })()
+    return () => { mounted = false }
+  }, [active, supabase])
 
   const saveNewResource = async () => {
     if (!newResourceTitle.trim() || !newResourceUrl.trim()) {
@@ -911,67 +997,120 @@ export function StaffDashboard({
       {active === "members" && (
         <div>
           <SectionHeader title="Members" desc="View members and update account names and skill levels." />
-          <div className="flex flex-col gap-3">
-            {members.map((m) => {
-              const editValue = membersNameEdits[m.id]?.trim()
-              const currentName = editValue ? editValue : m.full_name ?? getMemberDisplayName(m)
-              return (
-                <Card key={m.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                      {`${m.first_name?.[0] ?? ""}${m.last_name?.[0] ?? ""}`.toUpperCase() || "M"}
-                    </span>
-                    <div>
-                      <label className="text-xs uppercase tracking-wide text-muted-foreground">Account Name</label>
-                      <Input
-                        value={currentName}
-                        onChange={(e) =>
-                          setMembersNameEdits((prev) => ({ ...prev, [m.id]: e.target.value }))
-                        }
-                        className="mt-1"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">{m.email}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-3 sm:items-end">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-muted-foreground">Role / Level</Label>
-                      <Select
-                        value={m.level ?? m.role ?? "member"}
-                        onChange={(e) => {
-                          const entry = e.target.value
-                          const roleOptions = new Set(["member", "for fun", "coach", "teacher", "staff", "admin"])
-                          const isTier = !roleOptions.has(entry)
 
-                          setMembers((prev) =>
-                            prev.map((x) => {
-                              if (x.id !== m.id) return x
-                              if (isTier) {
-                                return { ...x, level: entry, role: x.role ?? "member" }
-                              }
-                              return { ...x, role: entry as Profile["role"], level: x.level ?? LEVELS[0] }
-                            }),
-                          )
-                        }}
-                        className="h-9 w-40"
-                      >
-                        {ALL_TIERS.map((entry) => (
-                          <option key={entry} value={entry}>{entry}</option>
-                        ))}
-                      </Select>
+          <div className="mb-4">
+            <Label className="mb-2 block text-xs uppercase tracking-[0.2em] text-muted-foreground">Search Members</Label>
+            <Input
+              value={memberSearch}
+              onChange={(e) => setMemberSearch(e.target.value)}
+              placeholder="Search by name, email, role, or level..."
+              className="max-w-md"
+            />
+          </div>
+
+          <div className="flex flex-col gap-3">
+            {members
+              .filter((m) => {
+                const query = memberSearch.trim().toLowerCase()
+                if (!query) return true
+
+                const searchableText = [
+                  m.first_name,
+                  m.last_name,
+                  m.full_name,
+                  m.email,
+                  m.role,
+                  m.level,
+                  `${m.first_name ?? ""} ${m.last_name ?? ""}`.trim(),
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+                  .toLowerCase()
+
+                return searchableText.includes(query)
+              })
+              .map((m) => {
+                const editValue = membersNameEdits[m.id]?.trim()
+                const currentName = editValue ? editValue : m.full_name ?? getMemberDisplayName(m)
+                return (
+                  <Card key={m.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                        {`${m.first_name?.[0] ?? ""}${m.last_name?.[0] ?? ""}`.toUpperCase() || "M"}
+                      </span>
+                      <div>
+                        <label className="text-xs uppercase tracking-wide text-muted-foreground">Account Name</label>
+                        <Input
+                          value={currentName}
+                          onChange={(e) =>
+                            setMembersNameEdits((prev) => ({ ...prev, [m.id]: e.target.value }))
+                          }
+                          className="mt-1"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">{m.email}</p>
+                      </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="h-9"
-                      onClick={() => saveMemberChanges(m.id)}
-                    >
-                      Save Member
-                    </Button>
-                  </div>
-                </Card>
-              )
-            })}
+                    <div className="flex flex-col gap-3 sm:items-end">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-muted-foreground">Role / Level</Label>
+                        <Select
+                          value={m.level ?? m.role ?? "member"}
+                          onChange={(e) => {
+                            const entry = e.target.value
+                            const roleOptions = new Set(["member", "for fun", "coach", "teacher", "staff", "admin"])
+                            const isTier = !roleOptions.has(entry)
+
+                            setMembers((prev) =>
+                              prev.map((x) => {
+                                if (x.id !== m.id) return x
+                                if (isTier) {
+                                  return { ...x, level: entry, role: x.role ?? "member" }
+                                }
+                                return { ...x, role: entry as Profile["role"], level: x.level ?? LEVELS[0] }
+                              }),
+                            )
+                          }}
+                          className="h-9 w-40"
+                        >
+                          {ALL_TIERS.map((entry) => (
+                            <option key={entry} value={entry}>{entry}</option>
+                          ))}
+                        </Select>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="h-9"
+                        onClick={() => saveMemberChanges(m.id)}
+                      >
+                        Save Member
+                      </Button>
+                    </div>
+                  </Card>
+                )
+              })}
+
+            {members.filter((m) => {
+              const query = memberSearch.trim().toLowerCase()
+              if (!query) return true
+              const searchableText = [
+                m.first_name,
+                m.last_name,
+                m.full_name,
+                m.email,
+                m.role,
+                m.level,
+                `${m.first_name ?? ""} ${m.last_name ?? ""}`.trim(),
+              ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase()
+              return searchableText.includes(query)
+            }).length === 0 && memberSearch.trim() && (
+              <Card className="p-6 text-center text-sm text-muted-foreground">
+                No members match this keyword.
+              </Card>
+            )}
           </div>
         </div>
       )}
@@ -1155,37 +1294,87 @@ export function StaffDashboard({
             ))}
           </div>
 
-          {/* Member Filter */}
-          {attendanceViewMode === "all-records" && (
-            <div className="mb-4">
-              <Label className="text-xs text-muted-foreground mb-2 block">Filter by Member</Label>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant={selectedMemberFilter === null ? "secondary" : "outline"}
-                  size="sm"
-                  className="text-xs"
-                  onClick={() => setSelectedMemberFilter(null)}
-                >
-                  All Members
-                </Button>
-                {members.map((member) => {
-                  const hasRecords = attendanceRecords.some(r => r.user_id === member.id)
-                  if (!hasRecords) return null
-                  return (
-                    <Button
-                      key={member.id}
-                      variant={selectedMemberFilter === member.id ? "secondary" : "outline"}
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => setSelectedMemberFilter(member.id)}
-                    >
-                      {member.full_name || member.email}
-                    </Button>
-                  )
-                })}
-              </div>
+          <div className="mb-4 grid gap-3 md:grid-cols-5">
+            <div>
+              <Label className="text-xs text-muted-foreground mb-2 block">Day</Label>
+              <Select value={attendanceDayFilter} onChange={(e) => setAttendanceDayFilter(e.target.value as AttendanceDayFilter)}>
+                {ATTENDANCE_DAY_FILTERS.map((day) => (
+                  <option key={day} value={day}>{day === "all" ? "All Days" : day}</option>
+                ))}
+              </Select>
             </div>
-          )}
+            <div>
+              <Label className="text-xs text-muted-foreground mb-2 block">Month</Label>
+              <Select value={attendanceMonthFilter} onChange={(e) => setAttendanceMonthFilter(e.target.value as AttendanceMonthFilter)}>
+                {ATTENDANCE_MONTH_FILTERS.map((month) => (
+                  <option key={month} value={month}>{month === "all" ? "All Months" : month}</option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground mb-2 block">Tier</Label>
+              <Select value={attendanceTierFilter} onChange={(e) => setAttendanceTierFilter(e.target.value)}>
+                <option value="all">All Tiers</option>
+                {LEVELS.map((tier) => (
+                  <option key={tier} value={tier}>{tier}</option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground mb-2 block">Date</Label>
+              <Input
+                type="date"
+                value={attendanceDateFilter === "all" ? "" : attendanceDateFilter}
+                onChange={(e) => setAttendanceDateFilter(e.target.value || "all")}
+              />
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => {
+                  setAttendanceDayFilter("all")
+                  setAttendanceMonthFilter("all")
+                  setAttendanceTierFilter("all")
+                  setAttendanceDateFilter("all")
+                  setSelectedMemberFilter(null)
+                }}
+              >
+                Reset
+              </Button>
+            </div>
+          </div>
+
+          {/* Member Filter */}
+          <div className="mb-4">
+            <Label className="text-xs text-muted-foreground mb-2 block">Filter by Member</Label>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={selectedMemberFilter === null ? "secondary" : "outline"}
+                size="sm"
+                className="text-xs"
+                onClick={() => setSelectedMemberFilter(null)}
+              >
+                All Members
+              </Button>
+              {members.map((member) => {
+                const hasRecords = attendanceRecords.some(r => r.user_id === member.id)
+                if (!hasRecords) return null
+                return (
+                  <Button
+                    key={member.id}
+                    variant={selectedMemberFilter === member.id ? "secondary" : "outline"}
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => setSelectedMemberFilter(member.id)}
+                  >
+                    {member.full_name || member.email}
+                  </Button>
+                )
+              })}
+            </div>
+          </div>
 
           {/* BY SESSION VIEW */}
           {attendanceViewMode === "by-session" && (
@@ -1218,14 +1407,22 @@ export function StaffDashboard({
                       const status = attendance?.status ?? "not marked"
                       return { booking, member, attendance, status }
                     })
-                    .filter((row) => attendanceFilter === "all" || row.status === attendanceFilter)
+                    .filter((row) => {
+                      const matchesStatus = attendanceFilter === "all" || row.status === attendanceFilter
+                      const matchesMember = selectedMemberFilter === null || row.booking.user_id === selectedMemberFilter
+                      const matchesDay = attendanceDayFilter === "all" || getWeekdayLabel(session.date) === attendanceDayFilter
+                      const matchesMonth = attendanceMonthFilter === "all" || getMonthLabel(session.date) === attendanceMonthFilter
+                      const matchesTier = attendanceTierFilter === "all" || row.member?.level === attendanceTierFilter
+                      const matchesDate = attendanceDateFilter === "all" || session.date === attendanceDateFilter
+                      return matchesStatus && matchesMember && matchesDay && matchesMonth && matchesTier && matchesDate
+                    })
 
                   return (
                     <Card key={session.id} className="p-4 mb-4">
                       <div className="mb-3">
                         <h4 className="font-semibold text-foreground">{session.title ?? "Untitled Session"}</h4>
                         <p className="text-sm text-muted-foreground mt-1">
-                          {formatDate(session.date)} · {session.time ?? "TBD"}
+                          {formatDate(session.date)} · {session.time ?? "TBD"} · {getWeekdayLabel(session.date)}
                         </p>
                       </div>
                       <div className="mb-3 flex items-center justify-end">
@@ -1272,7 +1469,9 @@ export function StaffDashboard({
                               <tr>
                                 <th className="px-4 py-3">Member</th>
                                 <th className="px-4 py-3">Tier</th>
+                                <th className="px-4 py-3">Session</th>
                                 <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3">Notes</th>
                                 <th className="px-4 py-3">Marked At</th>
                                 <th className="px-4 py-3">Actions</th>
                               </tr>
@@ -1293,6 +1492,10 @@ export function StaffDashboard({
                                     <p className="text-xs text-zinc-400">{booking.user_id}</p>
                                   </td>
                                   <td className="px-4 py-3 align-top text-xs text-zinc-400">{member?.level || "N/A"}</td>
+                                  <td className="px-4 py-3 align-top text-xs text-zinc-300">
+                                    <div className="font-medium text-zinc-100">{session.title ?? "Untitled Session"}</div>
+                                    <div className="text-zinc-400">{formatDate(session.date)}</div>
+                                  </td>
                                   <td className="px-4 py-3 align-top text-xs text-zinc-200 uppercase tracking-[0.08em]">{status}</td>
                                   <td className="px-4 py-3 align-top text-xs text-zinc-400">
                                     {((booking.notes ?? attendance?.notes ?? "").trim()) ? (booking.notes ?? attendance?.notes ?? "").trim() : "—"}
@@ -1308,7 +1511,7 @@ export function StaffDashboard({
                                             type="radio"
                                             name={`attendance-${booking.id}`}
                                             value={opt}
-                                            checked={(attendanceSelection[booking.id] ?? "present") === opt}
+                                            checked={(attendanceSelection[booking.id] ?? (attendance?.status ?? "present")) === opt}
                                             onChange={() => setAttendanceSelection((prev) => ({ ...prev, [booking.id]: opt }))}
                                           />
                                           <span className={`text-xs ${opt === "present" ? "text-emerald-400" : opt === "late" ? "text-amber-400" : "text-rose-400"}`}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</span>
@@ -1371,7 +1574,17 @@ export function StaffDashboard({
                     </thead>
                     <tbody className="divide-y divide-zinc-800">
                       {attendanceRecords
-                        .filter(r => (attendanceFilter === "all" || r.status === attendanceFilter) && (selectedMemberFilter === null || r.user_id === selectedMemberFilter))
+                        .filter((r) => {
+                          const session = schedule.find((s) => s.id === r.session_id)
+                          const member = members.find((m) => m.id === r.user_id)
+                          const matchesStatus = attendanceFilter === "all" || r.status === attendanceFilter
+                          const matchesMember = selectedMemberFilter === null || r.user_id === selectedMemberFilter
+                          const matchesDay = attendanceDayFilter === "all" || getWeekdayLabel(session?.date) === attendanceDayFilter
+                          const matchesMonth = attendanceMonthFilter === "all" || getMonthLabel(session?.date) === attendanceMonthFilter
+                          const matchesTier = attendanceTierFilter === "all" || member?.level === attendanceTierFilter
+                          const matchesDate = attendanceDateFilter === "all" || session?.date === attendanceDateFilter
+                          return matchesStatus && matchesMember && matchesDay && matchesMonth && matchesTier && matchesDate
+                        })
                         .sort((a, b) => new Date(b.marked_at).getTime() - new Date(a.marked_at).getTime())
                         .map((record) => {
                           const session = schedule.find(s => s.id === record.session_id)
@@ -1566,20 +1779,24 @@ export function StaffDashboard({
                 .filter((item) => item.title?.toLowerCase().includes(announcementSearch.toLowerCase()) || item.content?.toLowerCase().includes(announcementSearch.toLowerCase()))
                 .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                 .map((item) => (
-                  <Card key={item.id} className="flex items-start justify-between gap-4 p-4">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-foreground">{item.title || "Announcement"}</p>
-                      <p className="mt-1 text-sm text-white whitespace-pre-line">{item.content}</p>
-                      <p className="mt-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">{formatDate(item.created_at)}</p>
+                  <Card key={item.id} className="p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <p className="font-semibold text-white">{item.title || "Announcement"}</p>
+                          <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">{formatDate(item.created_at)}</span>
+                        </div>
+                        <p className="text-sm text-white whitespace-pre-line leading-relaxed">{item.content}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-white bg-white text-black hover:bg-zinc-100"
+                        onClick={() => confirmDelete("announcement", async () => { await deleteAnnouncementItem(item.id) })}
+                      >
+                        Delete
+                      </Button>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-white bg-white text-black hover:bg-zinc-100"
-                      onClick={() => confirmDelete("announcement", async () => { await deleteAnnouncementItem(item.id) })}
-                    >
-                      Delete
-                    </Button>
                   </Card>
                 ))
             )}
@@ -1588,14 +1805,69 @@ export function StaffDashboard({
       )}
 
       {active === "profiles" && (
-        <div>
+        <div className="space-y-6">
           <SectionHeader title="Insert Leader / Coach Profile" desc="Publish biographical profile cards onto the Club About directory." />
           <CoachProfileForm
             onCreate={async (payload) => {
-              const { error } = await supabase.from("leader_profiles").insert(payload)
-              if (error) alert(`Profiles DB Error: ${error.message}`)
+              const { error } = await supabase.from("leader_profiles").insert(payload).select()
+              if (error) {
+                alert(`Profiles DB Error: ${error.message}`)
+                return
+              }
+              if (error) return
+              if (payload && payload.name) {
+                setLeaderProfiles((prev) => [
+                  {
+                    id: `new-${Date.now()}`,
+                    name: payload.name,
+                    description: payload.description,
+                    pic_url: payload.pic_url,
+                    role_title: payload.role_title,
+                    created_at: new Date().toISOString(),
+                  },
+                  ...prev,
+                ])
+              }
             }}
           />
+
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Profile Record</h3>
+            {leaderProfiles.length === 0 ? (
+              <Card className="p-5"><p className="text-sm text-muted-foreground">No leader profiles posted yet.</p></Card>
+            ) : (
+              leaderProfiles.map((profile) => (
+                <Card key={profile.id} className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      {profile.pic_url ? (
+                        <img src={profile.pic_url} alt={profile.name} className="h-14 w-14 rounded-lg object-cover" />
+                      ) : (
+                        <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-200">
+                          {profile.name?.slice(0, 2) || "P"}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <p className="font-semibold text-white">{profile.name}</p>
+                          <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">{profile.role_title || "Leader"}</span>
+                        </div>
+                        <p className="text-sm text-white whitespace-pre-line leading-relaxed">{profile.description}</p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-white bg-white text-black hover:bg-zinc-100"
+                      onClick={() => confirmDelete("profile", async () => { await deleteLeaderProfileItem(profile.id) })}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </Card>
+              ))
+            )}
+          </div>
         </div>
       )}
 
@@ -1631,9 +1903,9 @@ export function StaffDashboard({
                           )}
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-white">{item.name}</p>
-                          <p className="text-xs text-zinc-400 mt-1">${item.price ?? 0} · {item.category ?? "General"}</p>
-                          <p className="text-xs text-zinc-500 mt-1">{item.description || "No description provided."}</p>
+                          <p className="text-sm font-semibold text-black">{item.name}</p>
+                          <p className="text-xs text-black/70 mt-1">${item.price ?? 0} · {item.category ?? "General"}</p>
+                          <p className="text-xs text-black/80 mt-1">{item.description || "No description provided."}</p>
                         </div>
                       </div>
                       <Button size="sm" variant="outline" onClick={() => confirmDelete("shop item", async () => { await deleteShopItem(item.id) })} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
@@ -1685,9 +1957,9 @@ export function StaffDashboard({
                           )}
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-white">{guide.title}</p>
-                          <p className="text-xs text-zinc-400 mt-1">{guide.brand ?? "Equipment"}</p>
-                          <p className="mt-2 text-xs text-zinc-500 leading-relaxed">{guide.why_recommend || guide.specs || "No details available."}</p>
+                          <p className="text-sm font-semibold text-black">{guide.title}</p>
+                          <p className="text-xs text-black/70 mt-1">{guide.brand ?? "Equipment"}</p>
+                          <p className="mt-2 text-xs text-black/80 leading-relaxed">{guide.why_recommend || guide.specs || "No details available."}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1810,7 +2082,7 @@ export function StaffDashboard({
           ) : (
             <div className="grid gap-4">
               {filteredComments.map((message) => {
-                const normalizedStatus = message.status === "resolved" ? "solved" : message.status === "open" ? "unsolved" : message.status
+                const normalizedStatus = normalizeCommentStatus(message.status)
                 const readableStatus = normalizedStatus === "solved" ? "Solved" : normalizedStatus === "unsolved" ? "Unsolved" : normalizedStatus === "unread" ? "Unread" : "Unsolved"
                 return (
                   <Card key={message.id} className="p-4 border border-zinc-800 bg-zinc-950/70">
@@ -2577,17 +2849,17 @@ function ConfirmationDialog({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <Card className="w-full max-w-md mx-4 p-6 shadow-xl">
-        <h2 className="text-lg font-bold text-foreground">{title}</h2>
-        <p className="mt-3 text-sm text-muted-foreground">{message}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <Card className="w-full max-w-md mx-4 border border-black bg-white p-6 shadow-2xl">
+        <h2 className="text-lg font-bold text-black">{title}</h2>
+        <p className="mt-3 text-sm text-black/80">{message}</p>
         <div className="mt-6 flex justify-end gap-3">
           <Button
             type="button"
             variant="outline"
             onClick={onCancel}
             disabled={isLoading}
-            className="px-4"
+            className="border border-black bg-white px-4 text-black hover:bg-zinc-100"
           >
             Cancel
           </Button>
@@ -2595,10 +2867,10 @@ function ConfirmationDialog({
             type="button"
             onClick={onConfirm}
             disabled={isLoading}
-            className="px-4"
+            className="border border-black bg-white px-4 text-black hover:bg-zinc-100"
           >
             {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-black" />
             ) : null}
             Confirm
           </Button>
