@@ -196,6 +196,9 @@ export function StaffDashboard({
   const [localReplies, setLocalReplies] = useState<Record<string, string[]>>({})
   const [staffFile, setStaffFile] = useState<File | null>(null)
   const [commentFilter, setCommentFilter] = useState<"all" | "unread" | "unsolved" | "solved">("all")
+  const [assessmentTierFilter, setAssessmentTierFilter] = useState<string>("all")
+  const [assessmentSearch, setAssessmentSearch] = useState("")
+  const [announcementSearch, setAnnouncementSearch] = useState("")
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
@@ -277,6 +280,35 @@ export function StaffDashboard({
       return
     }
     setAssessments((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  async function deleteAnnouncementItem(id: string) {
+    const { error } = await supabase.from("announcements").delete().eq("id", id)
+    if (error) {
+      alert(`Announcement delete failed: ${error.message}`)
+      return
+    }
+    setAnnouncements((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  async function deleteSupportTicketItem(id: string) {
+    try {
+      const response = await fetch("/api/support/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, type: "ticket" }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload?.error || "Unable to delete comment")
+      }
+      setMessages((prev) => prev.filter((item) => String(item.id) !== String(id)))
+      if (selectedMessageId === String(id)) setSelectedMessageId(null)
+      showToast("Comment deleted")
+    } catch (error) {
+      console.error("Delete comment failed:", error)
+      showToast(error instanceof Error ? error.message : "Failed to delete comment")
+    }
   }
 
   const confirmDelete = (label: string, onConfirm: () => Promise<void> | void) => {
@@ -905,18 +937,19 @@ export function StaffDashboard({
                     <div className="flex items-center gap-2">
                       <Label className="text-xs text-muted-foreground">Role / Level</Label>
                       <Select
-                        value={m.role ?? m.level ?? "member"}
+                        value={m.level ?? m.role ?? "member"}
                         onChange={(e) => {
                           const entry = e.target.value
                           const roleOptions = new Set(["member", "for fun", "coach", "teacher", "staff", "admin"])
+                          const isTier = !roleOptions.has(entry)
 
                           setMembers((prev) =>
                             prev.map((x) => {
                               if (x.id !== m.id) return x
-                              if (roleOptions.has(entry)) {
-                                return { ...x, role: entry as Profile["role"], level: x.level ?? LEVELS[0] }
+                              if (isTier) {
+                                return { ...x, level: entry, role: x.role ?? "member" }
                               }
-                              return { ...x, level: entry, role: x.role ?? "member" }
+                              return { ...x, role: entry as Profile["role"], level: x.level ?? LEVELS[0] }
                             }),
                           )
                         }}
@@ -992,89 +1025,94 @@ export function StaffDashboard({
                 <p className="text-muted-foreground">No sessions created yet.</p>
               </Card>
             ) : (
-              schedule.map((session) => {
-                const sessionBookings = bookings.filter((b) => b.session_id === session.id)
-                const bookedMembers = sessionBookings.map((b) => {
-                  const member = members.find((m) => m.id === b.user_id)
-                  return { booking: b, member }
-                })
+              (() => {
+                const sortedSessions = [...schedule].sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
+                return sortedSessions.map((session) => {
+                  const sessionBookings = bookings
+                    .filter((b) => b.session_id === session.id)
+                    .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
+                  const bookedMembers = sessionBookings.map((b) => {
+                    const member = members.find((m) => m.id === b.user_id)
+                    return { booking: b, member }
+                  })
 
-                return (
-                  <Card key={session.id} className="p-4">
-                    <div className="mb-3">
-                      <h4 className="font-semibold text-foreground">{session.title ?? "Untitled Session"}</h4>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {formatDate(session.date)} · {session.time ?? "TBD"} • Tier: {session.min_level ?? "N/A"} to {session.max_level ?? "N/A"}
-                      </p>
-                    </div>
-                    {bookedMembers.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No bookings yet</p>
-                    ) : (
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                          {bookedMembers.length} Member{bookedMembers.length !== 1 ? "s" : ""} Booked
+                  return (
+                    <Card key={session.id} className="p-4">
+                      <div className="mb-3">
+                        <h4 className="font-semibold text-foreground">{session.title ?? "Untitled Session"}</h4>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {formatDate(session.date)} · {session.time ?? "TBD"} • Tier: {session.min_level ?? "N/A"} to {session.max_level ?? "N/A"}
                         </p>
-                        {bookedMembers.map(({ booking, member }) => (
-                          <div
-                            key={booking.id}
-                            className="rounded-md bg-muted/50 p-2.5 text-sm"
-                          >
-                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                              <div className="space-y-1">
-                                <p className="font-medium text-foreground">
-                                  {member?.full_name || member?.email || "Unknown Member"}
-                                </p>
-                                <p className="text-xs text-muted-foreground">Email: {member?.email || "N/A"}</p>
-                                <p className="text-xs text-muted-foreground">Level: {member?.level || "N/A"}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  Booked at: {booking.created_at ? new Date(booking.created_at).toLocaleString() : "N/A"}
-                                </p>
-                                {booking.notes && (
-                                  <p className="text-xs text-amber-600 dark:text-amber-300">Note: {booking.notes}</p>
-                                )}
-                              </div>
-
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs"
-                                onClick={() =>
-                                  showConfirmation(
-                                    "Cancel Booking?",
-                                    `Remove ${member?.full_name || "this member"} from this session?`,
-                                    async () => {
-                                      setConfirmLoading(true)
-                                      try {
-                                        const { error } = await supabase
-                                          .from("bookings")
-                                          .delete()
-                                          .eq("id", booking.id)
-                                        if (error) {
-                                          console.error("❌ Cancel Booking Error:", error.message)
-                                          alert(`Error cancelling booking: ${error.message}`)
-                                          setConfirmLoading(false)
-                                          return
-                                        }
-                                        setBookings((prev) => prev.filter((b) => b.id !== booking.id))
-                                        closeConfirmation()
-                                        showToast(`Cancelled booking for ${member?.full_name || "member"}`)
-                                      } finally {
-                                        setConfirmLoading(false)
-                                      }
-                                    }
-                                  )
-                                }
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
                       </div>
-                    )}
-                  </Card>
-                )
-              })
+                      {bookedMembers.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No bookings yet</p>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            {bookedMembers.length} Member{bookedMembers.length !== 1 ? "s" : ""} Booked
+                          </p>
+                          {bookedMembers.map(({ booking, member }) => (
+                            <div
+                              key={booking.id}
+                              className="rounded-md bg-muted/50 p-2.5 text-sm"
+                            >
+                              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                <div className="space-y-1">
+                                  <p className="font-medium text-foreground">
+                                    {member?.full_name || member?.email || "Unknown Member"}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">Email: {member?.email || "N/A"}</p>
+                                  <p className="text-xs text-muted-foreground">Level: {member?.level || "N/A"}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Booked at: {booking.created_at ? new Date(booking.created_at).toLocaleString() : "N/A"}
+                                  </p>
+                                  {booking.notes && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-300">Note: {booking.notes}</p>
+                                  )}
+                                </div>
+
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-xs border-white bg-white text-black hover:bg-zinc-100"
+                                  onClick={() =>
+                                    showConfirmation(
+                                      "Cancel Booking?",
+                                      `Remove ${member?.full_name || "this member"} from this session?`,
+                                      async () => {
+                                        setConfirmLoading(true)
+                                        try {
+                                          const { error } = await supabase
+                                            .from("bookings")
+                                            .delete()
+                                            .eq("id", booking.id)
+                                          if (error) {
+                                            console.error("❌ Cancel Booking Error:", error.message)
+                                            alert(`Error cancelling booking: ${error.message}`)
+                                            setConfirmLoading(false)
+                                            return
+                                          }
+                                          setBookings((prev) => prev.filter((b) => b.id !== booking.id))
+                                          closeConfirmation()
+                                          showToast(`Cancelled booking for ${member?.full_name || "member"}`)
+                                        } finally {
+                                          setConfirmLoading(false)
+                                        }
+                                      }
+                                    )
+                                  }
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </Card>
+                  )
+                })
+              })()
             )}
           </div>
         </div>
@@ -1194,17 +1232,32 @@ export function StaffDashboard({
                         <Button
                           size="sm"
                           variant="secondary"
-                          onClick={async () => {
-                            const toSave = rows
-                            for (const row of toSave) {
+                          onClick={() => {
+                            const toSave = rows.filter((row) => {
                               const booking = row.booking
                               const desired = attendanceSelection[booking.id] ?? "present"
                               const current = row.attendance?.status ?? "not marked"
-                              if (desired !== current) {
-                                await markAttendance(booking, desired)
-                              }
+                              return desired !== current
+                            })
+
+                            if (toSave.length === 0) {
+                              showToast("No attendance changes to save")
+                              return
                             }
-                            showToast("Attendance saved")
+
+                            showConfirmation(
+                              "Save attendance?",
+                              `Save ${toSave.length} attendance change${toSave.length > 1 ? "s" : ""} for this session?`,
+                              async () => {
+                                closeConfirmation()
+                                for (const row of toSave) {
+                                  const booking = row.booking
+                                  const desired = attendanceSelection[booking.id] ?? "present"
+                                  await markAttendance(booking, desired)
+                                }
+                                showToast("Attendance saved")
+                              },
+                            )
                           }}
                         >
                           Save Attendance
@@ -1495,6 +1548,42 @@ export function StaffDashboard({
               if (data && data[0]) setAnnouncements((prev) => [data[0] as Announcement, ...prev])
             }}
           />
+
+          <div className="mt-6 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-foreground">Announcement Record</h3>
+              <Input
+                value={announcementSearch}
+                onChange={(e) => setAnnouncementSearch(e.target.value)}
+                placeholder="Search announcements"
+                className="max-w-xs"
+              />
+            </div>
+            {announcements.filter((item) => item.title?.toLowerCase().includes(announcementSearch.toLowerCase()) || item.content?.toLowerCase().includes(announcementSearch.toLowerCase())).length === 0 ? (
+              <Card className="p-5"><p className="text-sm text-muted-foreground">No announcements found.</p></Card>
+            ) : (
+              announcements
+                .filter((item) => item.title?.toLowerCase().includes(announcementSearch.toLowerCase()) || item.content?.toLowerCase().includes(announcementSearch.toLowerCase()))
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                .map((item) => (
+                  <Card key={item.id} className="flex items-start justify-between gap-4 p-4">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground">{item.title || "Announcement"}</p>
+                      <p className="mt-1 text-sm text-white whitespace-pre-line">{item.content}</p>
+                      <p className="mt-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">{formatDate(item.created_at)}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-white bg-white text-black hover:bg-zinc-100"
+                      onClick={() => confirmDelete("announcement", async () => { await deleteAnnouncementItem(item.id) })}
+                    >
+                      Delete
+                    </Button>
+                  </Card>
+                ))
+            )}
+          </div>
         </div>
       )}
 
@@ -1527,20 +1616,32 @@ export function StaffDashboard({
             {shopItems.length === 0 ? (
               <Card className="p-5"><p className="text-sm text-muted-foreground">No items published yet.</p></Card>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                {shopItems.map((item) => (
-                  <Card key={item.id} className="p-4 border border-zinc-800 bg-zinc-950">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-white">{item.name}</p>
-                        <p className="text-xs text-zinc-400 mt-1">${item.price ?? 0} · {item.category ?? "General"}</p>
+              <div className="space-y-3">
+                {shopItems.map((item) => {
+                  const imageUrls = parseImageUrls(item.image_url || item.pic_url || (item.image_urls ? JSON.stringify(item.image_urls) : null))
+                  const firstImage = imageUrls[0]
+                  return (
+                    <Card key={item.id} className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-14 w-14 overflow-hidden rounded-lg border border-border bg-muted/30">
+                          {firstImage ? (
+                            <img src={firstImage} alt={item.name ?? "Shop item"} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[10px] uppercase tracking-[0.2em] text-zinc-500">Shop</div>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-white">{item.name}</p>
+                          <p className="text-xs text-zinc-400 mt-1">${item.price ?? 0} · {item.category ?? "General"}</p>
+                          <p className="text-xs text-zinc-500 mt-1">{item.description || "No description provided."}</p>
+                        </div>
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => confirmDelete("shop item", async () => { await deleteShopItem(item.id) })} className="text-xs">
+                      <Button size="sm" variant="outline" onClick={() => confirmDelete("shop item", async () => { await deleteShopItem(item.id) })} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
                         Delete
                       </Button>
-                    </div>
-                  </Card>
-                ))}
+                    </Card>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -1569,24 +1670,35 @@ export function StaffDashboard({
                 <p className="text-sm text-muted-foreground">No guides published yet.</p>
               </Card>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                {gearGuides.map((guide) => (
-                  <Card key={guide.id} className="p-4 border border-zinc-800 bg-zinc-950">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-white">{guide.title}</p>
-                        <p className="text-xs text-zinc-400 mt-1">{guide.brand ?? "Equipment"}</p>
+              <div className="space-y-3">
+                {gearGuides.map((guide) => {
+                  const imageUrls = parseImageUrls(guide.image_url ?? (guide.image_urls ? JSON.stringify(guide.image_urls) : null))
+                  const firstImage = imageUrls[0]
+                  return (
+                    <Card key={guide.id} className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-14 w-14 overflow-hidden rounded-lg border border-border bg-muted/30">
+                          {firstImage ? (
+                            <img src={firstImage} alt={guide.title} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[10px] uppercase tracking-[0.2em] text-zinc-500">Guide</div>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-white">{guide.title}</p>
+                          <p className="text-xs text-zinc-400 mt-1">{guide.brand ?? "Equipment"}</p>
+                          <p className="mt-2 text-xs text-zinc-500 leading-relaxed">{guide.why_recommend || guide.specs || "No details available."}</p>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm">Published</Badge>
-                        <Button size="sm" variant="outline" onClick={() => confirmDelete("gear guide", async () => { await deleteGearGuide(guide.id) })} className="text-xs">
+                        <Button size="sm" variant="outline" onClick={() => confirmDelete("gear guide", async () => { await deleteGearGuide(guide.id) })} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
                           Delete
                         </Button>
                       </div>
-                    </div>
-                    <p className="mt-3 text-xs text-zinc-400 leading-relaxed">{guide.why_recommend || guide.specs || "No details available."}</p>
-                  </Card>
-                ))}
+                    </Card>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -1615,25 +1727,60 @@ export function StaffDashboard({
             }}
           />
           <div className="mt-6">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Published Assessments</h3>
+            <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <h3 className="text-sm font-semibold text-foreground">Published Assessments</h3>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={assessmentSearch}
+                  onChange={(e) => setAssessmentSearch(e.target.value)}
+                  placeholder="Search name, email, level..."
+                  className="w-full sm:w-52"
+                />
+                <Select value={assessmentTierFilter} onChange={(e) => setAssessmentTierFilter(e.target.value)} className="w-full sm:w-36">
+                  <option value="all">All tiers</option>
+                  {LEVELS.map((tier) => (
+                    <option key={tier} value={tier}>{tier}</option>
+                  ))}
+                </Select>
+              </div>
+            </div>
             {assessments.length === 0 ? (
               <Card className="p-5"><p className="text-sm text-muted-foreground">No assessments posted yet.</p></Card>
             ) : (
               <div className="grid gap-4">
-                {assessments.map((assessment) => (
-                  <Card key={assessment.id} className="p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{assessment.level || "Level"}</p>
-                        <p className="text-xs text-muted-foreground">{assessment.score ?? 0}/100 · {formatDate(assessment.date)}</p>
-                      </div>
-                      <Button size="sm" variant="outline" onClick={() => confirmDelete("assessment", async () => { await deleteAssessmentItem(assessment.id) })} className="text-xs">
-                        Delete
-                      </Button>
-                    </div>
-                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{assessment.feedback}</p>
-                  </Card>
-                ))}
+                {assessments
+                  .filter((assessment) => {
+                    const member = members.find((m) => m.id === assessment.user_id)
+                    const searchTerm = assessmentSearch.trim().toLowerCase()
+                    const matchesTier = assessmentTierFilter === "all" || assessment.level === assessmentTierFilter
+                    const matchesSearch = !searchTerm || [
+                      assessment.level,
+                      assessment.feedback,
+                      member?.full_name,
+                      member?.email,
+                      member?.first_name,
+                      member?.last_name,
+                    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(searchTerm))
+                    return matchesTier && matchesSearch
+                  })
+                  .map((assessment) => {
+                    const member = members.find((m) => m.id === assessment.user_id)
+                    return (
+                      <Card key={assessment.id} className="p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">{assessment.level || "Level"}</p>
+                            <p className="text-xs text-muted-foreground">{member ? `${member.full_name || getMemberDisplayName(member)} · ${member.email || "No email"}` : "Member record"}</p>
+                            <p className="text-xs text-muted-foreground">{assessment.score ?? 0}/100 · {formatDate(assessment.date)}</p>
+                          </div>
+                          <Button size="sm" variant="outline" onClick={() => confirmDelete("assessment", async () => { await deleteAssessmentItem(assessment.id) })} className="text-xs border-white bg-white text-black hover:bg-zinc-100">
+                            Delete
+                          </Button>
+                        </div>
+                        <p className="mt-3 text-sm leading-relaxed text-white">{assessment.feedback}</p>
+                      </Card>
+                    )
+                  })}
               </div>
             )}
           </div>
@@ -1650,7 +1797,7 @@ export function StaffDashboard({
                   key={filter}
                   type="button"
                   onClick={() => setCommentFilter(filter)}
-                  className={`rounded-sm border px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.2em] transition ${commentFilter === filter ? "border-[#40938c] bg-[#40938c]/10 text-[#40938c]" : "border-zinc-700 bg-zinc-900 text-zinc-300"}`}
+                  className={`rounded-sm border px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.2em] transition ${commentFilter === filter ? "border-[#40938c] bg-[#40938c]/10 text-[#40938c]" : "border-zinc-700 bg-zinc-900 text-white"}`}
                 >
                   {filter}
                 </button>
@@ -1659,7 +1806,7 @@ export function StaffDashboard({
           </div>
 
           {filteredComments.length === 0 ? (
-            <Card className="p-6 text-center text-sm text-zinc-400">No comments in this filter.</Card>
+            <Card className="p-6 text-center text-sm text-white">No comments in this filter.</Card>
           ) : (
             <div className="grid gap-4">
               {filteredComments.map((message) => {
@@ -1671,23 +1818,24 @@ export function StaffDashboard({
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-sm font-semibold text-white">{message.subject || "General advice"}</h3>
-                          <Badge className={normalizedStatus === "solved" ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" : normalizedStatus === "unread" ? "bg-amber-500/15 text-amber-300 border border-amber-500/30" : "bg-zinc-700/40 text-zinc-200 border border-zinc-600"}>
+                          <Badge className={normalizedStatus === "solved" ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" : normalizedStatus === "unread" ? "bg-amber-500/15 text-amber-300 border border-amber-500/30" : "bg-zinc-700/40 text-white border border-zinc-600"}>
                             {readableStatus}
                           </Badge>
                         </div>
-                        <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">{getMemberDisplayName(members.find((member) => member.id === message.user_id)) || message.user_email}</p>
+                        <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-200">{getMemberDisplayName(members.find((member) => member.id === message.user_id)) || message.user_email}</p>
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" onClick={() => updateCommentStatus(message.id, "unread")} className="border-zinc-700 bg-zinc-900 text-zinc-200">Unread</Button>
-                        <Button size="sm" variant="outline" onClick={() => updateCommentStatus(message.id, "unsolved")} className="border-zinc-700 bg-zinc-900 text-zinc-200">Unsolved</Button>
+                        <Button size="sm" variant="outline" onClick={() => updateCommentStatus(message.id, "unread")} className="border-zinc-700 bg-zinc-900 text-white">Unread</Button>
+                        <Button size="sm" variant="outline" onClick={() => updateCommentStatus(message.id, "unsolved")} className="border-zinc-700 bg-zinc-900 text-white">Unsolved</Button>
                         <Button size="sm" onClick={() => updateCommentStatus(message.id, "solved")} className="bg-[#40938c] text-black">Solved</Button>
+                        <Button size="sm" variant="outline" onClick={() => confirmDelete("comment", async () => { await deleteSupportTicketItem(message.id) })} className="border-white bg-white text-black hover:bg-zinc-100">Delete</Button>
                       </div>
                     </div>
 
-                    <p className="mt-4 text-sm leading-relaxed text-zinc-300 whitespace-pre-wrap">{message.message}</p>
+                    <p className="mt-4 text-sm leading-relaxed text-white whitespace-pre-wrap">{message.message}</p>
 
-                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-zinc-800 pt-3 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-zinc-800 pt-3 text-[10px] uppercase tracking-[0.2em] text-zinc-200">
                       <span>{formatDate(message.created_at)}</span>
                       <span>{message.user_email}</span>
                     </div>
