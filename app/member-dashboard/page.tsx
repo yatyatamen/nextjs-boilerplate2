@@ -36,7 +36,7 @@ export default async function MemberDashboardPage() {
     full_name: profile?.full_name || user.user_metadata?.full_name || "New Wolf Member",
     email: profile?.email || user.email || "",
     role: profile?.role || "member",
-    level: profile?.level || "For Fun",
+    level: profile?.level || "Bronze",
     created_at: profile?.created_at || new Date().toISOString()
   }
 

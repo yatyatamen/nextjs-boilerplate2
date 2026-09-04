@@ -1,17 +1,35 @@
 export const ALLOWED_DOMAIN = "@gapps.yrdsb.ca"
 
-// Updated to the exact 6 tiers requested: For Fun up to Diamond II
+// Separate role list and tier list so they can be used independently in forms and filters.
+export const ROLES = [
+  "staff",
+  "teacher",
+  "admin",
+  "coach",
+  "for fun",
+  "member",
+] as const
+
+export const ROLE_OPTIONS = [...ROLES]
+export const getRoleOptions = () => [...ROLE_OPTIONS]
+export type Role = (typeof ROLES)[number]
+
+// Exact tier list requested by the club: Bronze, Silver, Gold, Diamond, Diamond2
 export const LEVELS = [
-  "For Fun",
   "Bronze",
   "Silver",
   "Gold",
   "Diamond",
-  "Diamond II"
+  "Diamond2",
 ] as const
+
+export const TIER_OPTIONS = [...LEVELS]
+export const getTierOptions = () => [...TIER_OPTIONS]
 export type Level = (typeof LEVELS)[number]
 
-export type Role = "member" | "staff"
+// Combined list for settings that need every role and tier in one single selector.
+export const ALL_ROLE_AND_TIER_OPTIONS = [...ROLES, ...LEVELS] as const
+export const getAllRoleAndTierOptions = () => [...ALL_ROLE_AND_TIER_OPTIONS]
 
 export function isValidSchoolEmail(email: string): boolean {
   return /^[^\s@]+@gapps\.yrdsb\.ca$/i.test(email.trim())
@@ -45,6 +63,7 @@ export type Booking = {
   user_id: string | null
   session_id: string | null
   status: string | null
+  notes?: string | null
   created_at?: string | null
 }
 
@@ -64,6 +83,7 @@ export type ShopItem = {
   stock: number | null
   image_url?: string | null
   pic_url?: string | null
+  image_urls?: string[] | null
   unit?: string | null
 }
 
@@ -74,6 +94,7 @@ export type Assessment = {
   feedback: string | null
   score?: number | null 
   date: string | null
+  pdf_url?: string | null
 }
 
 export type StaffProfile = {
@@ -93,6 +114,7 @@ export type AttendanceRecord = {
   user_level: string
   marked_at: string
   status: "present" | "absent" | "late"
+  notes?: string | null
 }
 
 export type EquipmentRecommendation = {
@@ -105,6 +127,7 @@ export type EquipmentRecommendation = {
   recommended_for_tier: string 
   external_link: string | null
   image_url: string | null 
+  image_urls?: string[] | null
 }
 
 export type SupportTicket = {
@@ -113,7 +136,7 @@ export type SupportTicket = {
   user_email: string
   subject: string
   message: string
-  status: "open" | "resolved"
+  status: "unread" | "unsolved" | "solved" | "open" | "resolved"
   created_at: string
 }
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server"
+import { createServiceClient } from "@/lib/supabase/server"
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -7,22 +7,24 @@ export async function PATCH(request: NextRequest) {
     const memberId = typeof body?.memberId === "string" ? body.memberId : undefined
     const fullName = typeof body?.fullName === "string" ? body.fullName.trim() : undefined
     const level = typeof body?.level === "string" ? body.level.trim() : undefined
+    const role = typeof body?.role === "string" ? body.role.trim() : undefined
     const memberLevel = typeof body?.member_level === "string" ? body.member_level.trim() : undefined
 
     if (!memberId) {
       return NextResponse.json({ error: "memberId is required" }, { status: 400 })
     }
 
-    if (!fullName && !level && !memberLevel) {
-      return NextResponse.json({ error: "At least one of fullName or level is required" }, { status: 400 })
+    if (!fullName && !level && !role && !memberLevel) {
+      return NextResponse.json({ error: "At least one of fullName, level, or role is required" }, { status: 400 })
     }
 
     try {
-      const supabase = await createSupabaseServerClient()
+      const supabase = await createServiceClient()
 
       const updateData: Record<string, string | undefined> = {}
       if (fullName) updateData.full_name = fullName
       if (level) updateData.level = level
+      if (role) updateData.role = role
       if (!level && memberLevel) updateData.member_level = memberLevel
 
       const updateProfile = async (payload: Record<string, string | undefined>) =>

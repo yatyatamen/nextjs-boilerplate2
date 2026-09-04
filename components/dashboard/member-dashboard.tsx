@@ -3,7 +3,6 @@
                                                 import { useMemo, useState, useEffect, useRef } from "react"
                                                 import { createClient } from "@/lib/supabase/client"
                                                 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
-import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                 import { Badge, Button, Card } from "@/components/ui/primitives"
                                                 import type {
                                                   Profile,
@@ -18,6 +17,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                   SupportTicket,
                                                   Resource,
                                                 } from "@/lib/types"
+import { LEVELS } from "@/lib/types"
                                                 import {
                                                   LayoutDashboard,
                                                   CalendarDays,
@@ -30,7 +30,6 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                   Users,
                                                   Award,
                                                   Info,
-                                                  Mail,
                                                   CheckCircle,
                                                   SendHorizontal,
                                                   Sun,
@@ -55,7 +54,6 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                   { key: "gear", label: "Equipment Guides", icon: Award },
                                                   { key: "resources", label: "Rubrics & PDFs", icon: GraduationCap },
                                                   { key: "shop", label: "Wolves Shop", icon: ShoppingBag },
-                                                  { key: "messages", label: "Messages", icon: Mail },
                                                   { key: "club-info", label: "About Wolves", icon: Info },
                                                   { key: "support", label: "Contact & Support", icon: LifeBuoy },
                                                   { key: "settings", label: "Settings", icon: Settings },
@@ -68,16 +66,71 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                   "3:20-5:15 PM"
                                                 ]
 
-                                                const PLAYER_TIERS = [
-                                                  "Bronze",
-                                                  "Silver",
-                                                  "Gold",
-                                                  "Diamond",
-                                                  "Diamond II"
-                                                ]
+                                                const PLAYER_TIERS = LEVELS
 
                                                 function normalizeFilterValue(value: string | null | undefined) {
                                                   return (value ?? "").toString().trim().toLowerCase()
+                                                }
+
+                                                function parseImageList(value: string | null | undefined) {
+                                                  if (!value) return []
+                                                  const raw = value.trim()
+                                                  if (!raw) return []
+
+                                                  try {
+                                                    const parsed = JSON.parse(raw)
+                                                    if (Array.isArray(parsed)) {
+                                                      return parsed
+                                                        .filter((entry): entry is string => typeof entry === "string")
+                                                        .map((entry) => entry.trim())
+                                                        .filter(Boolean)
+                                                    }
+                                                  } catch {
+                                                    // Ignore invalid JSON and fall back to comma/newline parsing.
+                                                  }
+
+                                                  return raw
+                                                    .split(/\n|,|;/)
+                                                    .map((entry) => entry.trim())
+                                                    .filter(Boolean)
+                                                }
+
+                                                function GalleryCarousel({ images, alt, className = "" }: { images: string[]; alt: string; className?: string }) {
+                                                  const [activeIndex, setActiveIndex] = useState(0)
+                                                  const validImages = images.filter(Boolean)
+
+                                                  useEffect(() => {
+                                                    setActiveIndex(0)
+                                                  }, [images.join("|")])
+
+                                                  if (validImages.length === 0) {
+                                                    return (
+                                                      <div className={`flex items-center justify-center rounded-sm border border-dashed border-zinc-700 bg-zinc-950/40 ${className}`}>
+                                                        <span className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">No image</span>
+                                                      </div>
+                                                    )
+                                                  }
+
+                                                  const currentImage = validImages[activeIndex]
+
+                                                  return (
+                                                    <div className={`relative overflow-hidden rounded-sm bg-zinc-950 ${className}`}>
+                                                      <img src={currentImage} alt={alt} className="h-full w-full object-cover" />
+                                                      {validImages.length > 1 && (
+                                                        <div className="absolute inset-x-0 bottom-2 flex items-center justify-center gap-1.5">
+                                                          {validImages.map((_, index) => (
+                                                            <button
+                                                              key={`${alt}-${index}`}
+                                                              type="button"
+                                                              aria-label={`View image ${index + 1}`}
+                                                              onClick={() => setActiveIndex(index)}
+                                                              className={`h-2.5 w-2.5 rounded-full border transition ${index === activeIndex ? "border-[#40938c] bg-[#40938c]" : "border-white/75 bg-white/40"}`}
+                                                            />
+                                                          ))}
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  )
                                                 }
 
                                                 function formatDate(date: string | null) {
@@ -97,6 +150,11 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                     month: "short",
                                                     day: "numeric",
                                                   })
+                                                }
+
+                                                function isFeatureAnnouncement(title: string | null | undefined) {
+                                                  const normalized = String(title ?? "").toLowerCase()
+                                                  return normalized.includes("website") || normalized.includes("feature")
                                                 }
 
                                                 export function MemberDashboard({
@@ -153,16 +211,25 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                   
                                                   // Interactive Confirmation Window State
                                                   const [confirmingSession, setConfirmingSession] = useState<ScheduleSession | null>(null)
+                                                  const [bookingNoteDraft, setBookingNoteDraft] = useState("")
                                                   
                                                   // Advanced State Fields
                                                   const [attendanceList, setAttendanceList] = useState<AttendanceRecord[]>(attendanceRecords)
                                                   const [attendanceFilter, setAttendanceFilter] = useState<"all" | "present" | "absent" | "late">("all")
                                                   const [resources, setResources] = useState<Resource[]>([])
+
+                                                  const latestGeneralAnnouncement = [...announcements]
+                                                    .filter((item) => !isFeatureAnnouncement(item.title))
+                                                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+
+                                                  const latestFeatureAnnouncement = [...announcements]
+                                                    .filter((item) => isFeatureAnnouncement(item.title))
+                                                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
                                                   
                                                   // Dropdown Form Management
                                                   const [newSessionDate, setNewSessionDate] = useState("")
                                                   const [newSessionTime, setNewSessionTime] = useState(AVAILABLE_TIME_SLOTS[0])
-                                                  const [newSessionLevel, setNewSessionLevel] = useState(PLAYER_TIERS[0])
+                                                  const [newSessionLevel, setNewSessionLevel] = useState<string>(PLAYER_TIERS[0])
                                                   const [sessionTitles, setSessionTitles] = useState<string[]>(["Core Training Focus"])
 
                                                   const [newAnnTitle, setNewAnnTitle] = useState("")
@@ -170,7 +237,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
 
                                                   // Classroom Evaluation Grading Hooks
                                                   const [selectedStudentId, setSelectedStudentId] = useState("")
-                                                  const [assignedGradeTier, setAssignedGradeTier] = useState(PLAYER_TIERS[0])
+                                                  const [assignedGradeTier, setAssignedGradeTier] = useState<string>(PLAYER_TIERS[0])
                                                   const [numericScore, setNumericScore] = useState(80)
                                                   const [critiqueFeedbackText, setCritiqueFeedbackText] = useState("")
                                                   const [isSubmittingGrade, setIsSubmittingGrade] = useState(false)
@@ -188,11 +255,13 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                   const [gearFilter, setGearFilter] = useState("All")
                                                   const [gearTierFilter, setGearTierFilter] = useState("All")
                                                   const [gearSearch, setGearSearch] = useState("")
+                                                  const [gearLayout, setGearLayout] = useState<"large" | "list" | "compact">("large")
                                                   const [shopItemsState, setShopItemsState] = useState<ShopItem[]>(shopItems)
                                                   const [shopFilter, setShopFilter] = useState("All")
                                                   const [shopSearch, setShopSearch] = useState("")
                                                   const [shopPriceMin, setShopPriceMin] = useState<number | "">("")
                                                   const [shopPriceMax, setShopPriceMax] = useState<number | "">("")
+                                                  const [shopLayout, setShopLayout] = useState<"large" | "list" | "compact">("large")
 
                                                   // Confirmation & Toast Hooks
                                                   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
@@ -395,90 +464,112 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                   async function handleCreateSession() {
                                                     if (!newSessionDate) return
                                                     const combinedFocusTitle = sessionTitles.filter(t => t.trim() !== "").join(" & ") || "General Drill Session"
-                                                    
-                                                    const { data, error } = await supabase
-                                                      .from("schedule")
-                                                      .insert({
-                                                        date: newSessionDate,
-                                                        time: newSessionTime,
-                                                        level: newSessionLevel,
-                                                        coach: displayName,
-                                                        title: combinedFocusTitle
-                                                      })
-                                                      .select()
-                                                      .single()
-                                                    
-                                                    if (!error && data) {
-                                                      setSchedule((prev) => [data as ScheduleSession, ...prev])
-                                                      setNewSessionDate("")
-                                                      setSessionTitles(["Core Training Focus"])
-                                                    }
-                                                  }
+    showConfirmation(
+      "Post this session?",
+      "This will publish the schedule item for members to view and register for.",
+      async () => {
+        closeConfirmation()
+        const { data, error } = await supabase
+          .from("schedule")
+          .insert({
+            date: newSessionDate,
+            time: newSessionTime,
+            level: newSessionLevel,
+            coach: displayName,
+            title: combinedFocusTitle
+          })
+          .select()
+          .single()
+        
+        if (!error && data) {
+          setSchedule((prev) => [data as ScheduleSession, ...prev])
+          setNewSessionDate("")
+          setSessionTitles(["Core Training Focus"])
+          showToast("Session posted successfully")
+        }
+      }
+    )
+  }
 
-                                                  async function handlePostAnnouncement() {
-                                                    if (!newAnnTitle || !newAnnContent) return
-                                                    const { data, error } = await supabase
-                                                      .from("announcements")
-                                                      .insert({
-                                                        title: newAnnTitle,
-                                                        content: newAnnContent,
-                                                        created_at: new Date().toISOString()
-                                                      })
-                                                      .select()
-                                                      .single()
+  async function handlePostAnnouncement() {
+    if (!newAnnTitle || !newAnnContent) return
+    showConfirmation(
+      "Post announcement?",
+      "This announcement will be visible to the dashboard audience right away.",
+      async () => {
+        closeConfirmation()
+        const { data, error } = await supabase
+          .from("announcements")
+          .insert({
+            title: newAnnTitle,
+            content: newAnnContent,
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .single()
 
-                                                    if (!error && data) {
-                                                      setAnnouncements((prev) => [data as Announcement, ...prev])
-                                                      setNewAnnTitle("")
-                                                      setNewAnnContent("")
-                                                    }
-                                                  }
+        if (!error && data) {
+          setAnnouncements((prev) => [data as Announcement, ...prev])
+          setNewAnnTitle("")
+          setNewAnnContent("")
+          showToast("Announcement posted")
+        }
+      }
+    )
+  }
 
-                                                  async function submitPerformanceGrade() {
-                                                    if (!selectedStudentId || !critiqueFeedbackText) return
-                                                    setIsSubmittingGrade(true)
-                                                    
-                                                    const { data, error } = await supabase
-                                                      .from("assessments")
-                                                      .insert({
-                                                        user_id: selectedStudentId,
-                                                        level: assignedGradeTier,
-                                                        score: numericScore,
-                                                        feedback: critiqueFeedbackText,
-                                                        date: new Date().toISOString().split('T')[0]
-                                                      })
-                                                      .select()
-                                                      .single()
+  async function submitPerformanceGrade() {
+    if (!selectedStudentId || !critiqueFeedbackText) return
+    showConfirmation(
+      "Save this assessment?",
+      "This evaluation will be added to the student's assessment record.",
+      async () => {
+        closeConfirmation()
+        setIsSubmittingGrade(true)
+        
+        const { data, error } = await supabase
+          .from("assessments")
+          .insert({
+            user_id: selectedStudentId,
+            level: assignedGradeTier,
+            score: numericScore,
+            feedback: critiqueFeedbackText,
+            date: new Date().toISOString().split('T')[0]
+          })
+          .select()
+          .single()
 
-                                                    if (!error && data) {
-                                                      if (selectedStudentId === profile.id) {
-                                                        setAssessments(prev => [data as Assessment, ...prev])
-                                                      }
-                                                      setCritiqueFeedbackText("")
-                                                      alert("Grade report successfully logged onto ledger pipeline.")
-                                                    }
-                                                    setIsSubmittingGrade(false)
-                                                  }
+        if (!error && data) {
+          if (selectedStudentId === profile.id) {
+            setAssessments(prev => [data as Assessment, ...prev])
+          }
+          setCritiqueFeedbackText("")
+          showToast("Grade report successfully logged")
+        }
+        setIsSubmittingGrade(false)
+      }
+    )
+  }
 
-                                                  async function handleJsonResponse(response: Response) {
-                                                    const text = await response.text()
-                                                    if (!text.trim()) {
-                                                      return response.ok ? { data: null } : { error: response.statusText || `Request failed (${response.status})` }
-                                                    }
+  async function handleJsonResponse(response: Response) {
+    const text = await response.text()
+    if (!text.trim()) {
+      return response.ok ? { data: null } : { error: response.statusText || `Request failed (${response.status})` }
+    }
 
-                                                    try {
-                                                      return JSON.parse(text)
-                                                    } catch {
-                                                      const normalizedText = text.trim()
-                                                      return {
-                                                        error: normalizedText.includes("<html") || normalizedText.includes("<!DOCTYPE")
-                                                          ? `Request failed (${response.status})`
-                                                          : normalizedText || `Invalid JSON response (${response.status})`,
-                                                      }
-                                                    }
-                                                  }
+    try {
+      return JSON.parse(text)
+    } catch {
+      const normalizedText = text.trim()
+      return {
+        error: normalizedText.includes("<html") || normalizedText.includes("<!DOCTYPE")
+          ? `Request failed (${response.status})`
+          : normalizedText || `Invalid JSON response (${response.status})`,
+      }
+    }
+  }
 
-                                                  async function createSupportTicket(payload: { subject: string; message: string }) {
+  async function createSupportTicket(payload: { subject: string; message: string }) {
                                                     const endpoint = typeof window !== "undefined"
                                                       ? new URL("/api/support", window.location.origin).toString()
                                                       : "/api/support"
@@ -867,14 +958,12 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                   }
 
                                                   function openGuideInquiry(productName: string | null, brand?: string | null) {
-                                                    const normalizedProductName = productName ?? "this product"
+                                                    const normalizedProductName = productName ?? "this item"
                                                     const normalizedBrand = brand ?? ""
                                                     const displayName = normalizedBrand ? `${normalizedProductName} (${normalizedBrand})` : normalizedProductName
-                                                    setGuideInquiry({
-                                                      isOpen: true,
-                                                      title: `Ask about ${displayName}`,
-                                                      message: `I want to ask about ${displayName}`,
-                                                    })
+                                                    const instagramDmUrl = "https://www.instagram.com/m/wci_badminton_club"
+                                                    window.open(instagramDmUrl, "_blank", "noopener,noreferrer")
+                                                    return displayName
                                                   }
 
                                                   async function submitSupportTicket(e?: React.FormEvent | null, overrides?: { category?: string; message?: string; nextView?: string }) {
@@ -904,7 +993,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                     setMessagesList((prev) => [...prev, annotatedTicket])
                                                     setSelectedConvoId(conversationId)
                                                     setSelectedMessageId(String(annotatedTicket.id))
-                                                    setActive(overrides?.nextView ?? "messages")
+                                                    setActive(overrides?.nextView ?? "support")
                                                     showToast("Message sent successfully")
 
                                                     try {
@@ -931,46 +1020,86 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
 
                                                   
 
-                                                  async function insertBookingRecord(sessionId: string | number) {
-                                                    const { data, error } = await supabase
-                                                      .from("bookings")
-                                                      .insert({ user_id: profile.id, session_id: sessionId, status: "confirmed" })
-                                                      .select()
-                                                      .single()
-
-                                                    if (error) {
-                                                      if (error.code === "23505" || error.message?.toLowerCase().includes("duplicate")) {
-                                                        const { data: existingBooking, error: lookupError } = await supabase
-                                                          .from("bookings")
-                                                          .select("*")
-                                                          .eq("user_id", profile.id)
-                                                          .eq("session_id", sessionId)
-                                                          .maybeSingle()
-
-                                                        if (!lookupError && existingBooking) return existingBooking
-                                                      }
-
-                                                      throw error
+                                                  async function insertBookingRecord(sessionId: string | number, notes?: string | null) {
+                                                    const cleanNotes = notes?.trim() || null
+                                                    const payload: Record<string, string | number | null> = {
+                                                      user_id: profile.id,
+                                                      session_id: sessionId,
+                                                      status: "confirmed",
+                                                      notes: cleanNotes,
                                                     }
 
-                                                    return data
+                                                    try {
+                                                      const { data, error } = await supabase
+                                                        .from("bookings")
+                                                        .insert(payload)
+                                                        .select()
+                                                        .single()
+
+                                                      if (error) {
+                                                        if (error.code === "23505" || error.message?.toLowerCase().includes("duplicate")) {
+                                                          const { data: existingBooking, error: lookupError } = await supabase
+                                                            .from("bookings")
+                                                            .select("*")
+                                                            .eq("user_id", profile.id)
+                                                            .eq("session_id", sessionId)
+                                                            .maybeSingle()
+
+                                                          if (!lookupError && existingBooking) return existingBooking
+                                                        }
+
+                                                        if (error.message?.toLowerCase().includes("notes") || error.code === "42703") {
+                                                          const { data: retryData, error: retryError } = await supabase
+                                                            .from("bookings")
+                                                            .insert({
+                                                              user_id: profile.id,
+                                                              session_id: sessionId,
+                                                              status: "confirmed",
+                                                            })
+                                                            .select()
+                                                            .single()
+
+                                                          if (!retryError && retryData) return retryData
+                                                        }
+
+                                                        throw error
+                                                      }
+
+                                                      return data
+                                                    } catch (error) {
+                                                      const { data, error: fallbackError } = await supabase
+                                                        .from("bookings")
+                                                        .insert({
+                                                          user_id: profile.id,
+                                                          session_id: sessionId,
+                                                          status: "confirmed",
+                                                        })
+                                                        .select()
+                                                        .single()
+
+                                                      if (!fallbackError && data) return data
+                                                      throw error
+                                                    }
                                                   }
 
                                                   async function book(session: ScheduleSession) {
+                                                    const note = bookingNoteDraft.trim()
                                                     setPendingId(session.id)
                                                     try {
                                                       const response = await fetch("/api/bookings", {
                                                         method: "POST",
                                                         credentials: "same-origin",
                                                         headers: { "Content-Type": "application/json" },
-                                                        body: JSON.stringify({ session_id: session.id }),
+                                                        body: JSON.stringify({ session_id: session.id, notes: note || null }),
                                                       })
 
                                                       const result = await handleJsonResponse(response)
                                                       const inserted = Array.isArray(result.data) ? result.data[0] : result.data
 
                                                       if (response.ok && inserted) {
-                                                        setBookings((prev) => [...prev, inserted as Booking])
+                                                        const nextBooking = { ...inserted, notes: inserted.notes ?? note ?? null } as Booking
+                                                        setBookings((prev) => [...prev, nextBooking])
+                                                        setBookingNoteDraft("")
                                                         alert("✓ You've successfully joined the session!")
                                                         return
                                                       }
@@ -978,9 +1107,10 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                       console.warn("⚠️ Booking API failed; attempting client-side fallback", { status: response.status, result })
 
                                                       try {
-                                                        const clientInserted = await insertBookingRecord(session.id)
+                                                        const clientInserted = await insertBookingRecord(session.id, note)
                                                         if (clientInserted) {
-                                                          setBookings((prev) => [...prev, clientInserted as Booking])
+                                                          setBookings((prev) => [...prev, { ...(clientInserted as Booking), notes: ((clientInserted as Booking).notes ?? note) ?? null }])
+                                                          setBookingNoteDraft("")
                                                           alert("✓ You've successfully joined the session!")
                                                           return
                                                         }
@@ -1126,14 +1256,14 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
 
                                                   const theme = {
                                                     bg: isDarkMode ? "bg-[#0B0B0C]" : "bg-zinc-50",
-                                                    textPrimary: isDarkMode ? "text-zinc-100" : "text-zinc-900",
-                                                    textSecondary: isDarkMode ? "text-zinc-400" : "text-zinc-600",
-                                                    textMuted: isDarkMode ? "text-zinc-500" : "text-zinc-400",
+                                                    textPrimary: isDarkMode ? "text-white" : "text-black",
+                                                    textSecondary: isDarkMode ? "text-white" : "text-black",
+                                                    textMuted: isDarkMode ? "text-white" : "text-black",
                                                     cardBg: isDarkMode ? "bg-zinc-900/40" : "bg-white",
                                                     cardBorder: isDarkMode ? "border-zinc-800" : "border-zinc-200",
                                                     subtleBg: isDarkMode ? "bg-zinc-900" : "bg-zinc-100",
-                                                    headingColor: isDarkMode ? "text-white" : "text-zinc-900",
-                                                    inputBg: isDarkMode ? "bg-zinc-950 text-white border-zinc-800" : "bg-white text-zinc-900 border-zinc-300",
+                                                    headingColor: isDarkMode ? "text-white" : "text-black",
+                                                    inputBg: isDarkMode ? "bg-zinc-950 text-white border-zinc-800" : "bg-white text-black border-zinc-300",
                                                   }
 
                                                   // Auto-cleanup expired bookings every minute
@@ -1218,7 +1348,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                         }}
                                                         displayName={displayName}
                                                         subtitle={profile.email ?? ""}
-                                                        badgeLabel={isStaff ? "Status: Management Staff" : `Tier: ${profile.level ?? "For Fun"}`}
+                                                        badgeLabel={isStaff ? "Status: Management Staff" : `Tier: ${profile.level ?? "Bronze"}`}
                                                       >
                                                         <div className={`w-full min-h-screen overflow-y-auto ${theme.bg} p-6 box-border`}>
                                                           
@@ -1226,14 +1356,14 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                           {active === "overview" && (
                                                             <div className="flex flex-col gap-6">
                                                               <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                                                                <p className="text-[10px] font-bold uppercase tracking-widest text-[#E2AC28]">TRAIN · IMPROVE · COMPETE</p>
+                                                                <p className="text-[10px] font-bold uppercase tracking-widest text-[#40938c]">TRAIN · IMPROVE · COMPETE</p>
                                                                 <h2 className={`text-3xl font-extrabold ${theme.headingColor} tracking-tight uppercase mt-1`}>
-                                                                  Welcome, <span className="text-[#E2AC28]">{displayName}</span>
+                                                                  Welcome, <span className="text-[#40938c]">{displayName}</span>
                                                                 </h2>
                                                                 <div className="mt-4 flex gap-2">
                                                                   {!isStaff && (
-                                                                    <Badge className="bg-[#E2AC28] text-black font-bold text-xs px-2.5 py-0.5 rounded-sm border-none">
-                                                                      <Trophy className="mr-1 h-3 w-3 fill-black text-black" /> {profile.level ?? "For Fun"}
+                                                                    <Badge className="bg-[#40938c] text-black font-bold text-xs px-2.5 py-0.5 rounded-sm border-none">
+                                                                      <Trophy className="mr-1 h-3 w-3 fill-black text-black" /> {profile.level ?? "Bronze"}
                                                                     </Badge>
                                                                   )}
                                                                   {isStaff && <Badge className="bg-red-500 text-white text-xs px-2.5 py-0.5 rounded-sm border-none font-bold uppercase tracking-wide">Club Staff</Badge>}
@@ -1242,7 +1372,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
 
                                                               {isStaff && (
                                                                 <Card className={`p-5 border ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                                                                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#E2AC28] mb-3">
+                                                                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#40938c] mb-3">
                                                                     <PlusCircle className="h-4 w-4" /> Broadcast Dynamic Club Announcement
                                                                   </div>
                                                                   <div className="flex flex-col gap-3">
@@ -1260,88 +1390,75 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                       rows={3}
                                                                       className={`px-3 py-2 text-xs font-mono rounded-sm border outline-none ${theme.inputBg}`}
                                                                     />
-                                                                    <Button size="sm" onClick={handlePostAnnouncement} className="bg-[#E2AC28] text-black font-bold text-xs uppercase font-mono py-2 rounded-sm border-none self-end">Publish Log</Button>
+                                                                    <Button size="sm" onClick={handlePostAnnouncement} className="bg-[#40938c] text-black font-bold text-xs uppercase font-mono py-2 rounded-sm border-none self-end">Publish Log</Button>
                                                                   </div>
                                                                 </Card>
                                                               )}
 
-                                                              {supportNotifications.length > 0 && (
-                                                                <Card className={`p-5 border ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                                                                  <div className="flex flex-wrap items-start justify-between gap-3">
-                                                                    <div className="flex items-start gap-3">
-                                                                      <div className="p-2.5 rounded-sm bg-[#E2AC28]/10 text-[#E2AC28]">
-                                                                        <Mail className="h-5 w-5" />
-                                                                      </div>
-                                                                      <div>
-                                                                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#E2AC28]">New support messages</p>
-                                                                        <p className="text-sm font-semibold text-white mt-1">You have {supportNotifications.length} new update{supportNotifications.length > 1 ? "s" : ""} from Club Support</p>
-                                                                      </div>
-                                                                    </div>
-                                                                    <Button size="sm" onClick={() => setActive("messages")} className="rounded-sm border border-[#E2AC28]/30 bg-transparent text-[#E2AC28] hover:bg-[#E2AC28]/10">Open messages</Button>
-                                                                  </div>
-                                                                  <div className="mt-4 space-y-2">
-                                                                    {supportNotifications.map((message) => (
-                                                                      <button
-                                                                        key={message.id}
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                          setActive("messages")
-                                                                          setSelectedConvoId(message.convoId ?? message.subject ?? "_general_")
-                                                                          setSelectedMessageId(String(message.id))
-                                                                        }}
-                                                                        className="w-full rounded-sm border border-zinc-800/80 bg-zinc-950/60 p-3 text-left transition hover:border-[#E2AC28]/40"
-                                                                      >
-                                                                        <div className="flex items-center justify-between gap-2">
-                                                                          <p className="text-sm font-semibold text-white">{message.subject || "Club Support"}</p>
-                                                                          <Badge className="bg-[#E2AC28]/15 text-[#E2AC28] border border-[#E2AC28]/20 px-2 py-0.5 text-[10px]">New</Badge>
-                                                                        </div>
-                                                                        <p className="mt-1 text-sm text-zinc-400">{message.message}</p>
-                                                                      </button>
-                                                                    ))}
-                                                                  </div>
-                                                                </Card>
-                                                              )}
+
 
                                                               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                                                                 <StatCard icon={Ticket} label="Active Bookings" value={visibleBookings.length} theme={theme} />
                                                                 <StatCard icon={CalendarDays} label="Upcoming Sessions" value={visibleSchedule.length} theme={theme} />
                                                                 <Card className={`p-4 border ${theme.cardBorder} ${theme.cardBg} rounded-sm flex items-start gap-4`}>
-                                                                  <div className="p-2.5 rounded-sm bg-[#E2AC28]/10 text-[#E2AC28]">
+                                                                  <div className="p-2.5 rounded-sm bg-[#40938c]/10 text-[#40938c]">
                                                                     <CalendarDays className="h-5 w-5" />
                                                                   </div>
                                                                   <div>
                                                                     <p className={`text-[10px] font-mono uppercase tracking-wider ${theme.textMuted}`}>Next Session</p>
                                                                     {visibleSchedule.length > 0 ? (
                                                                       <>
-                                                                        <p className="text-sm font-semibold mt-1">{visibleSchedule[0].title || "Untitled Session"}</p>
-                                                                        <p className="text-xs text-zinc-400">{formatDate(visibleSchedule[0].date)} · {visibleSchedule[0].time || "TBD"}</p>
+                                                                        <p className={`text-sm font-semibold mt-1 ${theme.textPrimary}`}>{visibleSchedule[0].title || "Untitled Session"}</p>
+                                                                        <p className={`text-xs ${theme.textSecondary}`}>{formatDate(visibleSchedule[0].date)} · {visibleSchedule[0].time || "TBD"}</p>
                                                                       </>
                                                                     ) : (
-                                                                      <p className="text-sm text-zinc-400 mt-1">No upcoming sessions</p>
+                                                                      <p className={`text-sm ${theme.textSecondary} mt-1`}>No upcoming sessions</p>
                                                                     )}
                                                                   </div>
                                                                 </Card>
                                                               </div>
 
-                                                              {announcements.length > 0 && (
-                                                                <Card className={`p-6 bg-gradient-to-br from-[#E2AC28]/10 to-[#E2AC28]/5 border border-[#E2AC28]/30 rounded-sm`}>
-                                                                  <div className="flex items-start gap-4">
-                                                                    <div className={`flex h-12 w-12 items-center justify-center rounded-lg bg-[#E2AC28]/20`}>
-                                                                      <Megaphone className="h-6 w-6 text-[#E2AC28]" />
+                                                              <div className="grid gap-4">
+                                                                {latestGeneralAnnouncement && (
+                                                                  <Card className={`p-6 bg-gradient-to-br from-[#40938c]/10 to-[#40938c]/5 border border-[#40938c]/30 rounded-sm`}>
+                                                                    <div className="flex items-start gap-4">
+                                                                      <div className={`flex h-12 w-12 items-center justify-center rounded-lg bg-[#40938c]/20`}>
+                                                                        <Megaphone className="h-6 w-6 text-[#40938c]" />
+                                                                      </div>
+                                                                      <div className="flex-1">
+                                                                        <p className="text-xs font-semibold text-[#40938c] uppercase tracking-wide">Latest Announcement</p>
+                                                                        <h3 className={`mt-2 text-2xl font-bold ${theme.headingColor}`}>{latestGeneralAnnouncement.title}</h3>
+                                                                        <p className={`mt-3 text-base leading-relaxed ${theme.textPrimary} whitespace-pre-line`}>
+                                                                          {latestGeneralAnnouncement.content}
+                                                                        </p>
+                                                                        <p className={`mt-3 text-xs ${theme.textSecondary}`}>
+                                                                          Posted {formatDate(latestGeneralAnnouncement.created_at)}
+                                                                        </p>
+                                                                      </div>
                                                                     </div>
-                                                                    <div className="flex-1">
-                                                                      <p className="text-xs font-semibold text-[#E2AC28] uppercase tracking-wide">Latest Announcement</p>
-                                                                      <h3 className={`mt-2 text-2xl font-bold ${theme.headingColor}`}>{announcements[0].title}</h3>
-                                                                      <p className={`mt-3 text-base leading-relaxed ${theme.textPrimary} whitespace-pre-line`}>
-                                                                        {announcements[0].content}
-                                                                      </p>
-                                                                      <p className={`mt-3 text-xs ${theme.textSecondary}`}>
-                                                                        Posted {formatDate(announcements[0].created_at)}
-                                                                      </p>
+                                                                  </Card>
+                                                                )}
+
+                                                                {latestFeatureAnnouncement && (
+                                                                  <Card className={`p-6 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/30 rounded-sm`}>
+                                                                    <div className="flex items-start gap-4">
+                                                                      <div className={`flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500/15`}>
+                                                                        <Megaphone className="h-6 w-6 text-emerald-500" />
+                                                                      </div>
+                                                                      <div className="flex-1">
+                                                                        <p className="text-xs font-semibold text-emerald-500 uppercase tracking-wide">Website Feature Update</p>
+                                                                        <h3 className={`mt-2 text-2xl font-bold ${theme.headingColor}`}>{latestFeatureAnnouncement.title}</h3>
+                                                                        <p className={`mt-3 text-base leading-relaxed ${theme.textPrimary} whitespace-pre-line`}>
+                                                                          {latestFeatureAnnouncement.content}
+                                                                        </p>
+                                                                        <p className={`mt-3 text-xs ${theme.textSecondary}`}>
+                                                                          Posted {formatDate(latestFeatureAnnouncement.created_at)}
+                                                                        </p>
+                                                                      </div>
                                                                     </div>
-                                                                  </div>
-                                                                </Card>
-                                                              )}
+                                                                  </Card>
+                                                                )}
+                                                              </div>
                                                             </div>
                                                           )}
 
@@ -1355,8 +1472,8 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                   </div>
                                                                   
                                                                   {isStaff && (
-                                                                    <Card className={`p-4 border border-[#E2AC28]/30 bg-[#E2AC28]/5 rounded-sm mb-4 flex flex-col gap-3`}>
-                                                                      <p className="text-[11px] font-bold uppercase tracking-wide text-[#E2AC28]">Create New Schedule Track</p>
+                                                                    <Card className={`p-4 border border-[#40938c]/30 bg-[#40938c]/5 rounded-sm mb-4 flex flex-col gap-3`}>
+                                                                      <p className="text-[11px] font-bold uppercase tracking-wide text-[#40938c]">Create New Schedule Track</p>
                                                                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                                                         <input type="date" value={newSessionDate} onChange={(e) => setNewSessionDate(e.target.value)} className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`} />
                                                                         
@@ -1370,9 +1487,9 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                       </div>
 
                                                                       <div className="flex flex-col gap-1.5 mt-2">
-                                                                        <label className="text-[10px] font-mono uppercase text-zinc-400 flex justify-between">
+                                                                        <label className={`text-[10px] font-mono uppercase ${theme.textSecondary} flex justify-between`}>
                                                                           <span>Training Context Target Matrices</span>
-                                                                          <button onClick={handleAddTitleInputRow} className="text-[#E2AC28] flex items-center gap-1 hover:underline"><PlusCircle className="h-3 w-3" /> Append Node</button>
+                                                                          <button onClick={handleAddTitleInputRow} className="text-[#40938c] flex items-center gap-1 hover:underline"><PlusCircle className="h-3 w-3" /> Append Node</button>
                                                                         </label>
                                                                         {sessionTitles.map((title, idx) => (
                                                                           <div key={idx} className="flex gap-2 items-center">
@@ -1390,7 +1507,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                         ))}
                                                                       </div>
 
-                                                                      <Button size="sm" onClick={handleCreateSession} className="bg-[#E2AC28] text-black font-bold font-mono text-xs uppercase py-1.5 self-end rounded-sm border-none mt-2">Inject Slot</Button>
+                                                                      <Button size="sm" onClick={handleCreateSession} className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-1.5 self-end rounded-sm border-none mt-2">Inject Slot</Button>
                                                                     </Card>
                                                                   )}
 
@@ -1401,9 +1518,9 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                     <Card key={s.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
                                                       <div>
                                                         <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>
-                                                          {formatDate(s.date)} · <span className="font-mono font-normal text-xs text-[#E2AC28]">{s.time}</span>
+                                                          {formatDate(s.date)} · <span className="font-mono font-normal text-xs text-[#40938c]">{s.time}</span>
                                                         </p>
-                                                        <p className="text-xs font-bold font-mono mt-0.5 text-zinc-300">[{s.title || "Standard Class Roster"}]</p>
+                                                        <p className={`text-xs font-bold font-mono mt-0.5 ${theme.textSecondary}`}>[{s.title || "Standard Class Roster"}]</p>
                                                         <p className={`text-xs ${theme.textMuted} mt-1`}>
                                                           Coach: {s.coach || "Club Staff"} | Tier: {Array.isArray((s as any).visibility_tiers) ? (s as any).visibility_tiers.join(", ") : ((s as any).level || "All Levels")}
                                                         </p>
@@ -1413,7 +1530,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                         type="button"
                                                         disabled={booked || pendingId === String(s.id)}
                                                         onClick={() => setConfirmingSession(s)}
-                                                        className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${booked ? "bg-zinc-700 text-zinc-300" : "bg-[#E2AC28] text-black font-bold"}`}
+                                                        className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${booked ? "bg-zinc-700 text-white" : "bg-[#40938c] text-black font-bold"}`}
                                                       >
                                                         {booked ? "Claimed" : "Join Session"}
                                                       </Button>
@@ -1430,24 +1547,24 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                     <p className={`text-[11px] ${theme.textMuted}`}>Please confirm your assignment entry parameters below</p>
                                                                   </div>
                                                                   
-                                                                  <Card className={`p-6 border-2 border-[#E2AC28]/40 ${theme.cardBg} rounded-sm flex flex-col gap-5`}>
+                                                                  <Card className={`p-6 border-2 border-[#40938c]/40 ${theme.cardBg} rounded-sm flex flex-col gap-5`}>
                                                                     <div className="border-b border-zinc-800/60 pb-4">
-                                                                      <span className="text-[10px] font-mono text-[#E2AC28] uppercase tracking-widest">Selected Target Interval</span>
+                                                                      <span className="text-[10px] font-mono text-[#40938c] uppercase tracking-widest">Selected Target Interval</span>
                                                                       <h3 className={`text-2xl font-black ${theme.headingColor} uppercase tracking-tight mt-1`}>
                                                                         {formatDate(confirmingSession.date)}
                                                                       </h3>
-                                                                      <p className="text-sm font-mono font-bold text-[#E2AC28] mt-0.5">{confirmingSession.time}</p>
+                                                                      <p className="text-sm font-mono font-bold text-[#40938c] mt-0.5">{confirmingSession.time}</p>
                                                                     </div>
 
                                                                     <div className="grid grid-cols-2 gap-4 text-xs font-mono">
                                                                       <div className="p-3 bg-zinc-950/40 border border-zinc-800/60 rounded-xs">
-                                                                        <span className="text-zinc-500 block uppercase text-[9px]">Training Context</span>
+                                                                        <span className={`${theme.textMuted} block uppercase text-[9px]`}>Training Context</span>
                                                                         <span className="text-zinc-200 font-bold block mt-1 truncate">
                                                                           {confirmingSession.title || "Standard Training Session"}
                                                                         </span>
                                                                       </div>
                                                                       <div className="p-3 bg-zinc-950/40 border border-zinc-800/60 rounded-xs">
-                                                                        <span className="text-zinc-500 block uppercase text-[9px]">Target Classification</span>
+                                                                        <span className={`${theme.textMuted} block uppercase text-[9px]`}>Target Classification</span>
                                                                         <span className="text-zinc-200 font-bold block mt-1">
                                                                           Tier {Array.isArray((confirmingSession as any).visibility_tiers) ? (confirmingSession as any).visibility_tiers.join(", ") : ((confirmingSession as any).level || "All Levels")}
                                                                         </span>
@@ -1455,10 +1572,23 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                     </div>
 
                                                                     <div className="bg-amber-500/5 border border-amber-500/20 p-3 rounded-sm flex gap-3 items-start">
-                                                                      <CheckCircle className="h-4 w-4 text-[#E2AC28] shrink-0 mt-0.5" />
-                                                                      <div className="text-[11px] leading-relaxed text-zinc-400 font-mono">
+                                                                      <CheckCircle className="h-4 w-4 text-[#40938c] shrink-0 mt-0.5" />
+                                                                      <div className={`text-[11px] leading-relaxed ${theme.textSecondary} font-mono`}>
                                                                         <span className="text-zinc-200 font-bold">Roster Commitment:</span> Proceeding with this placement will reserve your slot inside the club&apos;s ledger array. Ensure this complies with your tier classification path.
                                                                       </div>
+                                                                    </div>
+
+                                                                    <div className="space-y-2">
+                                                                      <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>
+                                                                        Optional note for staff/teacher
+                                                                      </label>
+                                                                      <textarea
+                                                                        value={bookingNoteDraft}
+                                                                        onChange={(e) => setBookingNoteDraft(e.target.value)}
+                                                                        rows={3}
+                                                                        placeholder="Late arrival, early leave, or any note for the coach"
+                                                                        className={`w-full rounded-sm border px-3 py-2 text-xs font-mono ${theme.inputBg}`}
+                                                                      />
                                                                     </div>
 
                                                                     <div className="flex items-center justify-end gap-3 mt-2 pt-4 border-t border-zinc-800/40">
@@ -1466,7 +1596,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                         type="button"
                                                                         disabled={pendingId !== null}
                                                                         onClick={() => setConfirmingSession(null)}
-                                                                        className="px-4 py-2 text-xs font-mono uppercase tracking-wide text-zinc-400 hover:text-white transition-colors"
+                                                                        className={`px-4 py-2 text-xs font-mono uppercase tracking-wide ${theme.textSecondary} transition-colors`}
                                                                       >
                                                                         Cancel
                                                                       </button>
@@ -1478,7 +1608,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                           await book(confirmingSession)
                                                                           setConfirmingSession(null)
                                                                         }}
-                                                                        className="bg-[#E2AC28] text-black font-black font-mono text-xs uppercase px-5 py-2 rounded-sm border-none shadow-md shadow-[#E2AC28]/10"
+                                                                        className="bg-[#40938c] text-black font-black font-mono text-xs uppercase px-5 py-2 rounded-sm border-none shadow-md shadow-[#40938c]/10"
                                                                       >
                                                                         {pendingId ? "Injecting Placement..." : "Confirm & Join"}
                                                                       </Button>
@@ -1503,7 +1633,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                       <Card key={b.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
                                                                         <div>
                                                                           <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>{s ? formatDate(s.date) : "Training Interval"} {s?.time && `· ${s.time}`}</p>
-                                                                          {s?.title && <p className="text-xs font-mono text-zinc-400 mt-0.5">Focus: {s.title}</p>}
+                                                                          {s?.title && <p className={`text-xs font-mono ${theme.textSecondary} mt-0.5`}>Focus: {s.title}</p>}
                                                                         </div>
                                                                         <Button type="button" size="sm" onClick={() => cancel(b)} className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400 font-mono rounded-sm">Retract Spot</Button>
                                                                       </Card>
@@ -1524,14 +1654,23 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                 <div className="flex flex-col gap-4">
                                                                   {assessments.map((as) => (
                                                                     <Card key={as.id} className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                                                                      <div className="flex justify-between items-center border-b border-zinc-800/20 pb-2 mb-2">
+                                                                      <div className="border-b border-zinc-800/20 pb-2 mb-2">
                                                                         <div className="flex flex-col">
-                                                                          <span className="text-xs font-mono font-bold text-[#E2AC28]">Assigned Level Tier: {as.level}</span>
-                                                                          {as.score != null && <span className="text-[11px] font-mono text-zinc-300 mt-0.5">Rating Evaluation Score: {as.score}/100</span>}
+                                                                          <span className="text-xs font-mono font-bold text-[#40938c]">Assigned Level Tier: {as.level}</span>
+                                                                          {as.score != null && <span className={`text-[11px] font-mono ${theme.textSecondary} mt-0.5`}>Rating Evaluation Score: {as.score}/100</span>}
                                                                         </div>
-                                                                        <span className={`text-[10px] font-mono ${theme.textMuted}`}>{formatDate(as.date)}</span>
                                                                       </div>
                                                                       <p className={`text-xs ${theme.textSecondary} leading-relaxed bg-zinc-500/5 p-3 rounded-sm font-mono`}>&quot;{as.feedback}&quot;</p>
+                                                                      {as.pdf_url && (
+                                                                        <a
+                                                                          href={as.pdf_url}
+                                                                          target="_blank"
+                                                                          rel="noreferrer"
+                                                                          className="mt-3 inline-flex items-center gap-2 text-xs font-mono font-bold text-[#40938c] underline underline-offset-2"
+                                                                        >
+                                                                          View assessment PDF
+                                                                        </a>
+                                                                      )}
                                                                     </Card>
                                                                   ))}
                                                                 </div>
@@ -1549,7 +1688,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                               <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col gap-4`}>
                                                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                                                   <div className="flex flex-col gap-1">
-                                                                    <label className="text-[10px] font-mono uppercase text-zinc-400">Target Student Profile</label>
+                                                                    <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>Target Student Profile</label>
                                                                     <select value={selectedStudentId} onChange={(e) => setSelectedStudentId(e.target.value)} className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`}>
                                                                       <option value="">-- Select Active Player --</option>
                                                                       {allProfiles.map(student => (
@@ -1558,19 +1697,19 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                     </select>
                                                                   </div>
                                                                   <div className="flex flex-col gap-1">
-                                                                    <label className="text-[10px] font-mono uppercase text-zinc-400">Target Level Placement</label>
+                                                                    <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>Target Level Placement</label>
                                                                     <select value={assignedGradeTier} onChange={(e) => setAssignedGradeTier(e.target.value)} className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`}>
                                                                       {PLAYER_TIERS.map(tier => <option key={tier} value={tier}>{tier}</option>)}
                                                                     </select>
                                                                   </div>
                                                                   <div className="flex flex-col gap-1">
-                                                                    <label className="text-[10px] font-mono uppercase text-zinc-400">Numeric Marks Performance Evaluation ({numericScore}/100)</label>
-                                                                    <input type="range" min="0" max="100" value={numericScore} onChange={(e) => setNumericScore(Number(e.target.value))} className="w-full h-8 accent-[#E2AC28]" />
+                                                                    <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>Numeric Marks Performance Evaluation ({numericScore}/100)</label>
+                                                                    <input type="range" min="0" max="100" value={numericScore} onChange={(e) => setNumericScore(Number(e.target.value))} className="w-full h-8 accent-[#40938c]" />
                                                                   </div>
                                                                 </div>
 
                                                                 <div className="flex flex-col gap-1">
-                                                                  <label className="text-[10px] font-mono uppercase text-zinc-400">Critique Text Feedback Input Log</label>
+                                                                  <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>Critique Text Feedback Input Log</label>
                                                                   <textarea 
                                                                     rows={4} 
                                                                     placeholder="Log details relative to court presence, tactical adjustments, footwork efficiency, and operational execution targets..."
@@ -1580,7 +1719,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                   />
                                                                 </div>
 
-                                                                <Button size="sm" onClick={submitPerformanceGrade} disabled={isSubmittingGrade || !selectedStudentId || !critiqueFeedbackText} className="bg-[#E2AC28] text-black font-bold font-mono text-xs uppercase py-2 self-end rounded-sm border-none">
+                                                                <Button size="sm" onClick={submitPerformanceGrade} disabled={isSubmittingGrade || !selectedStudentId || !critiqueFeedbackText} className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-2 self-end rounded-sm border-none">
                                                                   {isSubmittingGrade ? "Processing Matrix..." : "Emit Tier Grade Record"}
                                                                 </Button>
                                                               </Card>
@@ -1600,7 +1739,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                     <button 
                                                                       key={filterOpt}
                                                                       onClick={() => setAttendanceFilter(filterOpt)}
-                                                                      className={`px-2 py-0.5 text-[10px] font-mono uppercase rounded-xs tracking-wider transition-all ${attendanceFilter === filterOpt ? "bg-[#E2AC28] text-black font-bold" : "text-zinc-400 hover:text-white"}`}
+                                                                      className={`px-2 py-0.5 text-[10px] font-mono uppercase rounded-xs tracking-wider transition-all ${attendanceFilter === filterOpt ? "bg-[#40938c] text-black font-bold" : `${theme.textSecondary}`}`}
                                                                     >
                                                                       {filterOpt}
                                                                     </button>
@@ -1627,7 +1766,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                                 ? statusType === "present" ? "bg-green-500/10 border-green-500/40 text-green-400 font-bold" 
                                                                                   : statusType === "absent" ? "bg-red-500/10 border-red-500/40 text-red-400 font-bold" 
                                                                                   : "bg-yellow-500/10 border-yellow-500/40 text-yellow-400 font-bold"
-                                                                                : "bg-transparent border-zinc-800 text-zinc-500 hover:text-zinc-300"
+                                                                                : `bg-transparent border-zinc-800 ${theme.textMuted}`
                                                                             }`}
                                                                           >
                                                                             {statusType}
@@ -1730,7 +1869,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                         />
                                                                       </div>
                                                                     ) : (
-                                                                      <div className="w-full md:w-64 h-64 md:h-auto shrink-0 bg-zinc-950/40 border-t md:border-t-0 md:border-l border-zinc-800/60 flex flex-col items-center justify-center text-[#E2AC28]/60 font-mono text-xl font-bold uppercase tracking-widest">
+                                                                      <div className="w-full md:w-64 h-64 md:h-auto shrink-0 bg-zinc-950/40 border-t md:border-t-0 md:border-l border-zinc-800/60 flex flex-col items-center justify-center text-[#40938c]/60 font-mono text-xl font-bold uppercase tracking-widest">
                                                                         {c.name ? c.name.substring(0, 2).toUpperCase() : "WOLF"}
                                                                       </div>
                                                                     )}
@@ -1741,7 +1880,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800/40 pb-3 mb-4">
                                                                           {/* Name font increased to text-xl font-extrabold */}
                                                                           <h4 className={`text-xl font-extrabold uppercase tracking-tight ${theme.headingColor}`}>{c.name}</h4>
-                                                                          <Badge className="bg-[#E2AC28]/10 text-[#E2AC28] border border-[#E2AC28]/20 text-[10px] uppercase font-mono tracking-wider px-2 py-0.5 rounded-sm">
+                                                                          <Badge className="bg-[#40938c]/10 text-[#40938c] border border-[#40938c]/20 text-[10px] uppercase font-mono tracking-wider px-2 py-0.5 rounded-sm">
                                                                             {c.role_title || "Coach / Leader"}
                                                                           </Badge>
                                                                         </div>
@@ -1756,7 +1895,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                         <div className="mt-6 pt-4 border-t border-zinc-800/40 flex flex-col gap-2">
                                                                           {/* 1. Update Role Title input line */}
                                                                           <div className="flex items-center gap-2">
-                                                                            <span className="text-[10px] font-mono text-zinc-500 uppercase shrink-0 w-16">Role:</span>
+                                                                            <span className={`text-[10px] font-mono ${theme.textMuted} uppercase shrink-0 w-16`}>Role:</span>
                                                                             <input 
                                                                               type="text" 
                                                                               placeholder="Update Role Title (e.g., Head Coach)..." 
@@ -1768,7 +1907,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
 
                                                                           {/* 2. Update Image input line */}
                                                                           <div className="flex items-center gap-2">
-                                                                            <span className="text-[10px] font-mono text-zinc-500 uppercase shrink-0 w-16">Image URL:</span>
+                                                                            <span className={`text-[10px] font-mono ${theme.textMuted} uppercase shrink-0 w-16`}>Image URL:</span>
                                                                             <input 
                                                                               type="text" 
                                                                               placeholder="Update Biography Image Link URL..." 
@@ -1791,9 +1930,25 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                                 <div>
                                                                   <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Pro Recommended Equipment</h2>
-                                                                  <p className="text-[11px] text-zinc-500 mt-1">Filter by category or search text to find the right gear faster.</p>
+                                                                  <p className={`text-[11px] ${theme.textMuted} mt-1`}>Filter by category or search text to find the right gear faster.</p>
                                                                 </div>
                                                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                                                  <div className="flex items-center gap-1 rounded-sm border border-zinc-700 bg-zinc-950/40 p-1">
+                                                                    {([
+                                                                      { value: "large", label: "Large" },
+                                                                      { value: "list", label: "List" },
+                                                                      { value: "compact", label: "Small" }
+                                                                    ] as const).map((option) => (
+                                                                      <button
+                                                                        key={option.value}
+                                                                        type="button"
+                                                                        onClick={() => setGearLayout(option.value)}
+                                                                        className={`rounded-sm px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] transition ${gearLayout === option.value ? "bg-[#40938c] text-black font-bold" : "text-zinc-300 hover:bg-zinc-800"}`}
+                                                                      >
+                                                                        {option.label}
+                                                                      </button>
+                                                                    ))}
+                                                                  </div>
                                                                   <select
                                                                     value={gearFilter}
                                                                     onChange={(e) => setGearFilter(e.target.value)}
@@ -1825,8 +1980,110 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                 <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg}`}>
                                                                   <p className={`text-sm ${theme.textSecondary}`}>No equipment guides match that filter.</p>
                                                                 </Card>
+                                                              ) : gearLayout === "large" ? (
+                                                                <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                                                                  {filteredGearGuides.map((g) => {
+                                                                    const galleryImages = parseImageList(g.image_url || (g as any).pic_url || (g as any).image_urls?.join(",") || null)
+                                                                    return (
+                                                                      <Card key={g.id} className={`overflow-hidden p-0 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                        <GalleryCarousel images={galleryImages} alt={g.title} className="h-72 w-full" />
+                                                                        <div className="flex flex-col gap-4 p-5">
+                                                                          <div className="flex items-start justify-between gap-3">
+                                                                            <div>
+                                                                              <h4 className={`text-lg font-bold ${theme.headingColor}`}>{g.title}</h4>
+                                                                              <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{g.category || "Gear"}</p>
+                                                                            </div>
+                                                                            <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase">{g.recommended_for_tier}</Badge>
+                                                                          </div>
+                                                                          <div className="flex items-center justify-between gap-3 border-b border-zinc-800/40 pb-2">
+                                                                            <p className={`text-sm ${theme.textSecondary} font-medium`}>{g.brand}</p>
+                                                                            {g.external_link && (
+                                                                              <a href={g.external_link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#40938c] hover:underline">
+                                                                                View product page
+                                                                              </a>
+                                                                            )}
+                                                                          </div>
+                                                                          <div className="space-y-2 text-sm">
+                                                                            <p className={`font-semibold ${theme.headingColor}`}>Specs</p>
+                                                                            <p className={`text-xs ${theme.textSecondary}`}>{g.specs}</p>
+                                                                            <p className={`font-semibold ${theme.headingColor}`}>Why we recommend it</p>
+                                                                            <p className={`text-xs ${theme.textSecondary} leading-relaxed`}>{g.why_recommend}</p>
+                                                                          </div>
+                                                                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                                                                            <Button
+                                                                              type="button"
+                                                                              variant="outline"
+                                                                              size="sm"
+                                                                              onClick={() => openGuideInquiry(g.title, g.brand)}
+                                                                              className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
+                                                                            >
+                                                                              <SendHorizontal className="h-3.5 w-3.5" />
+                                                                              Ask about this guide
+                                                                            </Button>
+                                                                          </div>
+                                                                          {isStaff && (
+                                                                            <div className="mt-1 pt-3 border-t border-zinc-800/40">
+                                                                              <div className="flex items-center gap-2">
+                                                                                <Image className={`h-3.5 w-3.5 ${theme.textMuted} shrink-0`} />
+                                                                                <input
+                                                                                  type="text"
+                                                                                  placeholder="Update Gear Image Link URL..."
+                                                                                  defaultValue={g.image_url || ""}
+                                                                                  onBlur={(e) => handleUpdateAssetLink("equipment_recommendations", g.id, "image_url", e.target.value)}
+                                                                                  className={`w-full px-2 py-0.5 text-[10px] font-mono rounded-sm border outline-none ${theme.inputBg}`}
+                                                                                />
+                                                                              </div>
+                                                                            </div>
+                                                                          )}
+                                                                        </div>
+                                                                      </Card>
+                                                                    )
+                                                                  })}
+                                                                </div>
+                                                              ) : gearLayout === "list" ? (
+                                                                <div className="flex flex-col gap-3">
+                                                                  {filteredGearGuides.map((g) => {
+                                                                    const galleryImages = parseImageList(g.image_url || (g as any).pic_url || (g as any).image_urls?.join(",") || null)
+                                                                    return (
+                                                                      <Card key={g.id} className={`p-3 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                                                                          <div className="h-24 w-full md:w-28 shrink-0 overflow-hidden rounded-sm border border-zinc-800 bg-zinc-950">
+                                                                            {galleryImages[0] ? (
+                                                                              <img src={galleryImages[0]} alt={g.title} className="h-full w-full object-cover" />
+                                                                            ) : (
+                                                                              <div className={`flex h-full items-center justify-center text-[10px] uppercase tracking-[0.2em] ${theme.textMuted}`}>No image</div>
+                                                                            )}
+                                                                          </div>
+                                                                          <div className="flex-1">
+                                                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                                                              <div>
+                                                                                <h4 className={`text-base font-bold ${theme.headingColor}`}>{g.title}</h4>
+                                                                                <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{g.category || "Gear"}</p>
+                                                                              </div>
+                                                                              <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase">{g.recommended_for_tier}</Badge>
+                                                                            </div>
+                                                                            <p className={`mt-2 text-xs ${theme.textSecondary}`}>{g.brand}</p>
+                                                                            <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{g.specs}</p>
+                                                                          </div>
+                                                                          <div className="flex items-center justify-end">
+                                                                            <Button
+                                                                              type="button"
+                                                                              variant="outline"
+                                                                              size="sm"
+                                                                              onClick={() => openGuideInquiry(g.title, g.brand)}
+                                                                              className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
+                                                                            >
+                                                                              <SendHorizontal className="h-3.5 w-3.5" />
+                                                                              Ask about this guide
+                                                                            </Button>
+                                                                          </div>
+                                                                        </div>
+                                                                      </Card>
+                                                                    )
+                                                                  })}
+                                                                </div>
                                                               ) : (
-                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                                   {filteredGearGuides.map((g) => {
                                                                     const imageUrl = g.image_url || (g as any).pic_url || null
                                                                     return (
@@ -1837,18 +2094,18 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                               {imageUrl ? (
                                                                                 <img src={imageUrl} alt={g.title} className="h-full w-full object-cover" />
                                                                               ) : (
-                                                                                <div className="flex h-full items-center justify-center text-[12px] text-zinc-500">No image</div>
+                                                                                <div className={`flex h-full items-center justify-center text-[12px] ${theme.textMuted}`}>No image</div>
                                                                               )}
                                                                             </div>
                                                                             <div className="flex-1">
                                                                               <div className="flex items-center justify-between gap-3">
                                                                                 <div>
                                                                                   <h4 className={`text-base font-bold ${theme.headingColor}`}>{g.title}</h4>
-                                                                                  <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mt-1">{g.category || "Gear"}</p>
+                                                                                  <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{g.category || "Gear"}</p>
                                                                                 </div>
-                                                                                <Badge className="bg-[#E2AC28]/10 text-[#E2AC28] text-[10px] px-2 py-1 rounded-sm uppercase">{g.recommended_for_tier}</Badge>
+                                                                                <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase">{g.recommended_for_tier}</Badge>
                                                                               </div>
-                                                                              <p className="text-xs text-zinc-400 mt-2">{g.brand}</p>
+                                                                              <p className={`text-xs ${theme.textSecondary} mt-2`}>{g.brand}</p>
                                                                             </div>
                                                                           </div>
                                                                           <div className="mt-4 space-y-2 text-sm">
@@ -1860,7 +2117,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                         </div>
                                                                         <div className="flex flex-wrap items-center gap-2">
                                                                           {g.external_link && (
-                                                                            <a href={g.external_link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#E2AC28] hover:underline">
+                                                                            <a href={g.external_link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#40938c] hover:underline">
                                                                               View product page
                                                                             </a>
                                                                           )}
@@ -1869,7 +2126,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                             variant="outline"
                                                                             size="sm"
                                                                             onClick={() => openGuideInquiry(g.title, g.brand)}
-                                                                            className="border-[#E2AC28]/30 bg-[#E2AC28]/10 text-[#E2AC28] hover:bg-[#E2AC28]/20"
+                                                                            className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
                                                                           >
                                                                             <SendHorizontal className="h-3.5 w-3.5" />
                                                                             Ask about this guide
@@ -1878,7 +2135,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                         {isStaff && (
                                                                           <div className="mt-2 pt-3 border-t border-zinc-800/40">
                                                                             <div className="flex items-center gap-2">
-                                                                              <Image className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                                                                              <Image className={`h-3.5 w-3.5 ${theme.textMuted} shrink-0`} />
                                                                               <input
                                                                                 type="text"
                                                                                 placeholder="Update Gear Image Link URL..."
@@ -1903,9 +2160,25 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                                 <div>
                                                                   <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Wolves Merch & Equipment Store</h2>
-                                                                  <p className="text-[11px] text-zinc-500 mt-1">Filter by category or name to find the right item quickly.</p>
+                                                                  <p className={`text-[11px] ${theme.textMuted} mt-1`}>Filter by category or name to find the right item quickly.</p>
                                                                 </div>
                                                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                                                  <div className="flex items-center gap-1 rounded-sm border border-zinc-700 bg-zinc-950/40 p-1">
+                                                                    {([
+                                                                      { value: "large", label: "Large" },
+                                                                      { value: "list", label: "List" },
+                                                                      { value: "compact", label: "Small" }
+                                                                    ] as const).map((option) => (
+                                                                      <button
+                                                                        key={option.value}
+                                                                        type="button"
+                                                                        onClick={() => setShopLayout(option.value)}
+                                                                        className={`rounded-sm px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] transition ${shopLayout === option.value ? "bg-[#40938c] text-black font-bold" : "text-zinc-300 hover:bg-zinc-800"}`}
+                                                                      >
+                                                                        {option.label}
+                                                                      </button>
+                                                                    ))}
+                                                                  </div>
                                                                   <select
                                                                     value={shopFilter}
                                                                     onChange={(e) => setShopFilter(e.target.value)}
@@ -1946,8 +2219,82 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                 <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg}`}>
                                                                   <p className={`text-sm ${theme.textSecondary}`}>No shop items match that filter.</p>
                                                                 </Card>
+                                                              ) : shopLayout === "large" ? (
+                                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                                                  {filteredShopItems.map((item) => {
+                                                                    const galleryImages = parseImageList(item.image_url || (item as any).pic_url || (item as any).picUrl || (item as any).image_urls?.join(",") || null)
+                                                                    const unit = item.unit || (item as any).unit || "units"
+                                                                    return (
+                                                                      <Card key={item.id} className={`overflow-hidden p-0 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                        <GalleryCarousel images={galleryImages} alt={item.name || "product"} className="h-72 w-full" />
+                                                                        <div className="flex flex-col gap-3 p-4">
+                                                                          <div className="flex items-start justify-between gap-3">
+                                                                            <div>
+                                                                              <h4 className={`text-base font-bold ${theme.headingColor}`}>{item.name}</h4>
+                                                                              <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{item.category || "Item"}</p>
+                                                                            </div>
+                                                                            <span className="text-base font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
+                                                                          </div>
+                                                                          <p className={`text-xs ${theme.textSecondary} leading-relaxed`}>{item.description || "No description available."}</p>
+                                                                          <div className={`flex items-center justify-between border-t border-zinc-800/30 pt-2 text-[10px] ${theme.textSecondary}`}>
+                                                                            <span>Stock: {item.stock ?? 0} {unit}</span>
+                                                                            <span>{unit}</span>
+                                                                          </div>
+                                                                          <div className="flex flex-wrap gap-2 pt-1">
+                                                                            <Button
+                                                                              size="sm"
+                                                                              onClick={() => openGuideInquiry(item.name, item.category ?? "Shop Item")}
+                                                                              className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                                                                            >
+                                                                              Request Purchase
+                                                                            </Button>
+                                                                          </div>
+                                                                        </div>
+                                                                      </Card>
+                                                                    )
+                                                                  })}
+                                                                </div>
+                                                              ) : shopLayout === "list" ? (
+                                                                <div className="flex flex-col gap-3">
+                                                                  {filteredShopItems.map((item) => {
+                                                                    const galleryImages = parseImageList(item.image_url || (item as any).pic_url || (item as any).picUrl || (item as any).image_urls?.join(",") || null)
+                                                                    const unit = item.unit || (item as any).unit || "units"
+                                                                    return (
+                                                                      <Card key={item.id} className={`p-3 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                                                                          <div className="h-24 w-full md:w-28 shrink-0 overflow-hidden rounded-sm border border-zinc-800 bg-zinc-950">
+                                                                            {galleryImages[0] ? (
+                                                                              <img src={galleryImages[0]} alt={item.name || "product"} className="h-full w-full object-cover" />
+                                                                            ) : (
+                                                                              <div className={`flex h-full items-center justify-center text-[10px] uppercase tracking-[0.2em] ${theme.textMuted}`}>No image</div>
+                                                                            )}
+                                                                          </div>
+                                                                          <div className="flex-1">
+                                                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                                                              <div>
+                                                                                <h4 className={`text-base font-bold ${theme.headingColor}`}>{item.name}</h4>
+                                                                                <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{item.category || "Item"}</p>
+                                                                              </div>
+                                                                              <span className="text-base font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
+                                                                            </div>
+                                                                            <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{item.description || "No description available."}</p>
+                                                                          </div>
+                                                                          <div className="flex items-center justify-end">
+                                                                            <Button
+                                                                              size="sm"
+                                                                              onClick={() => openGuideInquiry(item.name, item.category ?? "Shop Item")}
+                                                                              className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                                                                            >
+                                                                              Request Purchase
+                                                                            </Button>
+                                                                          </div>
+                                                                        </div>
+                                                                      </Card>
+                                                                    )
+                                                                  })}
+                                                                </div>
                                                               ) : (
-                                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                                   {filteredShopItems.map((item) => {
                                                                     const img = item.image_url || (item as any).pic_url || (item as any).picUrl || null
                                                                     const unit = item.unit || (item as any).unit || "units"
@@ -1960,21 +2307,21 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                             </div>
                                                                           ) : (
                                                                             <div className="h-32 w-32 shrink-0 bg-zinc-950/30 rounded-sm flex items-center justify-center border border-zinc-800">
-                                                                              <span className="text-[12px] text-zinc-500">No image</span>
+                                                                              <span className={`text-[12px] ${theme.textMuted}`}>No image</span>
                                                                             </div>
                                                                           )}
                                                                           <div className="flex-1">
                                                                             <div className="flex justify-between items-start gap-2">
                                                                               <div>
                                                                                 <h4 className={`text-sm font-bold ${theme.headingColor}`}>{item.name}</h4>
-                                                                                <p className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mt-1">{item.category || "Item"}</p>
+                                                                                <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{item.category || "Item"}</p>
                                                                               </div>
-                                                                              <span className="text-xs font-mono font-bold text-[#E2AC28]">${item.price ?? 0}</span>
+                                                                              <span className="text-xs font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
                                                                             </div>
                                                                             <p className={`text-xs ${theme.textSecondary} mt-2 leading-relaxed`}>{item.description || "No description available."}</p>
                                                                           </div>
                                                                         </div>
-                                                                        <div className="flex items-center justify-between border-t border-zinc-800/30 pt-2 mt-1 text-[10px] text-zinc-400">
+                                                                        <div className={`flex items-center justify-between border-t border-zinc-800/30 pt-2 mt-1 text-[10px] ${theme.textSecondary}`}>
                                                                           <span>Stock: {item.stock ?? 0} {unit}</span>
                                                                           <span>{unit}</span>
                                                                         </div>
@@ -1982,17 +2329,10 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                           <Button
                                                                             size="sm"
                                                                             onClick={() => openGuideInquiry(item.name, item.category ?? "Shop Item")}
-                                                                            className="bg-[#E2AC28] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                                                                            className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
                                                                           >
                                                                             Request Purchase
                                                                           </Button>
-                                                                          <button
-                                                                            type="button"
-                                                                            onClick={() => window.open("https://instagram.com", "_blank", "noopener,noreferrer")}
-                                                                            className="inline-flex items-center justify-center rounded-sm border border-[#E2AC28]/30 bg-[#E2AC28]/10 px-3 py-1 text-[10px] font-mono uppercase text-[#E2AC28]"
-                                                                          >
-                                                                            Open Instagram DM
-                                                                          </button>
                                                                         </div>
                                                                       </Card>
                                                                     )
@@ -2006,7 +2346,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                           {active === "club-info" && (
                                                             <div className="flex flex-col gap-6">
                                                               <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                                                                <h3 className="text-xl font-bold uppercase tracking-wide text-[#E2AC28]">About Wolves Badminton Club</h3>
+                                                                <h3 className="text-xl font-bold uppercase tracking-wide text-[#40938c]">About Wolves Badminton Club</h3>
                                                                 <p className={`text-xs ${theme.textSecondary} leading-relaxed mt-3 font-mono`}>
                                                                   Founded upon principles of systematic tracking, rigorous court development, and tiered progression architectures, the Wolves Badminton Club provides student athletes and competitive players with premier training infrastructure. Our focus balances technical precision, structural agility metrics, and tournament execution frameworks.
                                                                 </p>
@@ -2019,7 +2359,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                             <div>
                                                               <div className="mb-6">
                                                                 <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Rubrics & Assessment PDFs</h2>
-                                                                <p className="text-[11px] text-zinc-500 mt-1">View and download rubrics, assessment guides, and other learning resources shared by your coaches.</p>
+                                                                <p className={`text-[11px] ${theme.textMuted} mt-1`}>View and download rubrics, assessment guides, and other learning resources shared by your coaches.</p>
                                                               </div>
 
                                                               {resources.length === 0 ? (
@@ -2032,9 +2372,6 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                     <Card key={resource.id} className={`p-4 ${theme.cardBorder} ${theme.cardBg} flex flex-col justify-between gap-3`}>
                                                                       <div>
                                                                         <h3 className="font-medium text-foreground">{resource.title}</h3>
-                                                                        <p className="text-xs text-muted-foreground mt-2">
-                                                                          Posted {new Date(resource.created_at).toLocaleDateString()}
-                                                                        </p>
                                                                       </div>
                                                                       <Button
                                                                         onClick={() => window.open(resource.url || "", "_blank")}
@@ -2051,69 +2388,66 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                           )}
 
                                                           {/* CONTACT & SUPPORT HUB */}
-                                                          {active === "messages" && (
-                                                            <SupportMessenger
-                                                              profile={profile}
-                                                              initialTickets={messagesList as SupportTicket[]}
-                                                              isStaff={false}
-                                                              onTicketsChange={(nextTickets) => setMessagesList(nextTickets.map((ticket) => ({ ...ticket, convoId: ticket.id || ticket.subject || "_general_" })))}
-                                                            />
-                                                          )}
                                                           {active === "support" && (
-                                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                                              <div className="md:col-span-2 flex flex-col gap-4">
-                                                                <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                                                                  <div className="mb-4">
-                                                                    <h3 className="text-sm font-bold uppercase tracking-wide text-[#E2AC28]">Submit Support Case / Request Ticket</h3>
-                                                                    <p className={`text-[11px] ${theme.textMuted} font-mono mt-0.5`}>Direct message pipeline straight to operational management desks</p>
-                                                                  </div>
-                                                                  <form onSubmit={submitSupportTicket} className="flex flex-col gap-3">
-                                                                    <div className="flex flex-col gap-1">
-                                                                      <label className="text-[10px] font-mono uppercase text-zinc-400">Inquiry Category</label>
-                                                                      <select value={supportCategory} onChange={(e) => setSupportCategory(e.target.value)} className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`}>
-                                                                        <option value="Technical Help">Technical Help / Portal Bugs</option>
-                                                                        <option value="Booking Inquiry">Booking Placements & Waiting Lists</option>
-                                                                        <option value="Grading & Leveling">Grading Matrix Disputes</option>
-                                                                        <option value="Other">General Feedback</option>
-                                                                      </select>
-                                                                    </div>
-                                                                    <div className="flex flex-col gap-1">
-                                                                      <label className="text-[10px] font-mono uppercase text-zinc-400">Describe Issue / Message Payload</label>
-                                                                      <textarea
-                                                                        rows={4}
-                                                                        placeholder="Detail your request comprehensively here..."
-                                                                        value={supportMessage}
-                                                                        onChange={(e) => setSupportMessage(e.target.value)}
-                                                                        className={`px-3 py-2 text-xs font-mono rounded-sm border outline-none ${theme.inputBg}`}
-                                                                      />
-                                                                    </div>
-                                                                    <Button type="submit" size="sm" className="bg-[#E2AC28] text-black font-bold font-mono text-xs uppercase py-2 rounded-sm border-none self-end">
-                                                                      Transmit Ticket Node
-                                                                    </Button>
-                                                                    {supportStatus && (
-                                                                      <p className={`text-[11px] font-mono mt-2 ${supportStatus.startsWith('Success') ? 'text-green-400' : 'text-red-400'}`}>
-                                                                        {supportStatus}
-                                                                      </p>
-                                                                    )}
-                                                                  </form>
-                                                                </Card>
+                                                            <div className="grid grid-cols-1 gap-6">
+                                                              <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                <div className="mb-5">
+                                                                  <h3 className="text-sm font-bold uppercase tracking-wide text-[#40938c]">Share advice or feedback</h3>
+                                                                  <p className={`text-[11px] ${theme.textMuted} font-mono mt-0.5`}>Send a short comment or suggestion for the club staff to review.</p>
+                                                                </div>
 
-                                                                {/* Open Tickets Ledger removed per request */}
-                                                              </div>
-
-                                                              <div className="flex flex-col gap-4">
-                                                                <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm text-center flex flex-col items-center justify-center gap-3`}>
-                                                                  <div>
-                                                                    <h4 className="text-xs font-bold uppercase tracking-wide text-white">Instant Social Dispatch</h4>
-                                                                    <p className={`text-[11px] ${theme.textMuted} font-mono mt-1`}>For rapid emergency check-ins or quick system updates, patch into our direct messaging channel.</p>
+                                                                <form onSubmit={submitSupportTicket} className="flex flex-col gap-3">
+                                                                  <div className="flex flex-col gap-1">
+                                                                    <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>Comment topic</label>
+                                                                    <select value={supportCategory} onChange={(e) => setSupportCategory(e.target.value)} className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`}>
+                                                                      <option value="Advice / Feedback">Advice / Feedback</option>
+                                                                      <option value="Training">Training</option>
+                                                                      <option value="Club Experience">Club Experience</option>
+                                                                      <option value="Booking">Booking</option>
+                                                                      <option value="Other">Other</option>
+                                                                    </select>
                                                                   </div>
-                                                                  <a href="https://instagram.com" target="_blank" rel="noreferrer" className="w-full">
-                                                                    <Button size="sm" className="w-full bg-[#E2AC28] text-black font-bold font-mono text-xs uppercase py-2 rounded-sm border-none flex items-center justify-center gap-1.5">
-                                                                      Open Instagram DM
+
+                                                                  <div className="flex flex-col gap-1">
+                                                                    <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>Your comment</label>
+                                                                    <textarea
+                                                                      rows={5}
+                                                                      placeholder="Share any advice, comment, or improvement idea for the team..."
+                                                                      value={supportMessage}
+                                                                      onChange={(e) => setSupportMessage(e.target.value)}
+                                                                      className={`px-3 py-2 text-xs font-mono rounded-sm border outline-none ${theme.inputBg}`}
+                                                                    />
+                                                                  </div>
+
+                                                                  <div className="flex items-center justify-between gap-3">
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                      <button
+                                                                        type="button"
+                                                                        onClick={() => window.open("https://www.instagram.com/wci_badminton_club", "_blank", "noopener,noreferrer")}
+                                                                        className="inline-flex items-center justify-center rounded-sm border border-[#40938c] bg-[#40938c] px-3 py-2 text-[10px] font-mono uppercase text-black font-bold"
+                                                                      >
+                                                                        View Club Profile on Instagram
+                                                                      </button>
+                                                                      <button
+                                                                        type="button"
+                                                                        onClick={() => window.open("https://www.instagram.com/m/wci_badminton_club", "_blank", "noopener,noreferrer")}
+                                                                        className="inline-flex items-center justify-center rounded-sm border border-[#40938c] bg-[#40938c] px-3 py-2 text-[10px] font-mono uppercase text-black font-bold"
+                                                                      >
+                                                                        DM on Instagram
+                                                                      </button>
+                                                                    </div>
+                                                                    <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-2 rounded-sm border-none self-end">
+                                                                      Submit comment
                                                                     </Button>
-                                                                  </a>
-                                                                </Card>
-                                                              </div>
+                                                                  </div>
+
+                                                                  {supportStatus && (
+                                                                    <p className={`text-[11px] font-mono mt-1 ${supportStatus.startsWith('Success') ? 'text-green-400' : 'text-red-400'}`}>
+                                                                      {supportStatus}
+                                                                    </p>
+                                                                  )}
+                                                                </form>
+                                                              </Card>
                                                             </div>
                                                           )}
 
@@ -2122,12 +2456,12 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                             <div className="flex flex-col gap-4">
                                                               <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col gap-4`}>
                                                                 <div>
-                                                                  <h3 className="text-sm font-bold uppercase tracking-wide text-[#E2AC28]">Account Configuration</h3>
+                                                                  <h3 className="text-sm font-bold uppercase tracking-wide text-[#40938c]">Account Configuration</h3>
                                                                   <p className={`text-[11px] ${theme.textMuted}`}>Modify display identities and alter theme configuration flags</p>
                                                                 </div>
                                                                 <div className="flex flex-col sm:flex-row items-end gap-3 max-w-md">
                                                                   <div className="flex flex-col gap-1 w-full">
-                                                                    <label className="text-[10px] font-mono uppercase text-zinc-400">User Display Identity</label>
+                                                                    <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>User Display Identity</label>
                                                                     <input 
                                                                       type="text" 
                                                                       value={customName} 
@@ -2135,7 +2469,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                                       className={`px-3 py-2 text-xs font-mono rounded-sm border outline-none ${theme.inputBg}`} 
                                                                     />
                                                                   </div>
-                                                                  <Button size="sm" onClick={handleSaveProfileName} disabled={isSavingName} className="bg-[#E2AC28] text-black font-bold font-mono text-xs uppercase py-2 px-4 rounded-sm border-none shrink-0">
+                                                                  <Button size="sm" onClick={handleSaveProfileName} disabled={isSavingName} className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-2 px-4 rounded-sm border-none shrink-0">
                                                                     {isSavingName ? "Saving..." : "Commit Change"}
                                                                   </Button>
                                                                 </div>
@@ -2143,12 +2477,12 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
 
                                                               <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex justify-between items-center`}>
                                                                 <div>
-                                                                  <h4 className="text-xs font-bold uppercase tracking-wide text-zinc-300">Visual Display Mode</h4>
+                                                                  <h4 className={`text-xs font-bold uppercase tracking-wide ${theme.textSecondary}`}>Visual Display Mode</h4>
                                                                   <p className={`text-[11px] ${theme.textMuted} font-mono`}>Toggle alternative color layouts</p>
                                                                 </div>
                                                                 <button 
                                                                   onClick={() => setIsDarkMode(!isDarkMode)} 
-                                                                  className="p-2 border border-zinc-800 rounded-sm bg-zinc-950/40 text-[#E2AC28] hover:bg-zinc-950"
+                                                                  className="p-2 border border-zinc-800 rounded-sm bg-zinc-950/40 text-[#40938c] hover:bg-zinc-950"
                                                                 >
                                                                   {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                                                                 </button>
@@ -2169,7 +2503,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                           submitSupportTicket(null, {
                                                             category: "Equipment Guide Info",
                                                             message: guideInquiry.message,
-                                                            nextView: "messages",
+                                                            nextView: "support",
                                                           })
                                                           setGuideInquiry({ isOpen: false, title: "", message: "" })
                                                         }}
@@ -2193,7 +2527,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                 function StatCard({ icon: Icon, label, value, theme }: { icon: any, label: string, value: number, theme: any }) {
                                                   return (
                                                     <Card className={`p-4 border ${theme.cardBorder} ${theme.cardBg} rounded-sm flex items-center gap-4`}>
-                                                      <div className="p-2.5 rounded-sm bg-[#E2AC28]/10 text-[#E2AC28]">
+                                                      <div className="p-2.5 rounded-sm bg-[#40938c]/10 text-[#40938c]">
                                                         <Icon className="h-5 w-5" />
                                                       </div>
                                                       <div>
@@ -2260,7 +2594,7 @@ import { SupportMessenger } from "@/components/dashboard/support-messenger"
                                                           <Button type="button" variant="outline" onClick={onCancel} className="px-4">
                                                             Cancel
                                                           </Button>
-                                                          <Button type="button" onClick={onSend} className="px-4 bg-[#E2AC28] text-black hover:bg-[#E2AC28]/90">
+                                                          <Button type="button" onClick={onSend} className="px-4 bg-[#40938c] text-black hover:bg-[#40938c]/90">
                                                             Send
                                                           </Button>
                                                         </div>

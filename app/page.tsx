@@ -127,6 +127,8 @@ export default function LoginPage() {
         // 2. Direct them to the correct home base based on their role string
         if (profile?.role === "staff") {
           window.location.href = "/staff-dashboard"
+        } else if (profile?.role === "teacher") {
+          window.location.href = "/teacher-dashboard"
         } else {
           window.location.href = "/member-dashboard"
         }

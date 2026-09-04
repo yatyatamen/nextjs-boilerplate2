@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
-import { SupportMessenger } from "@/components/dashboard/support-messenger"
 import {
   Badge,
   Button,
@@ -26,6 +25,7 @@ import type {
   AttendanceRecord,
   Resource,
 } from "@/lib/types"
+import { ALL_ROLE_AND_TIER_OPTIONS, LEVELS } from "@/lib/types"
 import {
   LayoutDashboard,
   Users,
@@ -39,11 +39,11 @@ import {
   UserPlus,
   BookOpen,
   Ticket,
-  Mail,
   UserCheck,
   Image,
   MoreHorizontal,
   XCircle,
+  MessageSquareText,
 } from "lucide-react"
 
 function formatDate(date: string | null) {
@@ -65,6 +65,11 @@ function formatDate(date: string | null) {
   })
 }
 
+function isFeatureAnnouncement(title: string | null | undefined) {
+  const normalized = String(title ?? "").toLowerCase()
+  return normalized.includes("website") || normalized.includes("feature")
+}
+
 const NAV: NavItem[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "members", label: "Members", icon: Users },
@@ -77,10 +82,10 @@ const NAV: NavItem[] = [
   { key: "shop", label: "Shop", icon: ShoppingBag },
   { key: "gear", label: "Gear Guides", icon: Trophy },
   { key: "assessments", label: "Assessments", icon: ClipboardList },
-  { key: "messages", label: "Messages", icon: Mail },
+  { key: "comments", label: "Comments", icon: MessageSquareText },
 ]
 
-const ALL_6_TIERS = ["Bronze", "Silver", "Gold", "Diamond", "Diamond II"] as const
+const ALL_TIERS = [...ALL_ROLE_AND_TIER_OPTIONS]
 const TIME_SLOTS = ["3:20-4:30 PM", "3:20-4:45 PM", "3:20-5:00 PM", "3:20-5:15 PM"] as const
 const ATTENDANCE_FILTERS = ["all", "present", "absent", "late"] as const
 
@@ -120,6 +125,22 @@ function getMemberDisplayName(member: Profile | null | undefined) {
   return `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || member.full_name || member.email || "Member"
 }
 
+function parseImageUrls(value: string | null | undefined): string[] {
+  if (!value) return []
+  const trimmed = value.trim()
+  if (!trimmed) return []
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (Array.isArray(parsed)) {
+      return parsed.filter((entry): entry is string => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean)
+    }
+  } catch {}
+  return trimmed
+    .split(/\n|,|;/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+}
+
 export function StaffDashboard({
   profile,
   initialMembers,
@@ -128,6 +149,7 @@ export function StaffDashboard({
   initialAssessments,
   initialBookings = [],
   initialGearGuides = [],
+  initialShopItems = [],
   initialAttendanceRecords = [],
   initialMessages = [],
 }: {
@@ -136,7 +158,7 @@ export function StaffDashboard({
   initialSchedule: ScheduleSession[]
   initialAnnouncements: Announcement[]
   initialBlogPosts: BlogPost[]
-  initialShopItems: ShopItem[]
+  initialShopItems?: ShopItem[]
   initialAssessments: Assessment[]
   initialBookings?: Booking[]
   initialGearGuides?: EquipmentRecommendation[]
@@ -149,9 +171,11 @@ export function StaffDashboard({
   const [members, setMembers] = useState<Profile[]>(initialMembers)
   const [schedule, setSchedule] = useState<ScheduleSession[]>(() => sortSessions(initialSchedule || []))
   const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
+  const [websiteFeatureText, setWebsiteFeatureText] = useState("")
   const [assessments, setAssessments] = useState<Assessment[]>(initialAssessments)
   const [bookings, setBookings] = useState<Booking[]>(initialBookings)
   const [gearGuides, setGearGuides] = useState<EquipmentRecommendation[]>(initialGearGuides)
+  const [shopItems, setShopItems] = useState<ShopItem[]>(initialShopItems ?? [])
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(initialAttendanceRecords ?? [])
   const [attendanceSelection, setAttendanceSelection] = useState<Record<string, "present" | "late" | "absent">>({})
   const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>("all")
@@ -171,6 +195,7 @@ export function StaffDashboard({
   const [openMessageMenuId, setOpenMessageMenuId] = useState<string | null>(null)
   const [localReplies, setLocalReplies] = useState<Record<string, string[]>>({})
   const [staffFile, setStaffFile] = useState<File | null>(null)
+  const [commentFilter, setCommentFilter] = useState<"all" | "unread" | "unsolved" | "solved">("all")
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
@@ -196,7 +221,78 @@ export function StaffDashboard({
 
   const displayName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || profile.email || "Staff"
 
+  const filteredComments = messages.filter((message) => {
+    if (commentFilter === "all") return true
+    return message.status === commentFilter || (commentFilter === "solved" && message.status === "resolved") || (commentFilter === "unsolved" && message.status === "open")
+  })
+
+  const latestGeneralAnnouncement = [...announcements]
+    .filter((item) => !isFeatureAnnouncement(item.title))
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+
+  const latestFeatureAnnouncement = [...announcements]
+    .filter((item) => isFeatureAnnouncement(item.title))
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+
   const selectedMessage = messages.find((m) => String(m.id) === selectedMessageId) ?? messages[0] ?? null
+
+  async function deleteScheduleItem(id: string) {
+    const { error } = await supabase.from("schedule").delete().eq("id", id)
+    if (error) {
+      alert(`Schedule delete failed: ${error.message}`)
+      return
+    }
+    setSchedule((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  const confirmAction = (title: string, message: string, callback: () => Promise<void> | void) => {
+    showConfirmation(title, message, async () => {
+      closeConfirmation()
+      await callback()
+    })
+  }
+
+  async function deleteGearGuide(id: string) {
+    const { error } = await supabase.from("equipment_recommendations").delete().eq("id", id)
+    if (error) {
+      alert(`Gear guide delete failed: ${error.message}`)
+      return
+    }
+    setGearGuides((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  async function deleteShopItem(id: string) {
+    const { error } = await supabase.from("shop_items").delete().eq("id", id)
+    if (error) {
+      alert(`Shop item delete failed: ${error.message}`)
+      return
+    }
+    setShopItems((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  async function deleteAssessmentItem(id: string) {
+    const { error } = await supabase.from("assessments").delete().eq("id", id)
+    if (error) {
+      alert(`Assessment delete failed: ${error.message}`)
+      return
+    }
+    setAssessments((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  const confirmDelete = (label: string, onConfirm: () => Promise<void> | void) => {
+    showConfirmation(
+      "Delete this item?",
+      `Are you sure you want to delete this ${label}? This action cannot be undone.`,
+      async () => {
+        closeConfirmation()
+        await onConfirm()
+      },
+    )
+  }
+
+  function updateCommentStatus(id: string, nextStatus: SupportTicket["status"]) {
+    setMessages((prev) => prev.map((message) => message.id === id ? { ...message, status: nextStatus } : message))
+  }
 
   function getMessageSenderName(message: SupportTicket | null | undefined) {
     if (!message) return "Member"
@@ -525,12 +621,12 @@ export function StaffDashboard({
     }
   }, [selectedMessageId])
 
-  async function updateMemberProfile(memberId: string, updates: { fullName?: string; level?: string }) {
+  async function updateMemberProfile(memberId: string, updates: { fullName?: string; level?: string; role?: string }) {
     const response = await fetch("/api/support/profile", {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ memberId, ...(updates.fullName ? { fullName: updates.fullName } : {}), ...(updates.level ? { level: updates.level } : {}) }),
+      body: JSON.stringify({ memberId, ...(updates.fullName ? { fullName: updates.fullName } : {}), ...(updates.level ? { level: updates.level } : {}), ...(updates.role ? { role: updates.role } : {}) }),
     })
 
     const result = await response.json().catch(() => ({ error: "Unable to update profile." }))
@@ -548,19 +644,21 @@ export function StaffDashboard({
     const edit = membersNameEdits[memberId]
     const fullName = typeof edit === "string" ? edit.trim() : member.full_name ?? getMemberDisplayName(member)
     const level = member.level ?? null
+    const role = member.role ?? "member"
 
-    if (!fullName && !level) {
+    if (!fullName && !level && !role) {
       showToast("Enter a display name or select a level before saving.")
       return
     }
 
     const previousMembers = members
-    setMembers((prev) => prev.map((item) => (item.id === memberId ? { ...item, full_name: fullName, level } : item)))
+    setMembers((prev) => prev.map((item) => (item.id === memberId ? { ...item, full_name: fullName, level, role } : item)))
 
     try {
-      const payload: { fullName?: string; level?: string } = {}
+      const payload: { fullName?: string; level?: string; role?: string } = {}
       if (fullName) payload.fullName = fullName
       if (level) payload.level = level
+      payload.role = role
 
       const updatedProfile = await updateMemberProfile(memberId, payload)
       setMembers((prev) =>
@@ -570,6 +668,7 @@ export function StaffDashboard({
                 ...m,
                 full_name: updatedProfile?.full_name ?? fullName,
                 level: updatedProfile?.level ?? (level ?? m.level),
+                role: updatedProfile?.role ?? (role ?? m.role),
               }
             : m,
         ),
@@ -723,25 +822,47 @@ export function StaffDashboard({
             <StatCard icon={CalendarDays} label="Sessions" value={schedule.length} />
             <StatCard icon={ClipboardList} label="Assessments" value={assessments.length} />
           </div>
-          {announcements.length > 0 && (
-            <Card className="p-6 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-              <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/20 text-primary">
-                  <Megaphone className="h-6 w-6" />
+          <div className="grid gap-6">
+            {latestGeneralAnnouncement && (
+              <Card className="p-6 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/20 text-primary">
+                    <Megaphone className="h-6 w-6" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-primary uppercase tracking-wide">Latest Announcement</p>
+                    <h3 className="mt-2 text-2xl font-bold text-foreground">{latestGeneralAnnouncement.title}</h3>
+                    <p className="mt-3 text-base leading-relaxed text-foreground/80 whitespace-pre-line">
+                      {latestGeneralAnnouncement.content}
+                    </p>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Posted {formatDate(latestGeneralAnnouncement.created_at)}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-xs font-semibold text-primary uppercase tracking-wide">Latest Announcement</p>
-                  <h3 className="mt-2 text-2xl font-bold text-foreground">{announcements[0].title}</h3>
-                  <p className="mt-3 text-base leading-relaxed text-foreground/80 whitespace-pre-line">
-                    {announcements[0].content}
-                  </p>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Posted {formatDate(announcements[0].created_at)}
-                  </p>
+              </Card>
+            )}
+
+            {latestFeatureAnnouncement && (
+              <Card className="p-6 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/25">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-500">
+                    <Megaphone className="h-6 w-6" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-emerald-500 uppercase tracking-wide">Website Feature Update</p>
+                    <h3 className="mt-2 text-2xl font-bold text-foreground">{latestFeatureAnnouncement.title}</h3>
+                    <p className="mt-3 text-base leading-relaxed text-foreground/80 whitespace-pre-line">
+                      {latestFeatureAnnouncement.content}
+                    </p>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Posted {formatDate(latestFeatureAnnouncement.created_at)}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </Card>
-          )}
+              </Card>
+            )}
+          </div>
         </div>
       )}
 
@@ -774,14 +895,14 @@ export function StaffDashboard({
                     <div className="flex items-center gap-2">
                       <Label className="text-xs text-muted-foreground">Level</Label>
                       <Select
-                        value={m.level ?? ALL_6_TIERS[0]}
+                        value={m.level ?? ALL_TIERS[0]}
                         onChange={(e) => {
                           const level = e.target.value
                           setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, level } : x)))
                         }}
                         className="h-9 w-40"
                       >
-                        {ALL_6_TIERS.map((l) => (
+                        {ALL_TIERS.map((l) => (
                           <option key={l} value={l}>{l}</option>
                         ))}
                       </Select>
@@ -821,16 +942,21 @@ export function StaffDashboard({
           />
           <div className="mt-6 flex flex-col gap-3">
             {schedule.map((s) => (
-              <Card key={s.id} className="flex items-start gap-3 p-4">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <CalendarDays className="h-5 w-5" />
-                </span>
-                <div>
-                  <h4 className="font-semibold text-foreground">{s.title ?? "Untitled Session"}</h4>
-                  <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                    {formatDate(s.date)} · <span>{s.time ?? "TBD"}</span>
-                  </p>
+              <Card key={s.id} className="flex items-start justify-between gap-3 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <CalendarDays className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h4 className="font-semibold text-foreground">{s.title ?? "Untitled Session"}</h4>
+                    <p className="text-sm font-medium text-muted-foreground mt-0.5">
+                      {formatDate(s.date)} · <span>{s.time ?? "TBD"}</span>
+                    </p>
+                  </div>
                 </div>
+                <Button size="sm" variant="outline" onClick={() => confirmDelete("schedule item", async () => { await deleteScheduleItem(s.id) })} className="text-xs">
+                  Delete
+                </Button>
               </Card>
             ))}
           </div>
@@ -871,86 +997,56 @@ export function StaffDashboard({
                         {bookedMembers.map(({ booking, member }) => (
                           <div
                             key={booking.id}
-                            className="flex items-center justify-between rounded-md bg-muted/50 p-2.5 text-sm"
+                            className="rounded-md bg-muted/50 p-2.5 text-sm"
                           >
-                            <div>
-                              <p className="font-medium text-foreground">
-                                {member?.full_name || member?.email || "Unknown Member"}
-                              </p>
-                              <p className="text-xs text-muted-foreground">Level: {member?.level || "N/A"}</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <div className="text-right">
-                                <p className="text-xs text-muted-foreground">
-                                  {new Date(booking.created_at || "").toLocaleDateString()}
+                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                              <div className="space-y-1">
+                                <p className="font-medium text-foreground">
+                                  {member?.full_name || member?.email || "Unknown Member"}
                                 </p>
-                                <p className="text-xs font-medium text-emerald-600">{booking.status}</p>
+                                <p className="text-xs text-muted-foreground">Email: {member?.email || "N/A"}</p>
+                                <p className="text-xs text-muted-foreground">Level: {member?.level || "N/A"}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Booked at: {booking.created_at ? new Date(booking.created_at).toLocaleString() : "N/A"}
+                                </p>
+                                {booking.notes && (
+                                  <p className="text-xs text-amber-600 dark:text-amber-300">Note: {booking.notes}</p>
+                                )}
                               </div>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 px-2 text-xs pointer-events-auto relative z-10 cursor-pointer"
-                                  onClick={() => markAttendance(booking, "present")}
-                                  disabled={!!pendingAttendance[booking.id]}
-                                >
-                                  {pendingAttendance[booking.id] ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : null}
-                                  Present
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 px-2 text-xs pointer-events-auto relative z-10 cursor-pointer"
-                                  onClick={() => markAttendance(booking, "late")}
-                                  disabled={!!pendingAttendance[booking.id]}
-                                >
-                                  {pendingAttendance[booking.id] ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : null}
-                                  Late
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 px-2 text-xs pointer-events-auto relative z-10 cursor-pointer"
-                                  onClick={() => markAttendance(booking, "absent")}
-                                  disabled={!!pendingAttendance[booking.id]}
-                                >
-                                  {pendingAttendance[booking.id] ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : null}
-                                  Miss
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 px-2 text-xs"
-                                  onClick={() =>
-                                    showConfirmation(
-                                      "Cancel Booking?",
-                                      `Remove ${member?.full_name || "this member"} from this session?`,
-                                      async () => {
-                                        setConfirmLoading(true)
-                                        try {
-                                          const { error } = await supabase
-                                            .from("bookings")
-                                            .delete()
-                                            .eq("id", booking.id)
-                                          if (error) {
-                                            console.error("❌ Cancel Booking Error:", error.message)
-                                            alert(`Error cancelling booking: ${error.message}`)
-                                            setConfirmLoading(false)
-                                            return
-                                          }
-                                          setBookings((prev) => prev.filter((b) => b.id !== booking.id))
-                                          closeConfirmation()
-                                          showToast(`Cancelled booking for ${member?.full_name || "member"}`)
-                                        } finally {
+
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                onClick={() =>
+                                  showConfirmation(
+                                    "Cancel Booking?",
+                                    `Remove ${member?.full_name || "this member"} from this session?`,
+                                    async () => {
+                                      setConfirmLoading(true)
+                                      try {
+                                        const { error } = await supabase
+                                          .from("bookings")
+                                          .delete()
+                                          .eq("id", booking.id)
+                                        if (error) {
+                                          console.error("❌ Cancel Booking Error:", error.message)
+                                          alert(`Error cancelling booking: ${error.message}`)
                                           setConfirmLoading(false)
+                                          return
                                         }
+                                        setBookings((prev) => prev.filter((b) => b.id !== booking.id))
+                                        closeConfirmation()
+                                        showToast(`Cancelled booking for ${member?.full_name || "member"}`)
+                                      } finally {
+                                        setConfirmLoading(false)
                                       }
-                                    )
-                                  }
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
+                                    }
+                                  )
+                                }
+                              >
+                                Cancel
+                              </Button>
                             </div>
                           </div>
                         ))}
@@ -1126,6 +1222,9 @@ export function StaffDashboard({
                                   <td className="px-4 py-3 align-top text-xs text-zinc-400">{member?.level || "N/A"}</td>
                                   <td className="px-4 py-3 align-top text-xs text-zinc-200 uppercase tracking-[0.08em]">{status}</td>
                                   <td className="px-4 py-3 align-top text-xs text-zinc-400">
+                                    {((booking.notes ?? attendance?.notes ?? "").trim()) ? (booking.notes ?? attendance?.notes ?? "").trim() : "—"}
+                                  </td>
+                                  <td className="px-4 py-3 align-top text-xs text-zinc-400">
                                     {attendance?.marked_at ? new Date(attendance.marked_at).toLocaleString() : "—"}
                                   </td>
                                   <td className="px-4 py-3 align-top">
@@ -1297,7 +1396,7 @@ export function StaffDashboard({
                         size="sm"
                         variant="outline"
                         className="text-rose-400 hover:text-rose-300"
-                        onClick={() => deleteResource(resource.id)}
+                        onClick={() => confirmDelete("resource", async () => { await deleteResource(resource.id) })}
                       >
                         Delete
                       </Button>
@@ -1311,8 +1410,54 @@ export function StaffDashboard({
       )}
 
       {active === "announcements" && (
-        <div>
+        <div className="space-y-6">
           <SectionHeader title="Announcements" desc="Post global updates for your student body dashboard." />
+
+          <Card className="p-5 border-dashed border-primary/30 bg-primary/5">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary mb-3">
+              <Megaphone className="h-4 w-4" />
+              Website Feature Update
+            </div>
+            <div className="flex flex-col gap-3">
+              <Textarea
+                value={websiteFeatureText}
+                onChange={(e) => setWebsiteFeatureText(e.target.value)}
+                className="min-h-28"
+                placeholder="Write the website feature update, such as a new tool, dashboard improvement, or release note..."
+              />
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={async () => {
+                    if (!websiteFeatureText.trim()) return
+                    const { data, error } = await supabase
+                      .from("announcements")
+                      .insert({
+                        title: "Website Feature Update",
+                        content: websiteFeatureText.trim(),
+                      })
+                      .select()
+
+                    if (error) {
+                      alert(`Announcement DB Error: ${error.message} (${error.code})`)
+                      console.error("Full Error Details:", error)
+                      return
+                    }
+
+                    if (data && data[0]) {
+                      setAnnouncements((prev) => [data[0] as Announcement, ...prev])
+                      setWebsiteFeatureText("")
+                      showToast("✓ Website feature update posted")
+                    }
+                  }}
+                  className="bg-[#40938c] text-black font-bold"
+                >
+                  Post Website Feature
+                </Button>
+              </div>
+            </div>
+          </Card>
+
           <TitleContentForm
             titleLabel="Title"
             contentLabel="Content"
@@ -1353,10 +1498,32 @@ export function StaffDashboard({
               const { data, error } = await supabase.from("shop_items").insert(payload).select()
               if (error) alert(`Shop DB Error: ${error.message}`)
               if (data && data[0]) {
-                // Shop item added to database; update not needed for display
+                setShopItems((prev) => [data[0] as ShopItem, ...prev])
               }
             }}
           />
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Published Shop Items</h3>
+            {shopItems.length === 0 ? (
+              <Card className="p-5"><p className="text-sm text-muted-foreground">No items published yet.</p></Card>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {shopItems.map((item) => (
+                  <Card key={item.id} className="p-4 border border-zinc-800 bg-zinc-950">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{item.name}</p>
+                        <p className="text-xs text-zinc-400 mt-1">${item.price ?? 0} · {item.category ?? "General"}</p>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => confirmDelete("shop item", async () => { await deleteShopItem(item.id) })} className="text-xs">
+                        Delete
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1390,7 +1557,12 @@ export function StaffDashboard({
                         <p className="text-sm font-semibold text-white">{guide.title}</p>
                         <p className="text-xs text-zinc-400 mt-1">{guide.brand ?? "Equipment"}</p>
                       </div>
-                      <Badge className="bg-[#E2AC28]/10 text-[#E2AC28] text-[10px] px-2 py-1 rounded-sm">Published</Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm">Published</Badge>
+                        <Button size="sm" variant="outline" onClick={() => confirmDelete("gear guide", async () => { await deleteGearGuide(guide.id) })} className="text-xs">
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                     <p className="mt-3 text-xs text-zinc-400 leading-relaxed">{guide.why_recommend || guide.specs || "No details available."}</p>
                   </Card>
@@ -1406,10 +1578,10 @@ export function StaffDashboard({
           <SectionHeader title="Assessments" desc="Give feedback and instantly record a user's promotional tier." />
           <AssessmentForm
             members={members.filter((m) => m.role === "member")}
-            onCreate={async ({ userId, level, feedback, date, score }) => {
+            onCreate={async ({ userId, level, feedback, date, score, pdf_url }) => {
               const { data, error } = await supabase
                 .from("assessments")
-                .insert({ user_id: userId, level, feedback, score, date })
+                .insert({ user_id: userId, level, feedback, score, date, pdf_url })
                 .select()
               if (error) {
                 alert(`Assessment DB Error: ${error.message}`)
@@ -1422,16 +1594,89 @@ export function StaffDashboard({
               }
             }}
           />
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Published Assessments</h3>
+            {assessments.length === 0 ? (
+              <Card className="p-5"><p className="text-sm text-muted-foreground">No assessments posted yet.</p></Card>
+            ) : (
+              <div className="grid gap-4">
+                {assessments.map((assessment) => (
+                  <Card key={assessment.id} className="p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{assessment.level || "Level"}</p>
+                        <p className="text-xs text-muted-foreground">{assessment.score ?? 0}/100 · {formatDate(assessment.date)}</p>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => confirmDelete("assessment", async () => { await deleteAssessmentItem(assessment.id) })} className="text-xs">
+                        Delete
+                      </Button>
+                    </div>
+                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{assessment.feedback}</p>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {active === "messages" && (
-        <SupportMessenger
-          profile={profile}
-          initialTickets={messages as SupportTicket[]}
-          isStaff
-          onTicketsChange={(nextTickets) => setMessages(nextTickets)}
-        />
+      {active === "comments" && (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <SectionHeader title="Member comments" desc="Review member advice and feedback and update each item to the right status." />
+            <div className="flex flex-wrap gap-2">
+              {(["all", "unread", "unsolved", "solved"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setCommentFilter(filter)}
+                  className={`rounded-sm border px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.2em] transition ${commentFilter === filter ? "border-[#40938c] bg-[#40938c]/10 text-[#40938c]" : "border-zinc-700 bg-zinc-900 text-zinc-300"}`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filteredComments.length === 0 ? (
+            <Card className="p-6 text-center text-sm text-zinc-400">No comments in this filter.</Card>
+          ) : (
+            <div className="grid gap-4">
+              {filteredComments.map((message) => {
+                const normalizedStatus = message.status === "resolved" ? "solved" : message.status === "open" ? "unsolved" : message.status
+                const readableStatus = normalizedStatus === "solved" ? "Solved" : normalizedStatus === "unsolved" ? "Unsolved" : normalizedStatus === "unread" ? "Unread" : "Unsolved"
+                return (
+                  <Card key={message.id} className="p-4 border border-zinc-800 bg-zinc-950/70">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-semibold text-white">{message.subject || "General advice"}</h3>
+                          <Badge className={normalizedStatus === "solved" ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" : normalizedStatus === "unread" ? "bg-amber-500/15 text-amber-300 border border-amber-500/30" : "bg-zinc-700/40 text-zinc-200 border border-zinc-600"}>
+                            {readableStatus}
+                          </Badge>
+                        </div>
+                        <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">{getMemberDisplayName(members.find((member) => member.id === message.user_id)) || message.user_email}</p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => updateCommentStatus(message.id, "unread")} className="border-zinc-700 bg-zinc-900 text-zinc-200">Unread</Button>
+                        <Button size="sm" variant="outline" onClick={() => updateCommentStatus(message.id, "unsolved")} className="border-zinc-700 bg-zinc-900 text-zinc-200">Unsolved</Button>
+                        <Button size="sm" onClick={() => updateCommentStatus(message.id, "solved")} className="bg-[#40938c] text-black">Solved</Button>
+                      </div>
+                    </div>
+
+                    <p className="mt-4 text-sm leading-relaxed text-zinc-300 whitespace-pre-wrap">{message.message}</p>
+
+                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-zinc-800 pt-3 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                      <span>{formatDate(message.created_at)}</span>
+                      <span>{message.user_email}</span>
+                    </div>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       <ConfirmationDialog
@@ -1486,7 +1731,7 @@ function ScheduleForm({
   const [title, setTitle] = useState("")
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
-  const [selectedTiers, setSelectedTiers] = useState<string[]>(Array.from(ALL_6_TIERS))
+  const [selectedTiers, setSelectedTiers] = useState<string[]>([...ALL_TIERS])
   const [coach, setCoach] = useState("")
   const [notes, setNotes] = useState("")
 
@@ -1560,15 +1805,15 @@ function ScheduleForm({
             </Select>
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2 border border-zinc-800 p-3 rounded bg-zinc-950/40">
-            <Label className="text-[#E2AC28] font-bold">Select Visible Ranks</Label>
+            <Label className="text-[#40938c] font-bold">Select Visible Ranks</Label>
             <div className="flex flex-wrap gap-4">
-              {ALL_6_TIERS.map((tier) => (
+              {ALL_TIERS.map((tier) => (
                 <label key={tier} className="flex items-center gap-2 text-xs font-mono text-zinc-200 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={selectedTiers.includes(tier)}
                   onChange={() => toggleTier(tier)}
-                  className="accent-[#E2AC28] h-4 w-4"
+                  className="accent-[#40938c] h-4 w-4"
                 />
                 {tier}
               </label>
@@ -1584,7 +1829,7 @@ function ScheduleForm({
           <Textarea id="s-notes" placeholder="Constraints description..." value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         <div className="sm:col-span-2">
-          <Button type="submit" disabled={loading} className="bg-[#E2AC28] text-black font-bold">
+          <Button type="submit" disabled={loading} className="bg-[#40938c] text-black font-bold">
             Inject Active Session Slot
           </Button>
         </div>
@@ -1659,7 +1904,7 @@ function TitleContentForm({
             <Textarea value={content} onChange={(e) => setContent(e.target.value)} className="min-h-28" required />
           </div>
           <div>
-            <Button type="submit" disabled={loading} className="bg-[#E2AC28] text-black font-bold">
+            <Button type="submit" disabled={loading} className="bg-[#40938c] text-black font-bold">
               {submitLabel}
             </Button>
           </div>
@@ -1742,7 +1987,7 @@ function CoachProfileForm({ onCreate }: { onCreate: (payload: { name: string; de
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} required />
           </div>
           <div className="flex items-center gap-4">
-            <Button type="submit" disabled={loading} className="bg-[#E2AC28] text-black font-bold">
+            <Button type="submit" disabled={loading} className="bg-[#40938c] text-black font-bold">
               Post Leader Profile Card
             </Button>
             {success && <span className="text-sm text-emerald-500">Profile online!</span>}
@@ -1777,14 +2022,23 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-          showConfirmation(
+    const imageUrls = parseImageUrls(picUrl)
+    const firstImage = imageUrls[0] ?? ""
+    showConfirmation(
       "Add Shop Item?",
       `List "${name}" for $${Number(price) || 0} in ${category}?`,
       async () => {
         setConfirmLoading(true)
         try {
-          await onCreate({ name, category, price: Number(price) || 0, description, pic_url: picUrl, stock: Number(stock) || 0, unit })
+          await onCreate({
+            name,
+            category,
+            price: Number(price) || 0,
+            description,
+            pic_url: imageUrls.join(", "),
+            stock: Number(stock) || 0,
+            unit,
+          })
           setName("")
           setPrice("")
           setDescription("")
@@ -1819,11 +2073,11 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
             </Select>
           </div>
           <div className="flex flex-col gap-1.5"><Label>Price ($)</Label><Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required /></div>
-          <div className="flex flex-col gap-1.5"><Label>Display Picture URL</Label><Input value={picUrl} onChange={(e) => setPicUrl(e.target.value)} required /></div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Product Image URLs</Label><Textarea value={picUrl} onChange={(e) => setPicUrl(e.target.value)} placeholder="Add multiple image URLs, separated by commas or new lines" required /></div>
           <div className="flex flex-col gap-1.5"><Label>Stock Quantity</Label><Input type="number" min={0} value={stock} onChange={(e) => setStock(Number(e.target.value))} /></div>
           <div className="flex flex-col gap-1.5"><Label>Unit Label</Label><Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="units, set, pack, box" /></div>
           <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Specification Overview</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></div>
-          <Button type="submit" disabled={loading} className="sm:col-span-2 bg-[#E2AC28] text-black font-bold">List Product Stock</Button>
+          <Button type="submit" disabled={loading} className="sm:col-span-2 bg-[#40938c] text-black font-bold">List Product Stock</Button>
         </form>
         <ConfirmationDialog
           isOpen={confirmState.isOpen}
@@ -1853,7 +2107,8 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+    const imageUrls = parseImageUrls(picUrl)
+    const joinedUrls = imageUrls.join(", ")
     showConfirmation(
       "Publish Equipment Guide?",
       `Publish "${title}" guide for ${category} (${recommendedTiers.join(", ")})?`,
@@ -1862,7 +2117,7 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
         try {
           const specs = priceEstimate ? `Estimated price: $${Number(priceEstimate).toFixed(2)}` : ""
           const recommended_for_tier = recommendedTiers.join(", ")
-          await onCreate({ title, category, description, image_url: picUrl, recommended_for_tier, specs })
+          await onCreate({ title, category, description, image_url: joinedUrls, recommended_for_tier, specs })
           setTitle("")
           setDescription("")
           setPicUrl("")
@@ -1897,8 +2152,8 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
               </Select>
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="flex flex-col gap-1.5"><Label>Image URL Reference</Label><Input value={picUrl} onChange={(e) => setPicUrl(e.target.value)} required /></div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Image URLs (comma- or line-separated)</Label><Textarea value={picUrl} onChange={(e) => setPicUrl(e.target.value)} placeholder="https://...jpg, https://...jpg, https://...jpg" required /></div>
             <div className="flex flex-col gap-1.5"><Label>Estimated Price ($)</Label><Input type="number" step="0.01" value={priceEstimate} onChange={(e) => setPriceEstimate(e.target.value)} placeholder="79.99" /></div>
             <div className="flex flex-col gap-1.5">
               <Label>Recommended Tier</Label>
@@ -1921,7 +2176,7 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
             </div>
           </div>
           <div className="flex flex-col gap-1.5"><Label>Technical Recommendation Summary</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required /></div>
-          <Button type="submit" disabled={loading} className="bg-[#E2AC28] text-black font-bold">Publish Review Guide</Button>
+          <Button type="submit" disabled={loading} className="bg-[#40938c] text-black font-bold">Publish Review Guide</Button>
         </form>
         <ConfirmationDialog
           isOpen={confirmState.isOpen}
@@ -1942,7 +2197,7 @@ function AssessmentForm({
   onCreate,
 }: {
   members: Profile[]
-  onCreate: (payload: { userId: string; level: string; feedback: string; date: string; score: number }) => Promise<void>
+  onCreate: (payload: { userId: string; level: string; feedback: string; date: string; score: number; pdf_url?: string | null }) => Promise<void>
 }) {
   const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
@@ -1950,10 +2205,11 @@ function AssessmentForm({
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [userId, setUserId] = useState("")
-  const [level, setLevel] = useState<string>(ALL_6_TIERS[0])
+  const [level, setLevel] = useState<string>(ALL_TIERS[0])
   const [score, setScore] = useState<number>(80)
   const [feedback, setFeedback] = useState("")
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
 
   const selectedMember = members.find((m) => m.id === userId)
   const memberName = selectedMember 
@@ -1963,6 +2219,37 @@ function AssessmentForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!userId) return
+
+    let pdfUrl: string | null = null
+
+    if (pdfFile) {
+      const fileIsPdf = pdfFile.type === "application/pdf" || pdfFile.name.toLowerCase().endsWith(".pdf")
+      if (!fileIsPdf) {
+        showToast("Please upload a PDF file for the assessment.")
+        return
+      }
+
+      try {
+        const formData = new FormData()
+        formData.append("file", pdfFile)
+
+        const uploadRes = await fetch("/api/support/upload", {
+          method: "POST",
+          body: formData,
+        })
+        const uploadJson = await uploadRes.json()
+
+        if (!uploadRes.ok || !uploadJson?.data?.publicUrl) {
+          throw new Error(uploadJson?.error || "PDF upload failed")
+        }
+
+        pdfUrl = uploadJson.data.publicUrl
+      } catch (error) {
+        console.error("Assessment PDF upload failed:", error)
+        showToast(error instanceof Error ? error.message : "Assessment PDF upload failed")
+        return
+      }
+    }
     
     showConfirmation(
       "Save Assessment?",
@@ -1976,8 +2263,10 @@ function AssessmentForm({
             feedback: feedback.trim(),
             date,
             score,
+            pdf_url: pdfUrl,
           })
           setFeedback("")
+          setPdfFile(null)
           setSuccess(true)
           setTimeout(() => setSuccess(false), 5000)
           closeConfirmation()
@@ -2010,7 +2299,7 @@ function AssessmentForm({
           <div className="flex flex-col gap-1.5">
             <Label>Level</Label>
             <Select value={level} onChange={(e) => setLevel(e.target.value)}>
-              {ALL_6_TIERS.map((l) => (
+              {ALL_TIERS.map((l) => (
                 <option key={l} value={l}>{l}</option>
               ))}
             </Select>
@@ -2033,7 +2322,7 @@ function AssessmentForm({
                 max={100}
                 value={score}
                 onChange={(e) => setScore(Number(e.target.value))}
-                className="w-full h-8 accent-[#E2AC28]"
+                className="w-full h-8 accent-[#40938c]"
               />
               <span className="w-12 text-right text-sm font-semibold">{score}%</span>
             </div>
@@ -2042,8 +2331,18 @@ function AssessmentForm({
             <Label>Feedback</Label>
             <Textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Feedback..." className="min-h-28" required />
           </div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Label>Assessment PDF (optional)</Label>
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-zinc-300 file:mr-4 file:py-2 file:px-3 file:rounded-sm file:border-0 file:bg-[#40938c] file:text-black file:font-bold file:text-[10px] file:uppercase file:tracking-[0.18em]"
+            />
+            {pdfFile && <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Selected: {pdfFile.name}</p>}
+          </div>
           <div className="sm:col-span-2 flex items-center gap-3">
-            <Button type="submit" disabled={loading} className="bg-[#E2AC28] text-black font-bold">
+            <Button type="submit" disabled={loading} className="bg-[#40938c] text-black font-bold">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trophy className="h-4 w-4" />}
               Save Assessment Record
             </Button>

@@ -89,27 +89,36 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const shouldAutoScrollRef = useRef(true)
   const lastSelectedTicketIdRef = useRef<string | null>(selectedTicketId)
+  const isMountedRef = useRef(true)
+  const pendingRequestsRef = useRef<AbortController[]>([])
+  const localIdCounterRef = useRef(0)
 
   const storageKey = `support-messenger-read:${profile.id}:${isStaff ? "staff" : "member"}`
+
+  // Cleanup pending requests on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+      pendingRequestsRef.current.forEach(controller => {
+        try {
+          controller.abort()
+        } catch {
+          // Ignore errors during cleanup
+          
+        }
+      })
+      pendingRequestsRef.current = []
+    }
+  }, [])
 
   const groupedThreads = useMemo(() => {
     const groups = new Map<string, { key: string; subject: string; tickets: SupportTicket[]; latestTicket: SupportTicket }>()
 
     for (const ticket of tickets) {
       const subject = (ticket.subject || "Support request").trim() || "Support request"
-      const key = `${String(ticket.user_id || profile.id)}::${subject.toLowerCase()}`
-      const existing = groups.get(key)
-
-      if (existing) {
-        existing.tickets.push(ticket)
-        const currentTime = new Date(ticket.created_at).getTime()
-        const latestTime = new Date(existing.latestTicket.created_at).getTime()
-        if (Number.isFinite(currentTime) && (!Number.isFinite(latestTime) || currentTime > latestTime)) {
-          existing.latestTicket = ticket
-        }
-      } else {
-        groups.set(key, { key, subject, tickets: [ticket], latestTicket: ticket })
-      }
+      // Each ticket is its own independent thread - no grouping by subject
+      const key = String(ticket.id)
+      groups.set(key, { key, subject, tickets: [ticket], latestTicket: ticket })
     }
 
     return Array.from(groups.values())
@@ -163,31 +172,10 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
   const conversationMessages = useMemo(() => {
     if (!selectedTicket) return []
 
-    // Try to find the exact thread group
-    let threadGroup = groupedThreads.find(
+    // Find the exact thread group - each ticket is now its own independent thread
+    const threadGroup = groupedThreads.find(
       (thread) => String(thread.latestTicket.id) === String(selectedTicketId),
     )
-
-    // Fallback: if not found, reconstruct by matching subject and user
-    if (!threadGroup) {
-      const matchingTickets = tickets.filter(
-        (ticket) =>
-          (ticket.subject || "Support request").toLowerCase() ===
-            (selectedTicket.subject || "Support request").toLowerCase() &&
-          String(ticket.user_id || profile.id) === String(selectedTicket.user_id || profile.id),
-      )
-      if (matchingTickets.length > 0) {
-        threadGroup = {
-          key: "",
-          subject: selectedTicket.subject || "Support request",
-          tickets: matchingTickets,
-          latestTicket: selectedTicket,
-          latestMessageText: formatPreviewMessage(selectedTicket.message),
-          latestMessageTime: selectedTicket.created_at,
-          latestActivityAt: new Date(selectedTicket.created_at).getTime(),
-        }
-      }
-    }
 
     const items: Array<{
       id: string
@@ -198,33 +186,28 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     }> = []
 
     if (threadGroup?.tickets && threadGroup.tickets.length > 0) {
-      // Sort tickets by created_at chronologically
-      const sortedTickets = [...threadGroup.tickets].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-      )
+      // Each thread now only has one ticket (no grouping by subject)
+      const ticket = threadGroup.tickets[0]
+      items.push({
+        id: `ticket-${ticket.id}`,
+        kind: "ticket",
+        senderId: ticket.user_id || "",
+        message: ticket.message,
+        createdAt: ticket.created_at,
+      })
 
-      for (const ticket of sortedTickets) {
+      const ticketReplies = replies[ticket.id] || []
+      for (const reply of ticketReplies) {
         items.push({
-          id: `ticket-${ticket.id}`,
-          kind: "ticket",
-          senderId: ticket.user_id || "",
-          message: ticket.message,
-          createdAt: ticket.created_at,
+          id: reply.id,
+          kind: "reply",
+          senderId: reply.sender_id,
+          message: reply.message,
+          createdAt: reply.created_at,
         })
-
-        const ticketReplies = replies[ticket.id] || []
-        for (const reply of ticketReplies) {
-          items.push({
-            id: reply.id,
-            kind: "reply",
-            senderId: reply.sender_id,
-            message: reply.message,
-            createdAt: reply.created_at,
-          })
-        }
       }
     } else {
-      // Fallback for single ticket
+      // Fallback for selected ticket
       items.push({
         id: `ticket-${selectedTicket.id}`,
         kind: "ticket",
@@ -250,37 +233,139 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
 
   async function loadTickets() {
     setLoading(true)
-    try {
-      const res = await fetch("/api/support", { credentials: "same-origin" })
-      const json = await parseJsonResponse(res)
-      if (!res.ok) throw new Error(json?.error || "Unable to load messages")
-      const data = Array.isArray(json?.data) ? json.data : []
-      setTickets(data)
-      onTicketsChange?.(data)
-      if (!selectedTicketId && data[0]) {
-        setSelectedTicketId(String(data[0].id))
+    const maxRetries = 3
+    let lastError: Error | null = null
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      // Check if component is still mounted
+      if (!isMountedRef.current) return
+      
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      
+      try {
+        // Track this request for cleanup
+        pendingRequestsRef.current.push(controller)
+        
+        const res = await fetch("/api/support", { 
+          credentials: "same-origin",
+          signal: controller.signal 
+        })
+        
+        clearTimeout(timeoutId)
+        
+        const json = await parseJsonResponse(res)
+        if (!res.ok) throw new Error(json?.error || "Unable to load messages")
+        
+        // Only update state if still mounted
+        if (!isMountedRef.current) return
+        
+        const data = Array.isArray(json?.data) ? json.data : []
+        setTickets(data)
+        // Defer callback to avoid state update during render
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            onTicketsChange?.(data)
+          }
+        }, 0)
+        if (!selectedTicketId && data[0]) {
+          setSelectedTicketId(String(data[0].id))
+        }
+        setLoading(false)
+        return // Success
+      } catch (error) {
+        clearTimeout(timeoutId)
+        
+        // Remove this controller from pending list
+        pendingRequestsRef.current = pendingRequestsRef.current.filter(c => c !== controller)
+        
+        // Don't retry on abort errors (timeout or component unmount)
+        if (error instanceof Error && error.name === "AbortError") {
+          console.warn("Request timeout or component unmounting while loading tickets")
+          break
+        }
+        
+        lastError = error instanceof Error ? error : new Error(String(error))
+        
+        if (attempt < maxRetries) {
+          // Exponential backoff: 100ms, 200ms, 400ms
+          const delay = Math.pow(2, attempt - 1) * 100
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to load messages"
+    }
+    
+    // Only set error after all retries fail and component is still mounted
+    if (isMountedRef.current && lastError) {
+      const message = lastError.message
       if (tickets.length === 0 && initialTickets.length === 0) {
         setStatus({ type: "error", message })
       }
-    } finally {
+      console.error(`Failed to load tickets after ${maxRetries} attempts:`, lastError)
+    }
+    if (isMountedRef.current) {
       setLoading(false)
     }
   }
 
   async function loadReplies(ticketId: string) {
-    if (!ticketId) return
-    try {
-      const res = await fetch(`/api/support/reply?ticketId=${encodeURIComponent(ticketId)}`, { credentials: "same-origin" })
-      const json = await parseJsonResponse(res)
-      if (!res.ok) throw new Error(json?.error || "Unable to load replies")
-      const data = Array.isArray(json?.data) ? json.data : []
-      setReplies((prev) => ({ ...prev, [ticketId]: data }))
-    } catch (error) {
-      console.error("Failed to load replies:", error)
-      // Avoid showing stale reply-loading errors in the send bar while the user is composing.
+    if (!ticketId || !isMountedRef.current) return
+    
+    const maxRetries = 3
+    let lastError: Error | null = null
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      // Check if component is still mounted
+      if (!isMountedRef.current) return
+      
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      
+      try {
+        // Track this request for cleanup
+        pendingRequestsRef.current.push(controller)
+        
+        const res = await fetch(`/api/support/reply?ticketId=${encodeURIComponent(ticketId)}`, { 
+          credentials: "same-origin",
+          signal: controller.signal 
+        })
+        
+        clearTimeout(timeoutId)
+        
+        const json = await parseJsonResponse(res)
+        if (!res.ok) throw new Error(json?.error || "Unable to load replies")
+        
+        // Only update state if still mounted
+        if (!isMountedRef.current) return
+        
+        const data = Array.isArray(json?.data) ? json.data : []
+        setReplies((prev) => ({ ...prev, [ticketId]: data }))
+        return // Success
+      } catch (error) {
+        clearTimeout(timeoutId)
+        
+        // Remove this controller from pending list
+        pendingRequestsRef.current = pendingRequestsRef.current.filter(c => c !== controller)
+        
+        // Don't retry on abort errors (timeout or component unmount)
+        if (error instanceof Error && error.name === "AbortError") {
+          console.warn("Request timeout or component unmounting while loading replies for ticket:", ticketId)
+          break
+        }
+        
+        lastError = error instanceof Error ? error : new Error(String(error))
+        
+        if (attempt < maxRetries) {
+          // Exponential backoff: 100ms, 200ms, 400ms
+          const delay = Math.pow(2, attempt - 1) * 100
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
+      }
+    }
+    
+    // Only log after all retries fail and component is still mounted
+    if (isMountedRef.current && lastError) {
+      console.error(`Failed to load replies for ticket ${ticketId} after ${maxRetries} attempts:`, lastError)
     }
   }
 
@@ -330,10 +415,9 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     )
 
     if (threadGroup && threadGroup.tickets.length > 0) {
-      // Load replies for all tickets in the thread group
-      for (const ticket of threadGroup.tickets) {
-        void loadReplies(String(ticket.id))
-      }
+      // Each thread now only has one ticket - load its replies
+      const ticket = threadGroup.tickets[0]
+      void loadReplies(String(ticket.id))
     } else if (selectedTicketId) {
       // Fallback: load replies for just this ticket
       void loadReplies(selectedTicketId)
@@ -408,8 +492,9 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
         })
         json = await parseJsonResponse(res)
         if (!res.ok) throw new Error(json?.error || "Unable to send reply")
+        localIdCounterRef.current += 1
         const newReply = {
-          id: json?.data?.id || `reply-${Date.now()}`,
+          id: json?.data?.id || `reply-${Date.now()}-${localIdCounterRef.current}`,
           ticket_id: selectedTicket.id,
           sender_id: profile.id,
           message: payloadMessage,
@@ -430,7 +515,8 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
         if (created) {
           setTickets((prev) => {
             const next = [created, ...prev]
-            onTicketsChange?.(next)
+            // Defer callback to avoid state update during render
+            setTimeout(() => onTicketsChange?.(next), 0)
             return next
           })
           setSelectedTicketId(String(created.id))
@@ -441,8 +527,10 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
       setPendingImageUrl(null)
       setPendingImageName(null)
     } catch (error) {
+      localIdCounterRef.current += 1
+      const localId = `local-${Date.now()}-${localIdCounterRef.current}`
       const fallback = {
-        id: `local-${Date.now()}`,
+        id: localId,
         user_id: profile.id,
         user_email: profile.email || "",
         subject: selectedTicket.subject || "Support request",
@@ -452,8 +540,9 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
       }
 
       if (isStaff) {
+        localIdCounterRef.current += 1
         const fallbackReply = {
-          id: `reply-${Date.now()}`,
+          id: `reply-${Date.now()}-${localIdCounterRef.current}`,
           ticket_id: selectedTicket.id,
           sender_id: profile.id,
           message: payloadMessage,
@@ -464,7 +553,8 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
       } else {
         setTickets((prev) => {
           const next = [fallback, ...prev]
-          onTicketsChange?.(next)
+          // Defer callback to avoid state update during render
+          setTimeout(() => onTicketsChange?.(next), 0)
           return next
         })
         setSelectedTicketId(String(fallback.id))
@@ -484,8 +574,10 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
     const ticketId = String(selectedTicket.id)
 
     if (ticketId.startsWith("local-")) {
-      setTickets((prev) => prev.filter((ticket) => String(ticket.id) !== ticketId))
-      onTicketsChange?.(tickets.filter((ticket) => String(ticket.id) !== ticketId))
+      const filtered = tickets.filter((ticket) => String(ticket.id) !== ticketId)
+      setTickets(filtered)
+      // Defer callback to avoid state update during render
+      setTimeout(() => onTicketsChange?.(filtered), 0)
       setSelectedTicketId((prev) => {
         const next = tickets.filter((ticket) => String(ticket.id) !== ticketId)
         return next[0] ? String(next[0].id) : null
@@ -505,8 +597,10 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
         throw new Error(json?.error || "Unable to delete message")
       }
 
-      setTickets((prev) => prev.filter((ticket) => String(ticket.id) !== ticketId))
-      onTicketsChange?.(tickets.filter((ticket) => String(ticket.id) !== ticketId))
+      const filtered = tickets.filter((ticket) => String(ticket.id) !== ticketId)
+      setTickets(filtered)
+      // Defer callback to avoid state update during render
+      setTimeout(() => onTicketsChange?.(filtered), 0)
       setSelectedTicketId((prev) => {
         const next = tickets.filter((ticket) => String(ticket.id) !== ticketId)
         return next[0] ? String(next[0].id) : null
@@ -523,7 +617,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
       <Card className="flex h-full flex-col overflow-hidden border-zinc-800 bg-zinc-950/80 p-0">
         <div className="border-b border-zinc-800 p-4">
           <div className="flex items-center gap-2">
-            <MessageCircleMore className="h-4 w-4 text-[#E2AC28]" />
+            <MessageCircleMore className="h-4 w-4 text-[#40938c]" />
             <h3 className="text-sm font-semibold text-white">{isStaff ? "Support inbox" : "Your messages"}</h3>
           </div>
           <p className="mt-1 text-xs text-zinc-500">Messages are stored in the club support system and can be deleted anytime.</p>
@@ -545,7 +639,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                     key={thread.key}
                     type="button"
                     onClick={() => setSelectedTicketId(String(thread.latestTicket.id))}
-                    className={`w-full rounded-xl border p-3 text-left transition ${isActive ? "border-[#E2AC28] bg-zinc-900" : "border-zinc-800 bg-zinc-950/70 hover:bg-zinc-900"}`}
+                    className={`w-full rounded-xl border p-3 text-left transition ${isActive ? "border-[#40938c] bg-zinc-900" : "border-zinc-800 bg-zinc-950/70 hover:bg-zinc-900"}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
@@ -558,7 +652,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                       <Badge variant={thread.latestTicket.status === "resolved" ? "accent" : "default"}>{thread.latestTicket.status || "open"}</Badge>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2">
-                      <p className="text-[11px] text-zinc-500">{thread.tickets.length > 1 ? `${thread.tickets.length} messages in this chat` : "Single message"}</p>
+                      <p className="text-[11px] text-zinc-500">New chat</p>
                       <p className="text-[11px] text-zinc-500">{formatTime(thread.latestMessageTime)}</p>
                     </div>
                   </button>
@@ -579,7 +673,10 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
               </div>
               <button
                 type="button"
-                onClick={handleDeleteSelectedTicket}
+                onClick={() => {
+                  if (!window.confirm("Delete this message? This action cannot be undone.")) return
+                  void handleDeleteSelectedTicket()
+                }}
                 className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-semibold text-white transition hover:bg-zinc-800"
               >
                 Delete
@@ -598,7 +695,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                     const { imageUrl, caption } = parseMessageContent(entry.message)
                     return (
                       <div key={entry.id} className={`flex ${isOutgoing ? "justify-end" : "justify-start"} gap-2 group`}>
-                        <div className={`max-w-[75%] rounded-2xl px-4 py-2 relative ${isOutgoing ? "rounded-br-none border border-[#E2AC28]/40 bg-[#E2AC28] text-zinc-900" : "rounded-bl-none border border-zinc-700 bg-zinc-900 text-zinc-100"}`}>
+                        <div className={`max-w-[75%] rounded-2xl px-4 py-2 relative ${isOutgoing ? "rounded-br-none border border-[#40938c]/40 bg-[#40938c] text-zinc-900" : "rounded-bl-none border border-zinc-700 bg-zinc-900 text-zinc-100"}`}>
                           <p className={`mb-1 text-[10px] font-bold uppercase tracking-wider ${isOutgoing ? "text-zinc-800/70" : "text-zinc-400"}`}>
                             {isOutgoing ? "You" : isStaff ? "Member" : "Staff"}
                           </p>
@@ -667,7 +764,7 @@ export function SupportMessenger({ profile, initialTickets = [], isStaff = false
                     >
                       {isUploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
                     </Button>
-                    <Button type="submit" size="sm" className="bg-[#E2AC28] text-black" disabled={loading || isUploadingImage}>
+                    <Button type="submit" size="sm" className="bg-[#40938c] text-black" disabled={loading || isUploadingImage}>
                       {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
                     </Button>
                   </div>

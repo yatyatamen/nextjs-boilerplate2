@@ -182,7 +182,8 @@ export function AuthForm() {
           password,
         })
         if (error) {
-          setFormError(error.message)
+          const errorMessage = error.message === "Failed to fetch" ? "Failed to log in" : error.message
+          setFormError(errorMessage)
           return
         }
         if (data.user) {
@@ -190,7 +191,11 @@ export function AuthForm() {
         }
       }
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Something went wrong.")
+      let errorMessage = err instanceof Error ? err.message : "Something went wrong."
+      if (mode === "login" && errorMessage === "Failed to fetch") {
+        errorMessage = "Failed to log in"
+      }
+      setFormError(errorMessage)
     } finally {
       setLoading(false)
     }

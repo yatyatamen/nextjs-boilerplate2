@@ -106,7 +106,7 @@ export default function OrderRequestPage() {
         </div>
 
         <div className="flex items-center justify-between">
-          <button type="submit" disabled={loading} className="px-4 py-2 bg-[#E2AC28] text-black rounded">{loading ? "Sending..." : "Submit Request"}</button>
+          <button type="submit" disabled={loading} className="px-4 py-2 bg-[#40938c] text-black rounded">{loading ? "Sending..." : "Submit Request"}</button>
           <button type="button" onClick={() => router.back()} className="text-sm text-zinc-400">Cancel</button>
         </div>
       </form>
