@@ -25,7 +25,7 @@ import type {
   AttendanceRecord,
   Resource,
 } from "@/lib/types"
-import { ALL_ROLE_AND_TIER_OPTIONS, LEVELS } from "@/lib/types"
+import { ALL_ROLE_AND_TIER_OPTIONS, LEVELS, ROLES } from "@/lib/types"
 import {
   LayoutDashboard,
   Users,
@@ -223,7 +223,8 @@ export function StaffDashboard({
   const [assessmentSearch, setAssessmentSearch] = useState("")
   const [announcementSearch, setAnnouncementSearch] = useState("")
   const [showNoAnnouncement, setShowNoAnnouncement] = useState(false)
-  const [leaderProfiles, setLeaderProfiles] = useState<Array<{ id: string; name: string; description: string; pic_url?: string | null; role_title?: string | null; created_at?: string | null }>>([])
+  const [showNoFeatureAnnouncement, setShowNoFeatureAnnouncement] = useState(false)
+  const [leaderProfiles, setLeaderProfiles] = useState<Array<{ id: string; name: string; description: string; pic_url?: string | null; role_title?: string | null; created_at?: string | null; is_hidden?: boolean | null }>>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
@@ -272,7 +273,7 @@ export function StaffDashboard({
         .filter((item: Announcement) => !isFeatureAnnouncement(item.title))
         .sort((a: Announcement, b: Announcement) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
 
-  const latestFeatureAnnouncement = showNoAnnouncement
+  const latestFeatureAnnouncement = showNoFeatureAnnouncement
     ? null
     : [...announcementList]
         .filter((item: Announcement) => isFeatureAnnouncement(item.title))
@@ -339,6 +340,19 @@ export function StaffDashboard({
       return
     }
     setLeaderProfiles((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  async function toggleLeaderProfileVisibility(id: string, currentValue: boolean | null | undefined) {
+    const nextValue = !Boolean(currentValue)
+    const { error } = await supabase.from("leader_profiles").update({ is_hidden: nextValue }).eq("id", id)
+
+    if (error) {
+      showToast(error.message || "Unable to update profile visibility")
+      return
+    }
+
+    setLeaderProfiles((prev) => prev.map((item) => item.id === id ? { ...item, is_hidden: nextValue } : item))
+    showToast(nextValue ? "Profile hidden from members" : "Profile visible to members")
   }
 
   async function deleteSupportTicketItem(id: string) {
@@ -1052,30 +1066,48 @@ export function StaffDashboard({
                     </div>
                     <div className="flex flex-col gap-3 sm:items-end">
                       <div className="flex items-center gap-2">
-                        <Label className="text-xs text-muted-foreground">Role / Level</Label>
-                        <Select
-                          value={m.level ?? m.role ?? "member"}
-                          onChange={(e) => {
-                            const entry = e.target.value
-                            const roleOptions = new Set(["member", "for fun", "coach", "teacher", "staff", "admin"])
-                            const isTier = !roleOptions.has(entry)
-
-                            setMembers((prev) =>
-                              prev.map((x) => {
-                                if (x.id !== m.id) return x
-                                if (isTier) {
-                                  return { ...x, level: entry, role: x.role ?? "member" }
-                                }
-                                return { ...x, role: entry as Profile["role"], level: x.level ?? LEVELS[0] }
-                              }),
-                            )
-                          }}
-                          className="h-9 w-40"
-                        >
-                          {ALL_TIERS.map((entry) => (
-                            <option key={entry} value={entry}>{entry}</option>
-                          ))}
-                        </Select>
+                        <div className="flex flex-col gap-1">
+                          <Label className="text-xs text-muted-foreground">Role</Label>
+                          <Select
+                            value={m.role ?? "member"}
+                            onChange={(e) => {
+                              const nextRole = e.target.value as Profile["role"]
+                              setMembers((prev) =>
+                                prev.map((x) =>
+                                  x.id === m.id
+                                    ? { ...x, role: nextRole, level: x.level ?? LEVELS[0] }
+                                    : x,
+                                ),
+                              )
+                            }}
+                            className="h-9 w-32"
+                          >
+                            {ROLES.map((entry) => (
+                              <option key={entry} value={entry}>{entry}</option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Label className="text-xs text-muted-foreground">Level</Label>
+                          <Select
+                            value={m.level ?? LEVELS[0]}
+                            onChange={(e) => {
+                              const nextLevel = e.target.value
+                              setMembers((prev) =>
+                                prev.map((x) =>
+                                  x.id === m.id
+                                    ? { ...x, level: nextLevel, role: x.role ?? "member" }
+                                    : x,
+                                ),
+                              )
+                            }}
+                            className="h-9 w-32"
+                          >
+                            {LEVELS.map((entry) => (
+                              <option key={entry} value={entry}>{entry}</option>
+                            ))}
+                          </Select>
+                        </div>
                       </div>
                       <Button
                         size="sm"
@@ -1175,12 +1207,19 @@ export function StaffDashboard({
                     return { booking: b, member }
                   })
 
+                  const tierText = (() => {
+                    const tiers = [session.min_level, session.max_level].filter((value): value is string => Boolean(value && value.trim()))
+                    if (tiers.length === 0) return "No tier restrictions"
+                    if (tiers.length === 1) return tiers[0]
+                    return [...new Set(tiers)].join(", ")
+                  })()
+
                   return (
                     <Card key={session.id} className="p-4">
                       <div className="mb-3">
                         <h4 className="font-semibold text-foreground">{session.title ?? "Untitled Session"}</h4>
                         <p className="text-sm text-muted-foreground mt-1">
-                          {formatDate(session.date)} · {session.time ?? "TBD"} • Tier: {session.min_level ?? "N/A"} to {session.max_level ?? "N/A"}
+                          {formatDate(session.date)} · {session.time ?? "TBD"} • Tiers: {tierText}
                         </p>
                       </div>
                       {bookedMembers.length === 0 ? (
@@ -1716,12 +1755,19 @@ export function StaffDashboard({
                   type="button"
                   variant="outline"
                   onClick={() => {
-                    setShowNoAnnouncement(true)
-                    showToast("No announcement will be shown")
+                    showConfirmation(
+                      "Hide website feature announcement?",
+                      "This will hide the current website feature announcement from the dashboard until you post a new one.",
+                      async () => {
+                        setShowNoFeatureAnnouncement(true)
+                        closeConfirmation()
+                        showToast("Website feature announcement hidden")
+                      },
+                    )
                   }}
                   className="border-zinc-700 bg-zinc-950 text-white hover:bg-zinc-900"
                 >
-                  No Announcement
+                  No Website Feature
                 </Button>
                 <Button
                   type="button"
@@ -1743,7 +1789,7 @@ export function StaffDashboard({
 
                     if (data && data[0]) {
                       setAnnouncements((prev) => [data[0] as Announcement, ...prev])
-                      setShowNoAnnouncement(false)
+                      setShowNoFeatureAnnouncement(false)
                       setWebsiteFeatureText("")
                       showToast("✓ Website feature update posted")
                     }
@@ -1755,6 +1801,27 @@ export function StaffDashboard({
               </div>
             </div>
           </Card>
+
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                showConfirmation(
+                  "Hide regular announcement?",
+                  "This will hide the current regular announcement from the dashboard until you post a new one.",
+                  async () => {
+                    setShowNoAnnouncement(true)
+                    closeConfirmation()
+                    showToast("Regular announcement hidden")
+                  },
+                )
+              }}
+              className="border-zinc-700 bg-zinc-950 text-white hover:bg-zinc-900"
+            >
+              No Announcement
+            </Button>
+          </div>
 
           <TitleContentForm
             titleLabel="Title"
@@ -1770,7 +1837,10 @@ export function StaffDashboard({
                 console.error("Full Error Details:", error)
                 return
               }
-              if (data && data[0]) setAnnouncements((prev) => [data[0] as Announcement, ...prev])
+              if (data && data[0]) {
+                setAnnouncements((prev) => [data[0] as Announcement, ...prev])
+                setShowNoAnnouncement(false)
+              }
             }}
           />
 
@@ -1876,16 +1946,42 @@ export function StaffDashboard({
                           <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">{profile.role_title || "Leader"}</span>
                         </div>
                         <p className="text-sm text-white whitespace-pre-line leading-relaxed">{profile.description}</p>
+                        <div className="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+                          <span className={profile.is_hidden ? "text-amber-400" : "text-emerald-400"}>
+                            {profile.is_hidden ? "Hidden" : "Visible"}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-white bg-white text-black hover:bg-zinc-100"
-                      onClick={() => confirmDelete("profile", async () => { await deleteLeaderProfileItem(profile.id) })}
-                    >
-                      Delete
-                    </Button>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={profile.is_hidden ? "border-amber-500 bg-amber-500/10 text-amber-300" : "border-emerald-500 bg-emerald-500/10 text-emerald-300"}
+                        onClick={() => {
+                          showConfirmation(
+                            profile.is_hidden ? "Unhide this profile?" : "Hide this profile?",
+                            profile.is_hidden
+                              ? "This profile will become visible to members again."
+                              : "This profile will be hidden from members and won't appear in the public leadership list.",
+                            async () => {
+                              closeConfirmation()
+                              await toggleLeaderProfileVisibility(profile.id, profile.is_hidden)
+                            },
+                          )
+                        }}
+                      >
+                        {profile.is_hidden ? "Unhide" : "Hide"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-white bg-white text-black hover:bg-zinc-100"
+                        onClick={() => confirmDelete("profile", async () => { await deleteLeaderProfileItem(profile.id) })}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </div>
                 </Card>
               ))

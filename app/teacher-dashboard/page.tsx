@@ -44,6 +44,8 @@ export default async function TeacherDashboardPage() {
     supabase.from("leader_profiles").select("*").order("created_at", { ascending: false }),
   ])
 
+  const visibleLeaders = (leadersRes.data ?? []).filter((leader: any) => !(leader.is_hidden === true || leader.hidden === true || leader.visible === false))
+
   return (
     <TeacherDashboard
       profile={profile}
@@ -52,7 +54,7 @@ export default async function TeacherDashboardPage() {
       initialAnnouncements={announcementsRes.data ?? []}
       initialBookings={bookingsRes.data ?? []}
       initialAttendanceRecords={attendanceRes.data ?? []}
-      initialLeaders={leadersRes.data ?? []}
+      initialLeaders={visibleLeaders}
     />
   )
 }

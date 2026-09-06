@@ -66,13 +66,15 @@ export default async function MemberDashboardPage() {
   ])
 
   // Safely bridge the database columns to whatever keys your UI component expects!
-  const formattedCoaches = (coachesResult.data ?? []).map((c: any) => ({
-    ...c,
-    // Add variations just in case your dashboard looks for different names
-    full_name: c.name, 
-    bio: c.description,
-    avatar_url: c.pic_url,
-  }))
+  const formattedCoaches = (coachesResult.data ?? [])
+    .filter((c: any) => !(c.is_hidden === true || c.hidden === true || c.visible === false))
+    .map((c: any) => ({
+      ...c,
+      // Add variations just in case your dashboard looks for different names
+      full_name: c.name,
+      bio: c.description,
+      avatar_url: c.pic_url,
+    }))
 
   // Log errors for debugging
   if (schedule.error) console.error("❌ Schedule Fetch Error:", schedule.error.message)
