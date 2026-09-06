@@ -218,10 +218,11 @@ export function StaffDashboard({
   const [openMessageMenuId, setOpenMessageMenuId] = useState<string | null>(null)
   const [localReplies, setLocalReplies] = useState<Record<string, string[]>>({})
   const [staffFile, setStaffFile] = useState<File | null>(null)
-  const [commentFilter, setCommentFilter] = useState<"all" | "unread" | "unsolved" | "solved">("all")
+  const [commentFilter, setCommentFilter] = useState<"all" | "unread" | "solved">("all")
   const [assessmentTierFilter, setAssessmentTierFilter] = useState<string>("all")
   const [assessmentSearch, setAssessmentSearch] = useState("")
   const [announcementSearch, setAnnouncementSearch] = useState("")
+  const [showNoAnnouncement, setShowNoAnnouncement] = useState(false)
   const [leaderProfiles, setLeaderProfiles] = useState<Array<{ id: string; name: string; description: string; pic_url?: string | null; role_title?: string | null; created_at?: string | null }>>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -252,8 +253,8 @@ export function StaffDashboard({
   const normalizeCommentStatus = (status: SupportTicket["status"] | string | null | undefined) => {
     if (!status) return "unread"
     if (status === "resolved") return "solved"
-    if (status === "open") return "unsolved"
-    if (status === "solved" || status === "unsolved" || status === "unread") return status
+    if (status === "open") return "unread"
+    if (status === "solved" || status === "unread") return status
     return "unread"
   }
 
@@ -263,13 +264,19 @@ export function StaffDashboard({
     return normalized === commentFilter
   })
 
-  const latestGeneralAnnouncement = [...announcements]
-    .filter((item) => !isFeatureAnnouncement(item.title))
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+  const announcementList: Announcement[] = Array.isArray(announcements) ? announcements : []
 
-  const latestFeatureAnnouncement = [...announcements]
-    .filter((item) => isFeatureAnnouncement(item.title))
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+  const latestGeneralAnnouncement = showNoAnnouncement
+    ? null
+    : [...announcementList]
+        .filter((item: Announcement) => !isFeatureAnnouncement(item.title))
+        .sort((a: Announcement, b: Announcement) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+
+  const latestFeatureAnnouncement = showNoAnnouncement
+    ? null
+    : [...announcementList]
+        .filter((item: Announcement) => isFeatureAnnouncement(item.title))
+        .sort((a: Announcement, b: Announcement) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
 
   const selectedMessage = messages.find((m) => String(m.id) === selectedMessageId) ?? messages[0] ?? null
 
@@ -377,7 +384,7 @@ export function StaffDashboard({
   }
 
   function updateCommentStatus(id: string, nextStatus: SupportTicket["status"]) {
-    const label = nextStatus === "solved" ? "Solved" : nextStatus === "unsolved" ? "Unsolved" : "Unread"
+    const label = nextStatus === "solved" ? "Solved" : "Unread"
     showConfirmation(
       "Update comment status?",
       `Mark this comment as ${label}? This will update the ticket record for the staff queue.`,
@@ -824,41 +831,8 @@ export function StaffDashboard({
     setPendingAttendance((p) => ({ ...p, [bookingKey]: true }))
     const now = new Date().toISOString()
 
-    if (existingRecord) {
-      // optimistic update
-      setAttendanceRecords((prev) =>
-        prev.map((record) => (record.id === existingRecord.id ? { ...record, status, marked_at: now } : record)),
-      )
-      try {
-        const { error } = await supabase
-          .from("attendance")
-          .update({ status, marked_at: now })
-          .eq("id", existingRecord.id)
-        if (error) {
-          // revert on error
-          setAttendanceRecords((prev) =>
-            prev.map((record) => (record.id === existingRecord.id ? existingRecord : record)),
-          )
-          showToast(`Failed to update attendance: ${error.message}`)
-        } else {
-          showToast("Attendance updated")
-        }
-      } catch (_err) {
-        setAttendanceRecords((prev) =>
-          prev.map((record) => (record.id === existingRecord.id ? existingRecord : record)),
-        )
-        showToast("Network error updating attendance")
-      } finally {
-        setPendingAttendance((p) => ({ ...p, [bookingKey]: false }))
-      }
-      return
-    }
-
-    // create optimistic temp record
-    // eslint-disable-next-line react-hooks/purity
-    const tempId = `temp-${Date.now()}`
-    const tempRecord: AttendanceRecord = {
-      id: tempId,
+    const nextRecord: AttendanceRecord = {
+      id: existingRecord?.id ?? `temp-${Date.now()}`,
       session_id: String(booking.session_id ?? ""),
       user_id: String(booking.user_id ?? ""),
       user_name: member ? String((`${member.first_name ?? ""} ${member.last_name ?? ""}`).trim() || (member.email ?? "")) : "Unknown",
@@ -866,7 +840,34 @@ export function StaffDashboard({
       status,
       marked_at: now,
     }
-    setAttendanceRecords((prev) => [...prev, tempRecord])
+
+    if (existingRecord) {
+      setAttendanceRecords((prev) =>
+        prev.map((record) => (record.id === existingRecord.id ? { ...record, ...nextRecord, id: record.id } : record)),
+      )
+
+      try {
+        const { error } = await supabase
+          .from("attendance")
+          .update({ status, marked_at: now, user_name: nextRecord.user_name, user_level: nextRecord.user_level })
+          .eq("id", existingRecord.id)
+
+        if (error) {
+          setAttendanceRecords((prev) => prev.map((record) => (record.id === existingRecord.id ? existingRecord : record)))
+          showToast(`Failed to update attendance: ${error.message}`)
+        } else {
+          showToast("Attendance updated")
+        }
+      } catch (_err) {
+        setAttendanceRecords((prev) => prev.map((record) => (record.id === existingRecord.id ? existingRecord : record)))
+        showToast("Network error updating attendance")
+      } finally {
+        setPendingAttendance((p) => ({ ...p, [bookingKey]: false }))
+      }
+      return
+    }
+
+    setAttendanceRecords((prev) => [...prev, nextRecord])
 
     try {
       const { data, error } = await supabase
@@ -875,8 +876,8 @@ export function StaffDashboard({
           {
             session_id: String(booking.session_id ?? ""),
             user_id: String(booking.user_id ?? ""),
-            user_name: tempRecord.user_name,
-            user_level: tempRecord.user_level,
+            user_name: nextRecord.user_name,
+            user_level: nextRecord.user_level,
             status,
             marked_at: now,
           },
@@ -885,15 +886,14 @@ export function StaffDashboard({
 
       if (!error && data && data[0]) {
         const inserted = data[0] as AttendanceRecord
-        setAttendanceRecords((prev) => prev.map((r) => (r.id === tempId ? inserted : r)))
+        setAttendanceRecords((prev) => prev.map((r) => (r.id === nextRecord.id ? inserted : r)))
         showToast("Attendance recorded")
       } else {
-        // remove temp
-        setAttendanceRecords((prev) => prev.filter((r) => r.id !== tempId))
+        setAttendanceRecords((prev) => prev.filter((r) => r.id !== nextRecord.id))
         showToast(`Failed to save attendance: ${error?.message ?? "unknown error"}`)
       }
     } catch (_err) {
-      setAttendanceRecords((prev) => prev.filter((r) => r.id !== tempId))
+      setAttendanceRecords((prev) => prev.filter((r) => r.id !== nextRecord.id))
       showToast("Network error saving attendance")
     } finally {
       setPendingAttendance((p) => ({ ...p, [bookingKey]: false }))
@@ -1711,7 +1711,18 @@ export function StaffDashboard({
                 className="min-h-28"
                 placeholder="Write the website feature update, such as a new tool, dashboard improvement, or release note..."
               />
-              <div className="flex justify-end">
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowNoAnnouncement(true)
+                    showToast("No announcement will be shown")
+                  }}
+                  className="border-zinc-700 bg-zinc-950 text-white hover:bg-zinc-900"
+                >
+                  No Announcement
+                </Button>
                 <Button
                   type="button"
                   onClick={async () => {
@@ -1732,6 +1743,7 @@ export function StaffDashboard({
 
                     if (data && data[0]) {
                       setAnnouncements((prev) => [data[0] as Announcement, ...prev])
+                      setShowNoAnnouncement(false)
                       setWebsiteFeatureText("")
                       showToast("✓ Website feature update posted")
                     }
@@ -1772,13 +1784,23 @@ export function StaffDashboard({
                 className="max-w-xs"
               />
             </div>
-            {announcements.filter((item) => item.title?.toLowerCase().includes(announcementSearch.toLowerCase()) || item.content?.toLowerCase().includes(announcementSearch.toLowerCase())).length === 0 ? (
-              <Card className="p-5"><p className="text-sm text-muted-foreground">No announcements found.</p></Card>
-            ) : (
-              announcements
-                .filter((item) => item.title?.toLowerCase().includes(announcementSearch.toLowerCase()) || item.content?.toLowerCase().includes(announcementSearch.toLowerCase()))
-                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                .map((item) => (
+            {(() => {
+              const announcementItems: Announcement[] = Array.isArray(announcements) ? announcements : []
+              const normalizedSearch = announcementSearch.trim().toLowerCase()
+              const filteredAnnouncements = announcementItems
+                .filter((item: Announcement) => {
+                  const title = item.title ?? ""
+                  const content = item.content ?? ""
+                  return normalizedSearch.length === 0
+                    ? true
+                    : title.toLowerCase().includes(normalizedSearch) || content.toLowerCase().includes(normalizedSearch)
+                })
+                .sort((a: Announcement, b: Announcement) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+              return filteredAnnouncements.length === 0 ? (
+                <Card className="p-5"><p className="text-sm text-muted-foreground">No announcements found.</p></Card>
+              ) : (
+                filteredAnnouncements.map((item: Announcement) => (
                   <Card key={item.id} className="p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
@@ -1799,7 +1821,8 @@ export function StaffDashboard({
                     </div>
                   </Card>
                 ))
-            )}
+              )
+            })()}
           </div>
         </div>
       )}
@@ -2064,12 +2087,12 @@ export function StaffDashboard({
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <SectionHeader title="Member comments" desc="Review member advice and feedback and update each item to the right status." />
             <div className="flex flex-wrap gap-2">
-              {(["all", "unread", "unsolved", "solved"] as const).map((filter) => (
+              {(["all", "unread", "solved"] as const).map((filter) => (
                 <button
                   key={filter}
                   type="button"
                   onClick={() => setCommentFilter(filter)}
-                  className={`rounded-sm border px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.2em] transition ${commentFilter === filter ? "border-[#40938c] bg-[#40938c]/10 text-[#40938c]" : "border-zinc-700 bg-zinc-900 text-white"}`}
+                  className={`rounded-sm border px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.2em] transition ${commentFilter === filter ? "border-zinc-600 bg-zinc-800 text-white" : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:bg-zinc-900"}`}
                 >
                   {filter}
                 </button>
@@ -2083,7 +2106,7 @@ export function StaffDashboard({
             <div className="grid gap-4">
               {filteredComments.map((message) => {
                 const normalizedStatus = normalizeCommentStatus(message.status)
-                const readableStatus = normalizedStatus === "solved" ? "Solved" : normalizedStatus === "unsolved" ? "Unsolved" : normalizedStatus === "unread" ? "Unread" : "Unsolved"
+                const readableStatus = normalizedStatus === "solved" ? "Solved" : "Unread"
                 return (
                   <Card key={message.id} className="p-4 border border-zinc-800 bg-zinc-950/70">
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -2099,7 +2122,6 @@ export function StaffDashboard({
 
                       <div className="flex flex-wrap gap-2">
                         <Button size="sm" variant="outline" onClick={() => updateCommentStatus(message.id, "unread")} className="border-zinc-700 bg-zinc-900 text-white">Unread</Button>
-                        <Button size="sm" variant="outline" onClick={() => updateCommentStatus(message.id, "unsolved")} className="border-zinc-700 bg-zinc-900 text-white">Unsolved</Button>
                         <Button size="sm" onClick={() => updateCommentStatus(message.id, "solved")} className="bg-[#40938c] text-black">Solved</Button>
                         <Button size="sm" variant="outline" onClick={() => confirmDelete("comment", async () => { await deleteSupportTicketItem(message.id) })} className="border-white bg-white text-black hover:bg-zinc-100">Delete</Button>
                       </div>
@@ -2647,6 +2669,7 @@ function AssessmentForm({
   const [userId, setUserId] = useState("")
   const [level, setLevel] = useState<string>(ALL_TIERS[0])
   const [score, setScore] = useState<number>(80)
+  const [scoreInput, setScoreInput] = useState<string>("80")
   const [feedback, setFeedback] = useState("")
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [pdfFile, setPdfFile] = useState<File | null>(null)
@@ -2760,11 +2783,40 @@ function AssessmentForm({
                 type="range"
                 min={0}
                 max={100}
+                step="0.1"
                 value={score}
-                onChange={(e) => setScore(Number(e.target.value))}
+                onChange={(e) => {
+                  const nextValue = Number(e.target.value)
+                  setScore(Number.isFinite(nextValue) ? nextValue : 0)
+                  setScoreInput(String(nextValue))
+                }}
                 className="w-full h-8 accent-[#40938c]"
               />
-              <span className="w-12 text-right text-sm font-semibold">{score}%</span>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                value={scoreInput}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  setScoreInput(raw)
+
+                  if (raw === "") {
+                    setScore(0)
+                    return
+                  }
+
+                  const nextValue = Number(raw)
+                  if (!Number.isFinite(nextValue)) return
+
+                  const clamped = Math.min(100, Math.max(0, nextValue))
+                  setScore(clamped)
+                  setScoreInput(raw)
+                }}
+                className="w-20 text-right"
+              />
+              <span className="w-10 text-right text-sm font-semibold">%</span>
             </div>
           </div>
           <div className="flex flex-col gap-1.5 sm:col-span-2">
