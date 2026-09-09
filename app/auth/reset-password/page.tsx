@@ -87,7 +87,7 @@ async function getActiveRecoverySession(supabase: ReturnType<typeof createClient
 
 export default function ResetPasswordPage() {
   const router = useRouter()
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [message, setMessage] = useState<string | null>(null)
