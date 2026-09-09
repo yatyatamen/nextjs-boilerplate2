@@ -87,11 +87,11 @@ export default async function MemberDashboardPage() {
       schedule={schedule.data ?? []}
       initialBookings={bookings.data ?? []}
       announcements={announcements.data ?? []}
-      shopItems={shopItems.data ?? []}
+      shopItems={(shopItems.data ?? []).filter((item: any) => !(item.is_hidden === true || item.hidden === true || item.visible === false))}
       assessments={assessments.data ?? []}
       coaches={formattedCoaches} // Passes down the mapped fields securely
       attendanceRecords={attendance.data ?? []}
-      gearGuides={gearGuides.data ?? []}
+      gearGuides={(gearGuides.data ?? []).filter((item: any) => !(item.is_hidden === true || item.hidden === true || item.visible === false))}
       allProfiles={allProfiles.data ?? []}
       supportTickets={supportTickets.data ?? []}
     />

@@ -85,6 +85,7 @@ export type ShopItem = {
   pic_url?: string | null
   image_urls?: string[] | null
   unit?: string | null
+  is_hidden?: boolean | null
 }
 
 export type Assessment = {
@@ -128,6 +129,7 @@ export type EquipmentRecommendation = {
   external_link: string | null
   image_url: string | null 
   image_urls?: string[] | null
+  is_hidden?: boolean | null
 }
 
 export type SupportTicket = {
