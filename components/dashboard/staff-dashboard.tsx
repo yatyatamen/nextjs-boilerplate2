@@ -587,6 +587,43 @@ export function StaffDashboard({
     }
   }
 
+  async function toggleHiddenItem<T extends { id: string; is_hidden?: boolean | null; hidden?: boolean | null; visible?: boolean | null }>(
+    table: string,
+    id: string,
+    nextHidden: boolean,
+    setter: (updater: (prev: T[]) => T[]) => void,
+    label: string,
+  ) {
+    const attempts = [
+      { is_hidden: nextHidden },
+      { hidden: nextHidden },
+      { visible: !nextHidden },
+    ] as const
+
+    let lastError: Error | null = null
+
+    for (const payload of attempts) {
+      const { error } = await supabase.from(table).update(payload).eq("id", id)
+      if (!error) {
+        setter((prev) => prev.map((item) => item.id === id ? ({ ...item, is_hidden: nextHidden, hidden: nextHidden, visible: !nextHidden } as T) : item))
+        showToast(nextHidden ? `${label} hidden` : `${label} shown`)
+        return
+      }
+
+      const message = error.message ?? ""
+      if (!message.toLowerCase().includes("does not exist") && !message.toLowerCase().includes("column")) {
+        lastError = new Error(message || `Unable to update ${label} visibility`)
+        break
+      }
+      lastError = new Error(message || `Unable to update ${label} visibility`)
+    }
+
+    if (lastError) {
+      console.error(`Toggle hidden failed for ${table}/${id}:`, lastError)
+      showToast(lastError.message || `Failed to update ${label} visibility`)
+    }
+  }
+
   // Keep bookings list in sync with realtime changes so staff view reflects member cancellations/rebooks
   useEffect(() => {
     if (active !== "bookings") return
@@ -1054,43 +1091,24 @@ export function StaffDashboard({
                     <div className="flex flex-col gap-3 sm:items-end">
                       <div className="flex items-center gap-2">
                         <div className="flex flex-col gap-1">
-                          <Label className="text-xs text-muted-foreground">Role</Label>
+                          <Label className="text-xs text-muted-foreground">Role / Level</Label>
                           <Select
-                            value={m.role ?? "member"}
+                            value={m.level ?? m.role ?? "member"}
                             onChange={(e) => {
-                              const nextRole = e.target.value as Profile["role"]
+                              const nextValue = e.target.value
                               setMembers((prev) =>
                                 prev.map((x) =>
                                   x.id === m.id
-                                    ? { ...x, role: nextRole, level: x.level ?? LEVELS[0] }
+                                    ? ROLES.includes(nextValue as Profile["role"])
+                                      ? { ...x, role: nextValue as Profile["role"] }
+                                      : { ...x, level: nextValue }
                                     : x,
                                 ),
                               )
                             }}
-                            className="h-9 w-32"
+                            className="h-9 w-40"
                           >
-                            {ROLES.map((entry) => (
-                              <option key={entry} value={entry}>{entry}</option>
-                            ))}
-                          </Select>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <Label className="text-xs text-muted-foreground">Level</Label>
-                          <Select
-                            value={m.level ?? LEVELS[0]}
-                            onChange={(e) => {
-                              const nextLevel = e.target.value
-                              setMembers((prev) =>
-                                prev.map((x) =>
-                                  x.id === m.id
-                                    ? { ...x, level: nextLevel, role: x.role ?? "member" }
-                                    : x,
-                                ),
-                              )
-                            }}
-                            className="h-9 w-32"
-                          >
-                            {LEVELS.map((entry) => (
+                            {ALL_ROLE_AND_TIER_OPTIONS.map((entry) => (
                               <option key={entry} value={entry}>{entry}</option>
                             ))}
                           </Select>
@@ -1152,24 +1170,37 @@ export function StaffDashboard({
             }}
           />
           <div className="mt-6 flex flex-col gap-3">
-            {schedule.map((s) => (
-              <Card key={s.id} className="flex items-start justify-between gap-3 p-4">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <CalendarDays className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <h4 className="font-semibold text-foreground">{s.title ?? "Untitled Session"}</h4>
-                    <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                      {formatDate(s.date)} · <span>{s.time ?? "TBD"}</span>
-                    </p>
+            {schedule.map((s) => {
+              const isHidden = Boolean((s as any)?.is_hidden || (s as any)?.hidden || (s as any)?.visible === false)
+              return (
+                <Card key={s.id} className={`flex items-start justify-between gap-3 p-4 ${isHidden ? "opacity-60" : ""}`}>
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <CalendarDays className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <h4 className="font-semibold text-foreground">{s.title ?? "Untitled Session"}</h4>
+                      <p className="text-sm font-medium text-muted-foreground mt-0.5">
+                        {formatDate(s.date)} · <span>{s.time ?? "TBD"}</span>
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => confirmDelete("schedule item", async () => { await deleteScheduleItem(s.id) })} className="text-xs">
-                  Delete
-                </Button>
-              </Card>
-            ))}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => toggleHiddenItem<ScheduleSession>("schedule", s.id, !isHidden, setSchedule, "Schedule item")}
+                      className="text-xs"
+                    >
+                      {isHidden ? "Show" : "Hide"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => confirmDelete("schedule item", async () => { await deleteScheduleItem(s.id) })} className="text-xs">
+                      Delete
+                    </Button>
+                  </div>
+                </Card>
+              )
+            })}
           </div>
         </div>
       )}
@@ -1682,40 +1713,52 @@ export function StaffDashboard({
                 <p className="text-muted-foreground">No resources posted yet. Add one above to share with members!</p>
               </Card>
             ) : (
-              resources.map((resource) => (
-                <Card key={resource.id} className="p-4">
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1">
-                        <h3 className="font-medium text-foreground">{resource.title}</h3>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {new Date(resource.created_at).toLocaleDateString()}
-                        </p>
+              resources.map((resource) => {
+                const isHidden = Boolean((resource as any)?.is_hidden || (resource as any)?.hidden || (resource as any)?.visible === false)
+                return (
+                  <Card key={resource.id} className={`p-4 ${isHidden ? "opacity-60" : ""}`}>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <h3 className="font-medium text-foreground">{resource.title}</h3>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {new Date(resource.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.open(resource.url || "", "_blank")}
+                          className="flex-1"
+                        >
+                          Open PDF
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => toggleHiddenItem<Resource>("resources", resource.id, !isHidden, setResources, "Resource")}
+                          className="text-xs"
+                        >
+                          {isHidden ? "Show" : "Hide"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="text-rose-400 hover:text-rose-300"
+                          onClick={() => confirmDelete("resource", async () => { await deleteResource(resource.id) })}
+                        >
+                          Delete
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => window.open(resource.url || "", "_blank")}
-                        className="flex-1"
-                      >
-                        Open PDF
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="text-rose-400 hover:text-rose-300"
-                        onClick={() => confirmDelete("resource", async () => { await deleteResource(resource.id) })}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              ))
+                  </Card>
+                )
+              })
             )}
           </div>
         </div>
@@ -1857,27 +1900,40 @@ export function StaffDashboard({
               return filteredAnnouncements.length === 0 ? (
                 <Card className="p-5"><p className="text-sm text-muted-foreground">No announcements found.</p></Card>
               ) : (
-                filteredAnnouncements.map((item: Announcement) => (
-                  <Card key={item.id} className="p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <p className="font-semibold text-white">{item.title || "Announcement"}</p>
-                          <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">{formatDate(item.created_at)}</span>
+                filteredAnnouncements.map((item: Announcement) => {
+                  const isHidden = Boolean((item as any)?.is_hidden || (item as any)?.hidden || (item as any)?.visible === false)
+                  return (
+                    <Card key={item.id} className={`p-4 ${isHidden ? "opacity-60" : ""}`}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <p className="font-semibold text-white">{item.title || "Announcement"}</p>
+                            <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">{formatDate(item.created_at)}</span>
+                          </div>
+                          <p className="text-sm text-white whitespace-pre-line leading-relaxed">{item.content}</p>
                         </div>
-                        <p className="text-sm text-white whitespace-pre-line leading-relaxed">{item.content}</p>
+                        <div className="flex flex-col gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => toggleHiddenItem<Announcement>("announcements", item.id, !isHidden, setAnnouncements, "Announcement")}
+                            className="text-xs"
+                          >
+                            {isHidden ? "Show" : "Hide"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-white bg-white text-black hover:bg-zinc-100"
+                            onClick={() => confirmDelete("announcement", async () => { await deleteAnnouncementItem(item.id) })}
+                          >
+                            Delete
+                          </Button>
+                        </div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-white bg-white text-black hover:bg-zinc-100"
-                        onClick={() => confirmDelete("announcement", async () => { await deleteAnnouncementItem(item.id) })}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </Card>
-                ))
+                    </Card>
+                  )
+                })
               )
             })()}
           </div>
@@ -1916,38 +1972,49 @@ export function StaffDashboard({
             {leaderProfiles.length === 0 ? (
               <Card className="p-5"><p className="text-sm text-muted-foreground">No leader profiles posted yet.</p></Card>
             ) : (
-              leaderProfiles.map((profile) => (
-                <Card key={profile.id} className="p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex min-w-0 flex-1 items-start gap-3">
-                      {profile.pic_url ? (
-                        <img src={profile.pic_url} alt={profile.name} className="h-14 w-14 rounded-lg object-cover" />
-                      ) : (
-                        <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-200">
-                          {profile.name?.slice(0, 2) || "P"}
+              leaderProfiles.map((profile) => {
+                const isHidden = Boolean((profile as any)?.is_hidden || (profile as any)?.hidden || (profile as any)?.visible === false)
+                return (
+                  <Card key={profile.id} className={`p-4 ${isHidden ? "opacity-60" : ""}`}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        {profile.pic_url ? (
+                          <img src={profile.pic_url} alt={profile.name} className="h-14 w-14 rounded-lg object-cover" />
+                        ) : (
+                          <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-200">
+                            {profile.name?.slice(0, 2) || "P"}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <p className="font-semibold text-white">{profile.name}</p>
+                            <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">{profile.role_title || "Leader"}</span>
+                          </div>
+                          <p className="text-sm text-white whitespace-pre-line leading-relaxed">{profile.description}</p>
                         </div>
-                      )}
-                      <div className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <p className="font-semibold text-white">{profile.name}</p>
-                          <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">{profile.role_title || "Leader"}</span>
-                        </div>
-                        <p className="text-sm text-white whitespace-pre-line leading-relaxed">{profile.description}</p>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => toggleHiddenItem<{ id: string; is_hidden?: boolean | null; hidden?: boolean | null; visible?: boolean | null }>("leader_profiles", profile.id, !isHidden, (updater) => setLeaderProfiles((prev) => updater(prev as any) as any), "Profile")}
+                          className="text-xs"
+                        >
+                          {isHidden ? "Show" : "Hide"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-white bg-white text-black hover:bg-zinc-100"
+                          onClick={() => confirmDelete("profile", async () => { await deleteLeaderProfileItem(profile.id) })}
+                        >
+                          Delete
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-white bg-white text-black hover:bg-zinc-100"
-                        onClick={() => confirmDelete("profile", async () => { await deleteLeaderProfileItem(profile.id) })}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              ))
+                  </Card>
+                )
+              })
             )}
           </div>
         </div>
@@ -1974,8 +2041,9 @@ export function StaffDashboard({
                 {shopItems.map((item) => {
                   const imageUrls = parseImageUrls(item.image_url || item.pic_url || (item.image_urls ? JSON.stringify(item.image_urls) : null))
                   const firstImage = imageUrls[0]
+                  const isHidden = Boolean((item as any)?.is_hidden || (item as any)?.hidden || (item as any)?.visible === false)
                   return (
-                    <Card key={item.id} className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                    <Card key={item.id} className={`flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between ${isHidden ? "opacity-60" : ""}`}>
                       <div className="flex items-center gap-3">
                         <div className="h-14 w-14 overflow-hidden rounded-lg border border-border bg-muted/30">
                           {firstImage ? (
@@ -1991,6 +2059,9 @@ export function StaffDashboard({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={() => toggleHiddenItem<ShopItem>("shop_items", item.id, !isHidden, setShopItems, "Shop item")} className="text-xs">
+                          {isHidden ? "Show" : "Hide"}
+                        </Button>
                         <Button size="sm" variant="outline" onClick={() => confirmDelete("shop item", async () => { await deleteShopItem(item.id) })} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
                           Delete
                         </Button>
@@ -2030,8 +2101,9 @@ export function StaffDashboard({
                 {gearGuides.map((guide) => {
                   const imageUrls = parseImageUrls(guide.image_url ?? (guide.image_urls ? JSON.stringify(guide.image_urls) : null))
                   const firstImage = imageUrls[0]
+                  const isHidden = Boolean((guide as any)?.is_hidden || (guide as any)?.hidden || (guide as any)?.visible === false)
                   return (
-                    <Card key={guide.id} className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                    <Card key={guide.id} className={`flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between ${isHidden ? "opacity-60" : ""}`}>
                       <div className="flex items-center gap-3">
                         <div className="h-14 w-14 overflow-hidden rounded-lg border border-border bg-muted/30">
                           {firstImage ? (
@@ -2047,6 +2119,9 @@ export function StaffDashboard({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={() => toggleHiddenItem<EquipmentRecommendation>("equipment_recommendations", guide.id, !isHidden, setGearGuides, "Gear guide")} className="text-xs">
+                          {isHidden ? "Show" : "Hide"}
+                        </Button>
                         <Button size="sm" variant="outline" onClick={() => confirmDelete("gear guide", async () => { await deleteGearGuide(guide.id) })} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
                           Delete
                         </Button>
