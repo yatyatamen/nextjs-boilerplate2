@@ -224,7 +224,7 @@ export function StaffDashboard({
   const [announcementSearch, setAnnouncementSearch] = useState("")
   const [showNoAnnouncement, setShowNoAnnouncement] = useState(false)
   const [showNoFeatureAnnouncement, setShowNoFeatureAnnouncement] = useState(false)
-  const [leaderProfiles, setLeaderProfiles] = useState<Array<{ id: string; name: string; description: string; pic_url?: string | null; role_title?: string | null; created_at?: string | null; is_hidden?: boolean | null }>>([])
+  const [leaderProfiles, setLeaderProfiles] = useState<Array<{ id: string; name: string; description: string; pic_url?: string | null; role_title?: string | null; created_at?: string | null }>>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
@@ -315,32 +315,6 @@ export function StaffDashboard({
     setShopItems((prev) => prev.filter((item) => item.id !== id))
   }
 
-  async function toggleShopItemVisibility(id: string, currentValue: boolean | null | undefined) {
-    const nextValue = !Boolean(currentValue)
-    const { error } = await supabase.from("shop_items").update({ is_hidden: nextValue }).eq("id", id)
-
-    if (error) {
-      showToast(error.message || "Unable to update shop item visibility")
-      return
-    }
-
-    setShopItems((prev) => prev.map((item) => item.id === id ? { ...item, is_hidden: nextValue } : item))
-    showToast(nextValue ? "Shop item hidden from members" : "Shop item visible to members")
-  }
-
-  async function toggleGearGuideVisibility(id: string, currentValue: boolean | null | undefined) {
-    const nextValue = !Boolean(currentValue)
-    const { error } = await supabase.from("equipment_recommendations").update({ is_hidden: nextValue }).eq("id", id)
-
-    if (error) {
-      showToast(error.message || "Unable to update gear guide visibility")
-      return
-    }
-
-    setGearGuides((prev) => prev.map((item) => item.id === id ? { ...item, is_hidden: nextValue } : item))
-    showToast(nextValue ? "Gear guide hidden from members" : "Gear guide visible to members")
-  }
-
   async function deleteAssessmentItem(id: string) {
     const { error } = await supabase.from("assessments").delete().eq("id", id)
     if (error) {
@@ -366,19 +340,6 @@ export function StaffDashboard({
       return
     }
     setLeaderProfiles((prev) => prev.filter((item) => item.id !== id))
-  }
-
-  async function toggleLeaderProfileVisibility(id: string, currentValue: boolean | null | undefined) {
-    const nextValue = !Boolean(currentValue)
-    const { error } = await supabase.from("leader_profiles").update({ is_hidden: nextValue }).eq("id", id)
-
-    if (error) {
-      showToast(error.message || "Unable to update profile visibility")
-      return
-    }
-
-    setLeaderProfiles((prev) => prev.map((item) => item.id === id ? { ...item, is_hidden: nextValue } : item))
-    showToast(nextValue ? "Profile hidden from members" : "Profile visible to members")
   }
 
   async function deleteSupportTicketItem(id: string) {
@@ -1972,33 +1933,9 @@ export function StaffDashboard({
                           <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">{profile.role_title || "Leader"}</span>
                         </div>
                         <p className="text-sm text-white whitespace-pre-line leading-relaxed">{profile.description}</p>
-                        <div className="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">
-                          <span className={profile.is_hidden ? "text-amber-400" : "text-emerald-400"}>
-                            {profile.is_hidden ? "Hidden" : "Visible"}
-                          </span>
-                        </div>
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className={profile.is_hidden ? "border-amber-500 bg-amber-500/10 text-amber-300" : "border-emerald-500 bg-emerald-500/10 text-emerald-300"}
-                        onClick={() => {
-                          showConfirmation(
-                            profile.is_hidden ? "Unhide this profile?" : "Hide this profile?",
-                            profile.is_hidden
-                              ? "This profile will become visible to members again."
-                              : "This profile will be hidden from members and won't appear in the public leadership list.",
-                            async () => {
-                              closeConfirmation()
-                              await toggleLeaderProfileVisibility(profile.id, profile.is_hidden)
-                            },
-                          )
-                        }}
-                      >
-                        {profile.is_hidden ? "Unhide" : "Hide"}
-                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -2054,21 +1991,6 @@ export function StaffDashboard({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge className={item.is_hidden ? "bg-amber-500/10 text-amber-300 text-[10px] px-2 py-1 rounded-sm" : "bg-emerald-500/10 text-emerald-300 text-[10px] px-2 py-1 rounded-sm"}>
-                          {item.is_hidden ? "Hidden" : "Visible"}
-                        </Badge>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => confirmAction(
-                            item.is_hidden ? "Unhide this shop item?" : "Hide this shop item?",
-                            item.is_hidden ? "This item will be visible to members again." : "This item will be hidden from members.",
-                            async () => { await toggleShopItemVisibility(item.id, item.is_hidden) },
-                          )}
-                          className="border-white bg-white text-black hover:bg-zinc-100 text-xs"
-                        >
-                          {item.is_hidden ? "Unhide" : "Hide"}
-                        </Button>
                         <Button size="sm" variant="outline" onClick={() => confirmDelete("shop item", async () => { await deleteShopItem(item.id) })} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
                           Delete
                         </Button>
@@ -2125,21 +2047,6 @@ export function StaffDashboard({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge className={guide.is_hidden ? "bg-amber-500/10 text-amber-300 text-[10px] px-2 py-1 rounded-sm" : "bg-emerald-500/10 text-emerald-300 text-[10px] px-2 py-1 rounded-sm"}>
-                          {guide.is_hidden ? "Hidden" : "Visible"}
-                        </Badge>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => confirmAction(
-                            guide.is_hidden ? "Unhide this gear guide?" : "Hide this gear guide?",
-                            guide.is_hidden ? "This guide will be visible to members again." : "This guide will be hidden from members.",
-                            async () => { await toggleGearGuideVisibility(guide.id, guide.is_hidden) },
-                          )}
-                          className="border-white bg-white text-black hover:bg-zinc-100 text-xs"
-                        >
-                          {guide.is_hidden ? "Unhide" : "Hide"}
-                        </Button>
                         <Button size="sm" variant="outline" onClick={() => confirmDelete("gear guide", async () => { await deleteGearGuide(guide.id) })} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
                           Delete
                         </Button>
