@@ -270,6 +270,28 @@ export function StaffDashboard({
         .filter((item: Announcement) => isFeatureAnnouncement(item.title))
         .sort((a: Announcement, b: Announcement) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
 
+  async function hideLatestAnnouncement(featureOnly: boolean) {
+    const announcement = featureOnly ? latestFeatureAnnouncement : latestGeneralAnnouncement
+    if (!announcement) {
+      showToast(featureOnly ? "No website feature announcement to hide" : "No announcement to hide")
+      return
+    }
+
+    const { error } = await supabase.from("announcements").delete().eq("id", announcement.id)
+    if (error) {
+      showToast(`Unable to hide announcement: ${error.message}`)
+      return
+    }
+
+    setAnnouncements((prev) => prev.filter((item) => item.id !== announcement.id))
+    if (featureOnly) {
+      setShowNoFeatureAnnouncement(true)
+    } else {
+      setShowNoAnnouncement(true)
+    }
+    showToast(featureOnly ? "Website feature announcement hidden" : "Announcement hidden")
+  }
+
   const selectedMessage = messages.find((m) => String(m.id) === selectedMessageId) ?? messages[0] ?? null
 
   async function deleteScheduleItem(id: string) {
@@ -1696,9 +1718,8 @@ export function StaffDashboard({
                       "Hide website feature announcement?",
                       "This will hide the current website feature announcement from the dashboard until you post a new one.",
                       async () => {
-                        setShowNoFeatureAnnouncement(true)
                         closeConfirmation()
-                        showToast("Website feature announcement hidden")
+                        await hideLatestAnnouncement(true)
                       },
                     )
                   }}
@@ -1748,9 +1769,8 @@ export function StaffDashboard({
                   "Hide regular announcement?",
                   "This will hide the current regular announcement from the dashboard until you post a new one.",
                   async () => {
-                    setShowNoAnnouncement(true)
                     closeConfirmation()
-                    showToast("Regular announcement hidden")
+                    await hideLatestAnnouncement(false)
                   },
                 )
               }}

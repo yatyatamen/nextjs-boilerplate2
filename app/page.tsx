@@ -92,7 +92,13 @@ export default function LoginPage() {
         return
       }
 
-      const { data, error } = await supabase.auth.signUp({ email: normalizedEmail, password })
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: {
+          emailRedirectTo: window.location.origin,
+        },
+      })
       console.debug("supabase signUp response", { data, error })
 
       const duplicateSignup =
