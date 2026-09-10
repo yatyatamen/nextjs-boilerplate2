@@ -314,18 +314,28 @@ export function StaffDashboard({
   }
 
   async function deleteGearGuide(id: string) {
-    const { error } = await supabase.from("equipment_recommendations").delete().eq("id", id)
-    if (error) {
-      alert(`Gear guide delete failed: ${error.message}`)
+    const response = await fetch("/api/staff/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, type: "gear_guide" }),
+    })
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}))
+      alert(`Gear guide delete failed: ${result.error || "Unable to delete item"}`)
       return
     }
     setGearGuides((prev) => prev.filter((item) => item.id !== id))
   }
 
   async function deleteShopItem(id: string) {
-    const { error } = await supabase.from("shop_items").delete().eq("id", id)
-    if (error) {
-      alert(`Shop item delete failed: ${error.message}`)
+    const response = await fetch("/api/staff/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, type: "shop_item" }),
+    })
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}))
+      alert(`Shop item delete failed: ${result.error || "Unable to delete item"}`)
       return
     }
     setShopItems((prev) => prev.filter((item) => item.id !== id))

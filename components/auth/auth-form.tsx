@@ -173,7 +173,7 @@ export function AuthForm() {
           email: normalizedEmail,
           password,
           options: {
-            emailRedirectTo: AUTH_REDIRECT_URL?.replace(/\/$/, "") || FALLBACK_AUTH_REDIRECT_URL,
+            emailRedirectTo: `${AUTH_REDIRECT_URL?.replace(/\/$/, "") || FALLBACK_AUTH_REDIRECT_URL}/auth/callback`,
             data: {
               full_name: fullName.trim(),
             },

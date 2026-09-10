@@ -98,7 +98,7 @@ export default function LoginPage() {
         email: normalizedEmail,
         password,
         options: {
-          emailRedirectTo: AUTH_REDIRECT_URL?.replace(/\/$/, "") || FALLBACK_AUTH_REDIRECT_URL,
+          emailRedirectTo: `${AUTH_REDIRECT_URL?.replace(/\/$/, "") || FALLBACK_AUTH_REDIRECT_URL}/auth/callback`,
         },
       })
       console.debug("supabase signUp response", { data, error })
