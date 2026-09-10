@@ -179,7 +179,7 @@ export default function LoginPage() {
             Your home court for <br />
             <span className="text-[#14B8A6]">everything badminton.</span>
           </h2>
-          <p className="text-sm text-zinc-400 max-w-xl leading-relaxed">
+          <p className="text-sm text-zinc-200 max-w-xl leading-relaxed">
             Book sessions, follow your training metrics, and view real-time announcements inside the official Wolves badminton portal matrix.
           </p>
 
@@ -198,7 +198,7 @@ export default function LoginPage() {
             
             <div className="relative mb-6">
               <h3 className="text-xl font-extrabold text-white uppercase tracking-tight">Pack Access</h3>
-              <p className="text-xs text-zinc-400 mt-1">🐺 Wolves Only · School Credentials Required</p>
+              <p className="text-xs text-zinc-200 mt-1">🐺 Wolves Only · School Credentials Required</p>
             </div>
 
             <div className="grid grid-cols-2 gap-2 bg-zinc-950 p-1 rounded-sm border border-zinc-800/60 mb-6 relative">
@@ -206,7 +206,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => { setIsRegister(false); setError(null); }}
                 className={`py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-sm transition-all ${
-                  !isRegister ? "bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black border border-[#14B8A6] shadow-lg shadow-[#14B8A6]/50" : "text-zinc-500 hover:text-zinc-300"
+                  !isRegister ? "bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black border border-[#14B8A6] shadow-lg shadow-[#14B8A6]/50" : "text-zinc-200 hover:text-white"
                 }`}
               >
                 Sign In
@@ -215,7 +215,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => { setIsRegister(true); setError(null); }}
                 className={`py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-sm transition-all ${
-                  isRegister ? "bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black border border-[#14B8A6] shadow-lg shadow-[#14B8A6]/50" : "text-zinc-500 hover:text-zinc-300"
+                  isRegister ? "bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black border border-[#14B8A6] shadow-lg shadow-[#14B8A6]/50" : "text-zinc-200 hover:text-white"
                 }`}
               >
                 Register
@@ -232,7 +232,7 @@ export default function LoginPage() {
 
             <form onSubmit={handleAuth} className="flex flex-col gap-4 relative">
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 font-mono">School Email</label>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-200 font-mono">School Email</label>
                 <div className="relative flex items-center">
                   <Mail className="absolute left-3 h-4 w-4 text-[#14B8A6]/60" />
                   <input
@@ -247,7 +247,7 @@ export default function LoginPage() {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 font-mono">Password</label>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-200 font-mono">Password</label>
                 <div className="relative flex items-center">
                   <Lock className="absolute left-3 h-4 w-4 text-[#14B8A6]/60" />
                   <input
@@ -291,7 +291,7 @@ export default function LoginPage() {
       </div>
 
       <div className="text-center border-t border-zinc-900 pt-4 mt-8 z-10">
-        <p className="text-[9px] font-mono uppercase tracking-widest text-zinc-600">
+        <p className="text-[9px] font-mono uppercase tracking-widest text-zinc-300">
           Westmount Collegiate Institute · Athletics Department
         </p>
       </div>
@@ -307,7 +307,7 @@ function FeatureCard({ icon: Icon, title, desc }: { icon: any; title: string; de
       </span>
       <div className="flex flex-col gap-0.5">
         <h4 className="text-xs font-bold text-zinc-200 uppercase tracking-wide">{title}</h4>
-        <p className="text-[11px] text-zinc-500 leading-normal">{desc}</p>
+        <p className="text-[11px] text-zinc-200 leading-normal">{desc}</p>
       </div>
     </Card>
   )
