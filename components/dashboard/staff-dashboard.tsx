@@ -77,7 +77,7 @@ const NAV: NavItem[] = [
   { key: "assessments", label: "Assessments", icon: ClipboardList },
   { key: "comments", label: "Comments", icon: MessageSquareText },
 ]
-const ALL_TIERS = [...ALL_ROLE_AND_TIER_OPTIONS]
+const ALL_TIERS = [...LEVELS]
 const TIME_SLOTS = ["3:20-4:30 PM", "3:20-4:45 PM", "3:20-5:00 PM", "3:20-5:15 PM"] as const
 const ATTENDANCE_FILTERS = ["all", "present", "absent", "late"] as const
 const ATTENDANCE_DAY_FILTERS = ["all", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const

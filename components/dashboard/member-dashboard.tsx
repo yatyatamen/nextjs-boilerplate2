@@ -1511,7 +1511,7 @@ import { LEVELS } from "@/lib/types"
                                                           {formatDate(s.date)} · <span className="font-mono font-normal text-xs text-[#40938c]">{s.time}</span>
                                                         </p>
                                                         <p className={`text-xs font-bold font-mono mt-0.5 ${theme.textSecondary}`}>[{s.title || "Standard Class Roster"}]</p>
-                                                        <p className={`text-xs ${theme.textMuted} mt-1`}>
+                                                        <p className={`text-xs ${theme.textMuted} mt-1 whitespace-pre-line`}>
                                                           Coach: {s.coach || "Club Staff"}
                                                         </p>
                                                         <p className={`text-xs ${theme.textMuted} mt-1`}>
@@ -1558,7 +1558,7 @@ import { LEVELS } from "@/lib/types"
                                                                       </div>
                                                                       <div className="p-3 bg-zinc-950/40 border border-zinc-800/60 rounded-xs">
                                                                         <span className={`${theme.textMuted} block uppercase text-[9px]`}>Session Description</span>
-                                                                        <span className="text-zinc-200 font-bold block mt-1">
+                                                                        <span className="text-zinc-200 font-bold block mt-1 whitespace-pre-line">
                                                                           {confirmingSession.notes || "Session details will be provided by staff."}
                                                                         </span>
                                                                       </div>
