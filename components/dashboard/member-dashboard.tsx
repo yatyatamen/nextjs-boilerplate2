@@ -37,6 +37,8 @@ import { LEVELS } from "@/lib/types"
                                                   MinusCircle,
                                                   GraduationCap,
                                                   Image,
+                                                  ChevronLeft,
+                                                  ChevronRight,
                                                   MoreHorizontal,
                                                   LifeBuoy,
                                                 } from "lucide-react"
@@ -69,8 +71,11 @@ import { LEVELS } from "@/lib/types"
                                                   return (value ?? "").toString().trim().toLowerCase()
                                                 }
 
-                                                function parseImageList(value: string | null | undefined) {
+                                                function parseImageList(value: string | string[] | null | undefined) {
                                                   if (!value) return []
+                                                  if (Array.isArray(value)) {
+                                                    return value.map((entry) => entry.trim()).filter(Boolean)
+                                                  }
                                                   const raw = value.trim()
                                                   if (!raw) return []
 
@@ -94,6 +99,7 @@ import { LEVELS } from "@/lib/types"
 
                                                 function GalleryCarousel({ images, alt, className = "" }: { images: string[]; alt: string; className?: string }) {
                                                   const [activeIndex, setActiveIndex] = useState(0)
+                                                  const touchStartX = useRef<number | null>(null)
                                                   const validImages = images.filter(Boolean)
 
                                                   useEffect(() => {
@@ -109,12 +115,32 @@ import { LEVELS } from "@/lib/types"
                                                   }
 
                                                   const currentImage = validImages[activeIndex]
+                                                  const showPrevious = () => setActiveIndex((index) => (index - 1 + validImages.length) % validImages.length)
+                                                  const showNext = () => setActiveIndex((index) => (index + 1) % validImages.length)
 
                                                   return (
-                                                    <div className={`relative overflow-hidden rounded-sm bg-zinc-950 ${className}`}>
+                                                    <div
+                                                      className={`relative overflow-hidden rounded-sm bg-zinc-950 ${className}`}
+                                                      onTouchStart={(event) => { touchStartX.current = event.touches[0]?.clientX ?? null }}
+                                                      onTouchEnd={(event) => {
+                                                        if (touchStartX.current === null || validImages.length < 2) return
+                                                        const distance = event.changedTouches[0]?.clientX - touchStartX.current
+                                                        touchStartX.current = null
+                                                        if (Math.abs(distance) < 30) return
+                                                        if (distance > 0) showPrevious()
+                                                        else showNext()
+                                                      }}
+                                                    >
                                                       <img src={currentImage} alt={alt} className="h-full w-full object-cover" />
                                                       {validImages.length > 1 && (
-                                                        <div className="absolute inset-x-0 bottom-2 flex items-center justify-center gap-1.5">
+                                                        <>
+                                                          <button type="button" aria-label="Previous image" onClick={showPrevious} className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-1 text-white transition hover:bg-black/80">
+                                                            <ChevronLeft className="h-4 w-4" />
+                                                          </button>
+                                                          <button type="button" aria-label="Next image" onClick={showNext} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-1 text-white transition hover:bg-black/80">
+                                                            <ChevronRight className="h-4 w-4" />
+                                                          </button>
+                                                          <div className="absolute inset-x-0 bottom-2 flex items-center justify-center gap-1.5">
                                                           {validImages.map((_, index) => (
                                                             <button
                                                               key={`${alt}-${index}`}
@@ -124,7 +150,8 @@ import { LEVELS } from "@/lib/types"
                                                               className={`h-2.5 w-2.5 rounded-full border transition ${index === activeIndex ? "border-[#40938c] bg-[#40938c]" : "border-white/75 bg-white/40"}`}
                                                             />
                                                           ))}
-                                                        </div>
+                                                          </div>
+                                                        </>
                                                       )}
                                                     </div>
                                                   )
@@ -1349,7 +1376,7 @@ import { LEVELS } from "@/lib/types"
                                                         subtitle={profile.email ?? ""}
                                                         badgeLabel={isStaff ? "Status: Management Staff" : `Tier: ${profile.level ?? "Bronze"}`}
                                                       >
-                                                        <div className={`w-full min-h-screen overflow-y-auto ${theme.bg} p-6 box-border`}>
+                                                        <div className={`w-full ${theme.bg} p-6 box-border`}>
                                                           
                                                           {/* OVERVIEW MODULE */}
                                                           {active === "overview" && (
@@ -1897,7 +1924,7 @@ import { LEVELS } from "@/lib/types"
                                                               ) : gearLayout === "large" ? (
                                                                 <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                                                                   {filteredGearGuides.map((g) => {
-                                                                    const galleryImages = parseImageList(g.image_url || (g as any).pic_url || (g as any).image_urls?.join(",") || null)
+                                                                    const galleryImages = parseImageList(g.image_url || (g as any).pic_url || (g as any).image_urls || null)
                                                                     return (
                                                                       <Card key={g.id} className={`overflow-hidden p-0 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                         <GalleryCarousel images={galleryImages} alt={g.title} className="h-72 w-full" />
@@ -1957,17 +1984,11 @@ import { LEVELS } from "@/lib/types"
                                                               ) : gearLayout === "list" ? (
                                                                 <div className="flex flex-col gap-3">
                                                                   {filteredGearGuides.map((g) => {
-                                                                    const galleryImages = parseImageList(g.image_url || (g as any).pic_url || (g as any).image_urls?.join(",") || null)
+                                                                    const galleryImages = parseImageList(g.image_url || (g as any).pic_url || (g as any).image_urls || null)
                                                                     return (
                                                                       <Card key={g.id} className={`p-3 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                         <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                                                                          <div className="h-24 w-full md:w-28 shrink-0 overflow-hidden rounded-sm border border-zinc-800 bg-zinc-950">
-                                                                            {galleryImages[0] ? (
-                                                                              <img src={galleryImages[0]} alt={g.title} className="h-full w-full object-cover" />
-                                                                            ) : (
-                                                                              <div className={`flex h-full items-center justify-center text-[10px] uppercase tracking-[0.2em] ${theme.textMuted}`}>No image</div>
-                                                                            )}
-                                                                          </div>
+                                                                          <GalleryCarousel images={galleryImages} alt={g.title} className="h-24 w-full md:w-28 shrink-0" />
                                                                           <div className="flex-1">
                                                                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                                               <div>
@@ -1999,18 +2020,12 @@ import { LEVELS } from "@/lib/types"
                                                               ) : (
                                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                                   {filteredGearGuides.map((g) => {
-                                                                    const imageUrl = g.image_url || (g as any).pic_url || null
+                                                                    const galleryImages = parseImageList(g.image_url || (g as any).pic_url || (g as any).image_urls || null)
                                                                     return (
                                                                       <Card key={g.id} className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col justify-between gap-4`}>
                                                                         <div>
                                                                           <div className="flex items-start gap-4">
-                                                                            <div className="h-32 w-32 overflow-hidden rounded-sm border border-zinc-800 bg-zinc-950">
-                                                                              {imageUrl ? (
-                                                                                <img src={imageUrl} alt={g.title} className="h-full w-full object-cover" />
-                                                                              ) : (
-                                                                                <div className={`flex h-full items-center justify-center text-[12px] ${theme.textMuted}`}>No image</div>
-                                                                              )}
-                                                                            </div>
+                                                                            <GalleryCarousel images={galleryImages} alt={g.title} className="h-32 w-32 shrink-0" />
                                                                             <div className="flex-1">
                                                                               <div className="flex items-center justify-between gap-3">
                                                                                 <div>
@@ -2136,7 +2151,7 @@ import { LEVELS } from "@/lib/types"
                                                               ) : shopLayout === "large" ? (
                                                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                                                                   {filteredShopItems.map((item) => {
-                                                                    const galleryImages = parseImageList(item.image_url || (item as any).pic_url || (item as any).picUrl || (item as any).image_urls?.join(",") || null)
+                                                                    const galleryImages = parseImageList(item.image_url || (item as any).pic_url || (item as any).picUrl || (item as any).image_urls || null)
                                                                     const unit = item.unit || (item as any).unit || "units"
                                                                     return (
                                                                       <Card key={item.id} className={`overflow-hidden p-0 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
@@ -2171,18 +2186,12 @@ import { LEVELS } from "@/lib/types"
                                                               ) : shopLayout === "list" ? (
                                                                 <div className="flex flex-col gap-3">
                                                                   {filteredShopItems.map((item) => {
-                                                                    const galleryImages = parseImageList(item.image_url || (item as any).pic_url || (item as any).picUrl || (item as any).image_urls?.join(",") || null)
+                                                                    const galleryImages = parseImageList(item.image_url || (item as any).pic_url || (item as any).picUrl || (item as any).image_urls || null)
                                                                     const unit = item.unit || (item as any).unit || "units"
                                                                     return (
                                                                       <Card key={item.id} className={`p-3 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                         <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                                                                          <div className="h-24 w-full md:w-28 shrink-0 overflow-hidden rounded-sm border border-zinc-800 bg-zinc-950">
-                                                                            {galleryImages[0] ? (
-                                                                              <img src={galleryImages[0]} alt={item.name || "product"} className="h-full w-full object-cover" />
-                                                                            ) : (
-                                                                              <div className={`flex h-full items-center justify-center text-[10px] uppercase tracking-[0.2em] ${theme.textMuted}`}>No image</div>
-                                                                            )}
-                                                                          </div>
+                                                                          <GalleryCarousel images={galleryImages} alt={item.name || "product"} className="h-24 w-full md:w-28 shrink-0" />
                                                                           <div className="flex-1">
                                                                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                                               <div>
@@ -2210,20 +2219,12 @@ import { LEVELS } from "@/lib/types"
                                                               ) : (
                                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                                   {filteredShopItems.map((item) => {
-                                                                    const img = item.image_url || (item as any).pic_url || (item as any).picUrl || null
+                                                                    const galleryImages = parseImageList(item.image_url || (item as any).pic_url || (item as any).picUrl || (item as any).image_urls || null)
                                                                     const unit = item.unit || (item as any).unit || "units"
                                                                     return (
                                                                       <Card key={item.id} className={`p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col justify-between gap-3`}>
                                                                         <div className="flex gap-3">
-                                                                          {img ? (
-                                                                            <div className="h-32 w-32 shrink-0 bg-zinc-950/30 rounded-sm overflow-hidden border border-zinc-800">
-                                                                              <img src={img} alt={item.name || "product"} className="w-full h-full object-cover" />
-                                                                            </div>
-                                                                          ) : (
-                                                                            <div className="h-32 w-32 shrink-0 bg-zinc-950/30 rounded-sm flex items-center justify-center border border-zinc-800">
-                                                                              <span className={`text-[12px] ${theme.textMuted}`}>No image</span>
-                                                                            </div>
-                                                                          )}
+                                                                          <GalleryCarousel images={galleryImages} alt={item.name || "product"} className="h-32 w-32 shrink-0" />
                                                                           <div className="flex-1">
                                                                             <div className="flex justify-between items-start gap-2">
                                                                               <div>
