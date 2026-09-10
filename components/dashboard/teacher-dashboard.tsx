@@ -31,7 +31,6 @@ const NAV: NavItem[] = [
   { key: "schedule", label: "Schedule", icon: CalendarDays },
   { key: "bookings", label: "My Bookings", icon: Ticket },
   { key: "attendance", label: "Attendance", icon: UserCheck },
-  { key: "leaders", label: "Our Leaders", icon: Users },
   { key: "support", label: "Contact & Support", icon: LifeBuoy },
   { key: "settings", label: "Settings", icon: Settings },
 ]
@@ -65,7 +64,6 @@ export function TeacherDashboard({
   initialAnnouncements,
   initialBookings,
   initialAttendanceRecords,
-  initialLeaders,
 }: {
   profile: Profile
   initialMembers: Profile[]
@@ -73,7 +71,6 @@ export function TeacherDashboard({
   initialAnnouncements: Announcement[]
   initialBookings: Booking[]
   initialAttendanceRecords?: AttendanceRecord[]
-  initialLeaders: { id: string; name: string; role_title: string; bio: string | null; specialties: string[]; avatar_url: string | null }[]
 }) {
   const supabase = createClient()
   const [active, setActive] = useState("overview")
@@ -449,47 +446,6 @@ export function TeacherDashboard({
                 </Card>
               ))
             )}
-          </div>
-        </div>
-      )}
-
-      {active === "leaders" && (
-        <div>
-          <div className="mb-4">
-            <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Our Core Leadership & Coaches</h2>
-          </div>
-
-          <div className="grid grid-cols-1 gap-6 w-full">
-            {initialLeaders.map((leader) => (
-              <Card key={leader.id} className={`overflow-hidden border p-0 ${theme.cardBorder} ${theme.cardBg}`}>
-                <div className="flex flex-col gap-0 p-0 md:flex-row-reverse">
-                  {leader.avatar_url ? (
-                    <div className="relative h-64 w-full bg-zinc-950 md:h-auto md:w-64">
-                      <img src={leader.avatar_url} alt={leader.name} className="absolute inset-0 h-full w-full object-cover" />
-                    </div>
-                  ) : (
-                    <div className="flex h-64 w-full items-center justify-center bg-zinc-950/40 text-xl font-bold uppercase tracking-widest text-[#40938c]/60 md:h-auto md:w-64">
-                      {leader.name.substring(0, 2).toUpperCase()}
-                    </div>
-                  )}
-
-                  <div className="flex flex-1 flex-col justify-between p-6">
-                    <div>
-                      <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800/40 pb-3">
-                        <h4 className={`text-xl font-extrabold uppercase tracking-tight ${theme.headingColor}`}>{leader.name}</h4>
-                        <Badge className="rounded-sm border border-[#40938c]/20 bg-[#40938c]/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-[#40938c]">
-                          {leader.role_title || "Coach / Leader"}
-                        </Badge>
-                      </div>
-
-                      <p className={`text-sm leading-relaxed ${theme.textSecondary}`}>
-                        {leader.bio || "No biography description provided yet."}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
           </div>
         </div>
       )}

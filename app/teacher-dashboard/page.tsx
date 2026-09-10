@@ -34,17 +34,13 @@ export default async function TeacherDashboardPage() {
     announcementsRes,
     bookingsRes,
     attendanceRes,
-    leadersRes,
   ] = await Promise.all([
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase.from("schedule").select("*").order("date", { ascending: true }),
     supabase.from("announcements").select("*").order("created_at", { ascending: false }),
     supabase.from("bookings").select("*").eq("user_id", userData.user.id).order("created_at", { ascending: false }),
     supabase.from("attendance").select("*").order("marked_at", { ascending: false }),
-    supabase.from("leader_profiles").select("*").order("created_at", { ascending: false }),
   ])
-
-  const visibleLeaders = (leadersRes.data ?? []).filter((leader: any) => !(leader.is_hidden === true || leader.hidden === true || leader.visible === false))
 
   return (
     <TeacherDashboard
@@ -54,7 +50,6 @@ export default async function TeacherDashboardPage() {
       initialAnnouncements={announcementsRes.data ?? []}
       initialBookings={bookingsRes.data ?? []}
       initialAttendanceRecords={attendanceRes.data ?? []}
-      initialLeaders={visibleLeaders}
     />
   )
 }

@@ -29,15 +29,6 @@ export function DashboardShell({
   badgeLabel?: string
   children: React.ReactNode
 }) {
-  const initials =
-    displayName
-      .split(" ")
-      .map((n) => n[0])
-      .filter(Boolean)
-      .slice(0, 2)
-      .join("")
-      .toUpperCase() || "WB"
-
   const activeLabel = navItems.find((n) => n.key === activeKey)?.label ?? ""
 
   return (
@@ -67,21 +58,6 @@ export function DashboardShell({
             )
           })}
         </nav>
-        <div className="mt-auto rounded-xl border border-sidebar-border bg-sidebar-accent/50 p-3">
-          <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-              {initials}
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-sidebar-foreground">
-                {displayName}
-              </p>
-              <p className="truncate text-xs text-sidebar-foreground/60">
-                {subtitle}
-              </p>
-            </div>
-          </div>
-        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

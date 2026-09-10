@@ -11,7 +11,6 @@
                                                   Announcement,
                                                   ShopItem,
                                                   Assessment,
-                                                  StaffProfile,
                                                   AttendanceRecord,
                                                   EquipmentRecommendation,
                                                   SupportTicket,
@@ -27,7 +26,6 @@ import { LEVELS } from "@/lib/types"
                                                   TrendingUp,
                                                   Trophy,
                                                   UserCheck,
-                                                  Users,
                                                   Award,
                                                   Info,
                                                   CheckCircle,
@@ -50,7 +48,6 @@ import { LEVELS } from "@/lib/types"
                                                   { key: "assessments", label: "My Assessment", icon: TrendingUp },
                                                   { key: "grading-manager", label: "Classroom Grading", icon: GraduationCap },
                                                   { key: "attendance", label: "Active Check-Ins", icon: UserCheck },
-                                                  { key: "coaches", label: "Our Leaders", icon: Users },
                                                   { key: "gear", label: "Equipment Guides", icon: Award },
                                                   { key: "resources", label: "Rubrics & PDFs", icon: GraduationCap },
                                                   { key: "shop", label: "Wolves Shop", icon: ShoppingBag },
@@ -164,7 +161,6 @@ import { LEVELS } from "@/lib/types"
                                                   announcements: initialAnnouncements,
                                                   shopItems,
                                                   assessments: initialAssessments,
-                                                  coaches: initialCoaches = [],
                                                   attendanceRecords = [],
                                                   gearGuides: initialGearGuides = [],
                                                   allProfiles = [],
@@ -176,7 +172,6 @@ import { LEVELS } from "@/lib/types"
                                                   announcements: Announcement[]
                                                   shopItems: ShopItem[]
                                                   assessments: Assessment[]
-                                                  coaches?: StaffProfile[]
                                                   attendanceRecords?: AttendanceRecord[]
                                                   gearGuides?: EquipmentRecommendation[]
                                                   allProfiles?: Profile[]
@@ -188,7 +183,6 @@ import { LEVELS } from "@/lib/types"
                                                   const [bookings, setBookings] = useState<Booking[]>(initialBookings)
                                                   const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
                                                   const [assessments, setAssessments] = useState<Assessment[]>(initialAssessments)
-                                                  const [coaches, setCoaches] = useState<StaffProfile[]>(initialCoaches)
                                                   const [gearGuides, setGearGuides] = useState<EquipmentRecommendation[]>(initialGearGuides)
                                                   const [messagesList, setMessagesList] = useState<(SupportTicket & { convoId?: string })[]>(
                                                     Array.isArray(initialTickets) ? initialTickets.map((t) => ({ ...t, convoId: t.id || t.subject || "_general_" })) : []
@@ -946,14 +940,10 @@ import { LEVELS } from "@/lib/types"
                                                     composer?.focus()
                                                   }
 
-                                                  async function handleUpdateAssetLink(table: "staff_profiles" | "equipment_recommendations", id: string, field: string, url: string) {
+                                                  async function handleUpdateAssetLink(table: "equipment_recommendations", id: string, field: string, url: string) {
                                                     const { error } = await supabase.from(table).update({ [field]: url }).eq("id", id)
                                                     if (!error) {
-                                                      if (table === "staff_profiles") {
-                                                        setCoaches(prev => prev.map(c => c.id === id ? { ...c, [field]: url } : c))
-                                                      } else {
-                                                        setGearGuides(prev => prev.map(g => g.id === id ? { ...g, [field]: url } : g))
-                                                      }
+                                                      setGearGuides(prev => prev.map(g => g.id === id ? { ...g, [field]: url } : g))
                                                     }
                                                   }
 
@@ -1843,87 +1833,6 @@ import { LEVELS } from "@/lib/types"
                                                             </div>
                                                           )}
 
-                                                {/* OUR LEADERS / INSTRUCTORS BIOGRAPHY */}
-                                                          {active === "coaches" && (
-                                                            <div>
-                                                              <div className="mb-4">
-                                                                <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>
-                                                                  Our Core Leadership & Coaches
-                                                                </h2>
-                                                              </div>
-                                                              
-                                                              {/* Using a 1-column layout so cards stretch out into beautiful wide rows */}
-                                                              <div className="grid grid-cols-1 gap-6 w-full">
-                                                                {coaches.map((c) => (
-                                                                  <Card 
-                                                                    key={c.id} 
-                                                                    className={`overflow-hidden ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col md:flex-row-reverse items-stretch gap-0 p-0`}
-                                                                  >
-                                                                    {/* RIGHT SIDE: Big Square Image Box */}
-                                                                    {c.avatar_url ? (
-                                                                      <div className="relative w-full md:w-64 h-64 md:h-auto shrink-0 bg-zinc-950">
-                                                                        <img 
-                                                                          src={c.avatar_url} 
-                                                                          alt={c.name} 
-                                                                          className="absolute inset-0 w-full h-full object-cover" 
-                                                                        />
-                                                                      </div>
-                                                                    ) : (
-                                                                      <div className="w-full md:w-64 h-64 md:h-auto shrink-0 bg-zinc-950/40 border-t md:border-t-0 md:border-l border-zinc-800/60 flex flex-col items-center justify-center text-[#40938c]/60 font-mono text-xl font-bold uppercase tracking-widest">
-                                                                        {c.name ? c.name.substring(0, 2).toUpperCase() : "WOLF"}
-                                                                      </div>
-                                                                    )}
-
-                                                                    {/* LEFT SIDE: Text content space */}
-                                                                    <div className="p-6 flex flex-col justify-between flex-1">
-                                                                      <div>
-                                                                        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800/40 pb-3 mb-4">
-                                                                          {/* Name font increased to text-xl font-extrabold */}
-                                                                          <h4 className={`text-xl font-extrabold uppercase tracking-tight ${theme.headingColor}`}>{c.name}</h4>
-                                                                          <Badge className="bg-[#40938c]/10 text-[#40938c] border border-[#40938c]/20 text-[10px] uppercase font-mono tracking-wider px-2 py-0.5 rounded-sm">
-                                                                            {c.role_title || "Coach / Leader"}
-                                                                          </Badge>
-                                                                        </div>
-                                                                        
-                                                                        <p className={`text-sm ${theme.textSecondary} leading-relaxed`}>
-                                                                          {c.bio || "No biography description provided yet."}
-                                                                        </p>
-                                                                      </div>
-
-                                                                      {/* Staff Utilities (Includes Role Title Updater & Image Updater) */}
-                                                                      {isStaff && (
-                                                                        <div className="mt-6 pt-4 border-t border-zinc-800/40 flex flex-col gap-2">
-                                                                          {/* 1. Update Role Title input line */}
-                                                                          <div className="flex items-center gap-2">
-                                                                            <span className={`text-[10px] font-mono ${theme.textMuted} uppercase shrink-0 w-16`}>Role:</span>
-                                                                            <input 
-                                                                              type="text" 
-                                                                              placeholder="Update Role Title (e.g., Head Coach)..." 
-                                                                              defaultValue={c.role_title || ""}
-                                                                              onBlur={(e) => handleUpdateAssetLink("staff_profiles", c.id, "role_title", e.target.value)}
-                                                                              className={`w-full px-2 py-0.5 text-[10px] font-mono rounded-sm border outline-none ${theme.inputBg}`}
-                                                                            />
-                                                                          </div>
-
-                                                                          {/* 2. Update Image input line */}
-                                                                          <div className="flex items-center gap-2">
-                                                                            <span className={`text-[10px] font-mono ${theme.textMuted} uppercase shrink-0 w-16`}>Image URL:</span>
-                                                                            <input 
-                                                                              type="text" 
-                                                                              placeholder="Update Biography Image Link URL..." 
-                                                                              defaultValue={c.avatar_url || ""}
-                                                                              onBlur={(e) => handleUpdateAssetLink("staff_profiles", c.id, "avatar_url", e.target.value)}
-                                                                              className={`w-full px-2 py-0.5 text-[10px] font-mono rounded-sm border outline-none ${theme.inputBg}`}
-                                                                            />
-                                                                          </div>
-                                                                        </div>
-                                                                      )}
-                                                                    </div>
-                                                                  </Card>
-                                                                ))}
-                                                              </div>
-                                                            </div>
-                                                          )}
                                                           {/* GEAR RECOMMENDATIONS */}
                                                           {active === "gear" && (
                                                             <div>

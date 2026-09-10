@@ -47,7 +47,6 @@ export default async function MemberDashboardPage() {
     announcements, 
     shopItems, 
     assessments,
-    coachesResult, // Renamed to process manually below
     attendance,
     gearGuides,
     allProfiles,
@@ -58,7 +57,6 @@ export default async function MemberDashboardPage() {
     supabase.from("announcements").select("*").order("created_at", { ascending: false }),
     supabase.from("shop_items").select("*").order("name", { ascending: true }),
     supabase.from("assessments").select("*").eq("user_id", user.id).order("date", { ascending: false }),
-    supabase.from("leader_profiles").select("*").order("created_at", { ascending: false }), 
     supabase.from("attendance").select("*"), 
     supabase.from("equipment_recommendations").select("*"),
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
@@ -66,16 +64,6 @@ export default async function MemberDashboardPage() {
   ])
 
   // Safely bridge the database columns to whatever keys your UI component expects!
-  const formattedCoaches = (coachesResult.data ?? [])
-    .filter((c: any) => !(c.is_hidden === true || c.hidden === true || c.visible === false))
-    .map((c: any) => ({
-      ...c,
-      // Add variations just in case your dashboard looks for different names
-      full_name: c.name,
-      bio: c.description,
-      avatar_url: c.pic_url,
-    }))
-
   // Log errors for debugging
   if (schedule.error) console.error("❌ Schedule Fetch Error:", schedule.error.message)
   if (bookings.error) console.error("❌ Bookings Fetch Error:", bookings.error.message)
@@ -89,7 +77,6 @@ export default async function MemberDashboardPage() {
       announcements={announcements.data ?? []}
       shopItems={(shopItems.data ?? []).filter((item: any) => !(item.is_hidden === true || item.hidden === true || item.visible === false))}
       assessments={assessments.data ?? []}
-      coaches={formattedCoaches} // Passes down the mapped fields securely
       attendanceRecords={attendance.data ?? []}
       gearGuides={(gearGuides.data ?? []).filter((item: any) => !(item.is_hidden === true || item.hidden === true || item.visible === false))}
       allProfiles={allProfiles.data ?? []}
