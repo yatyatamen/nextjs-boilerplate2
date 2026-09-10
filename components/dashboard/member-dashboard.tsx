@@ -249,13 +249,13 @@ import { LEVELS } from "@/lib/types"
                                                   const [gearFilter, setGearFilter] = useState("All")
                                                   const [gearTierFilter, setGearTierFilter] = useState("All")
                                                   const [gearSearch, setGearSearch] = useState("")
-                                                  const [gearLayout, setGearLayout] = useState<"large" | "list" | "compact">("large")
+                                                  const [gearLayout, setGearLayout] = useState<"large" | "list" | "compact">("compact")
                                                   const [shopItemsState, setShopItemsState] = useState<ShopItem[]>(shopItems)
                                                   const [shopFilter, setShopFilter] = useState("All")
                                                   const [shopSearch, setShopSearch] = useState("")
                                                   const [shopPriceMin, setShopPriceMin] = useState<number | "">("")
                                                   const [shopPriceMax, setShopPriceMax] = useState<number | "">("")
-                                                  const [shopLayout, setShopLayout] = useState<"large" | "list" | "compact">("large")
+                                                  const [shopLayout, setShopLayout] = useState<"large" | "list" | "compact">("compact")
 
                                                   // Confirmation & Toast Hooks
                                                   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
@@ -2251,8 +2251,8 @@ import { LEVELS } from "@/lib/types"
                                                           {active === "club-info" && (
                                                             <div className="flex flex-col gap-6">
                                                               <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                                                                <h3 className="text-xl font-bold uppercase tracking-wide text-[#40938c]">About Wolves Badminton Club</h3>
-                                                                <p className={`text-xs ${theme.textSecondary} leading-relaxed mt-3 font-mono`}>
+                                                                <h3 className="text-2xl font-bold uppercase tracking-wide text-[#40938c]">About Wolves Badminton Club</h3>
+                                                                <p className={`text-base ${theme.textSecondary} leading-relaxed mt-3 font-mono`}>
                                                                   Founded upon principles of systematic tracking, rigorous court development, and tiered progression architectures, the Wolves Badminton Club provides student athletes and competitive players with premier training infrastructure. Our focus balances technical precision, structural agility metrics, and tournament execution frameworks.
                                                                 </p>
                                                               </Card>
