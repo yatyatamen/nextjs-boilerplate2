@@ -17,10 +17,12 @@ function hasRecoveryParams() {
   const hash = window.location.hash
   const recoveryType = searchParams.get("type")
   const code = searchParams.get("code")
+  const tokenHash = searchParams.get("token_hash")
 
   return (
     recoveryType === "recovery" ||
     code !== null ||
+    tokenHash !== null ||
     hash.includes("type=recovery") ||
     hash.includes("access_token") ||
     hash.includes("refresh_token")
@@ -46,8 +48,20 @@ function getRecoveryTokens() {
 async function getActiveRecoverySession(supabase: ReturnType<typeof createClient>) {
   const searchParams = new URLSearchParams(window.location.search)
   const code = searchParams.get("code")
+  const tokenHash = searchParams.get("token_hash")
   const hasRecoveryLink = hasRecoveryParams()
   const recoveryTokens = getRecoveryTokens()
+
+  if (tokenHash) {
+    const { data, error } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: "recovery",
+    })
+
+    if (!error && data.session) {
+      return data.session
+    }
+  }
 
   if (recoveryTokens) {
     const { data, error } = await supabase.auth.setSession({
@@ -161,6 +175,8 @@ export default function ResetPasswordPage() {
         if (typeof window !== "undefined") {
           const nextUrl = new URL(window.location.href)
           nextUrl.searchParams.delete("code")
+          nextUrl.searchParams.delete("token_hash")
+          nextUrl.searchParams.delete("type")
           nextUrl.hash = ""
           window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}`)
         }

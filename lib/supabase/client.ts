@@ -17,6 +17,7 @@ export function createClient() {
         updateUser: async () => ({ data: { user: null }, error: noOpError }),
         setSession: async () => ({ data: { session: null }, error: noOpError }),
         exchangeCodeForSession: async () => ({ data: { session: null }, error: noOpError }),
+        verifyOtp: async () => ({ data: { session: null }, error: noOpError }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
       },
       from: () => ({
