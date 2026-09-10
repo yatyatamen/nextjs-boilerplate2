@@ -98,7 +98,11 @@ import { LEVELS } from "@/lib/types"
                                                 }
 
                                                 function mergeImageLists(...values: Array<string | string[] | null | undefined>) {
-                                                  return Array.from(new Set(values.flatMap((value) => parseImageList(value))))
+                                                  const candidates = values
+                                                    .map((value) => parseImageList(value))
+                                                    .filter((images) => images.length > 0)
+                                                  const richest = candidates.sort((a, b) => b.length - a.length)[0] ?? []
+                                                  return Array.from(new Map(richest.map((image) => [image.replace(/\/$/, ""), image])).values())
                                                 }
 
                                                 function GalleryCarousel({ images, alt, className = "" }: { images: string[]; alt: string; className?: string }) {
@@ -2004,8 +2008,6 @@ import { LEVELS } from "@/lib/types"
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary}`}>{g.brand}</p>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{g.specs}</p>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{g.why_recommend || (g as any).description || "No recommendation details available."}</p>
-                                                                            {g.external_link && <a href={g.external_link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-[#40938c] hover:underline">View product page</a>}
-                                                                            <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{g.why_recommend || (g as any).description || "No recommendation details available."}</p>
                                                                             {g.external_link && (
                                                                               <a href={g.external_link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-[#40938c] hover:underline">
                                                                                 View product page
@@ -2213,7 +2215,6 @@ import { LEVELS } from "@/lib/types"
                                                                               <span className="text-base font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
                                                                             </div>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{item.description || "No description available."}</p>
-                                                                            <p className={`mt-2 text-xs ${theme.textSecondary}`}>Stock: {item.stock ?? 0} {unit}</p>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary}`}>Stock: {item.stock ?? 0} {unit}</p>
                                                                           </div>
                                                                           <div className="flex items-center justify-end">

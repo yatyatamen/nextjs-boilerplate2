@@ -349,6 +349,21 @@ export function StaffDashboard({
     setShopItems((prev) => prev.filter((item) => item.id !== id))
   }
 
+  async function updateShopStock(id: string, stock: number, unit: string) {
+    const { data, error } = await supabase
+      .from("shop_items")
+      .update({ stock, unit })
+      .eq("id", id)
+      .select()
+      .single()
+
+    if (error) {
+      throw new Error(`Shop stock update failed: ${error.message}`)
+    }
+
+    setShopItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...(data as ShopItem) } : item)))
+  }
+
   async function deleteAssessmentItem(id: string) {
     const { error } = await supabase.from("assessments").delete().eq("id", id)
     if (error) {
@@ -1927,6 +1942,10 @@ export function StaffDashboard({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <ShopStockEditor
+                          item={item}
+                          onSave={(stock, unit) => updateShopStock(item.id, stock, unit)}
+                        />
                         <Button size="sm" variant="outline" onClick={() => confirmDelete("shop item", async () => { await deleteShopItem(item.id) })} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
                           Delete
                         </Button>
@@ -2490,6 +2509,91 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
         />
       </Card>
       <Toast isOpen={toast.isOpen} message={toast.message} />
+    </>
+  )
+}
+
+function ShopStockEditor({
+  item,
+  onSave,
+}: {
+  item: ShopItem
+  onSave: (stock: number, unit: string) => Promise<void>
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [stock, setStock] = useState(String(item.stock ?? 0))
+  const [unit, setUnit] = useState(item.unit || "units")
+  const [confirmLoading, setConfirmLoading] = useState(false)
+  const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
+
+  function openEditor() {
+    setStock(String(item.stock ?? 0))
+    setUnit(item.unit || "units")
+    setIsOpen(true)
+  }
+
+  function submitEditor(e: React.FormEvent) {
+    e.preventDefault()
+    const nextStock = Math.max(0, Number(stock) || 0)
+    const nextUnit = unit.trim() || "units"
+
+    showConfirmation(
+      "Update shop stock?",
+      `Set ${item.name || "this item"} to ${nextStock} ${nextUnit}?`,
+      async () => {
+        setConfirmLoading(true)
+        try {
+          await onSave(nextStock, nextUnit)
+          closeConfirmation()
+          setIsOpen(false)
+        } catch (error) {
+          alert(error instanceof Error ? error.message : "Unable to update shop stock")
+        } finally {
+          setConfirmLoading(false)
+        }
+      },
+    )
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={openEditor} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
+        Change stock / unit
+      </Button>
+      {isOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
+          <Card className="w-full max-w-sm border border-zinc-800 bg-white p-5 text-black shadow-2xl">
+            <h3 className="text-base font-semibold">Change stock / unit</h3>
+            <p className="mt-1 text-xs text-black/70">{item.name || "Shop item"}</p>
+            <form onSubmit={submitEditor} className="mt-4 flex flex-col gap-3">
+              <label className="flex flex-col gap-1 text-xs font-medium">
+                Stock quantity
+                <Input type="number" min={0} step={1} value={stock} onChange={(e) => setStock(e.target.value)} required />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium">
+                Unit label
+                <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="units, set, pack, box" required />
+              </label>
+              <div className="mt-2 flex justify-end gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold">
+                  Review change
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+      <ConfirmationDialog
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        isLoading={confirmLoading}
+        onConfirm={() => confirmState.onConfirm()}
+        onCancel={closeConfirmation}
+      />
     </>
   )
 }
