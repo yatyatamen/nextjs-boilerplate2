@@ -1072,10 +1072,10 @@ export function StaffDashboard({
                           <Label className="text-xs text-muted-foreground">Role / Level</Label>
                           <Select
                             value={
-                              m.level && ALL_ROLE_AND_TIER_OPTIONS.includes(m.level as (typeof ALL_ROLE_AND_TIER_OPTIONS)[number])
-                                ? m.level
-                                : m.role && ALL_ROLE_AND_TIER_OPTIONS.includes(m.role as (typeof ALL_ROLE_AND_TIER_OPTIONS)[number])
-                                  ? m.role
+                              m.role && ["staff", "teacher"].includes(m.role) && ALL_ROLE_AND_TIER_OPTIONS.includes(m.role as (typeof ALL_ROLE_AND_TIER_OPTIONS)[number])
+                                ? m.role
+                                : m.level && ALL_ROLE_AND_TIER_OPTIONS.includes(m.level as (typeof ALL_ROLE_AND_TIER_OPTIONS)[number])
+                                  ? m.level
                                   : "Bronze"
                             }
                             onChange={(e) => {
@@ -1084,7 +1084,7 @@ export function StaffDashboard({
                                 prev.map((x) =>
                                   x.id === m.id
                                     ? ROLES.includes(nextValue as Profile["role"])
-                                      ? { ...x, role: nextValue as Profile["role"] }
+                                      ? { ...x, role: nextValue as Profile["role"], level: null }
                                       : { ...x, level: nextValue }
                                     : x,
                                 ),

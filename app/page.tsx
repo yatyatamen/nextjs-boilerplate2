@@ -292,7 +292,7 @@ export default function LoginPage() {
 
       <div className="text-center border-t border-zinc-900 pt-4 mt-8 z-10">
         <p className="text-[9px] font-mono uppercase tracking-widest text-zinc-300">
-          Westmount Collegiate Institute · Athletics Department
+          Westmount Collegiate Institute · Badminton Club Department
         </p>
       </div>
     </div>
