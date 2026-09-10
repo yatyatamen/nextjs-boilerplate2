@@ -963,49 +963,58 @@ import { LEVELS } from "@/lib/types"
                                                     const message = (overrides?.message ?? supportMessage).trim()
                                                     if (!message) return
 
-                                                    const conversationId = `support-${Date.now()}`
-                                                    const conversationSubject = category
-                                                    const optimisticTicket: SupportTicket = {
-                                                      id: `local-${Date.now()}`,
-                                                      user_id: profile.id,
-                                                      user_email: profile.email || "",
-                                                      subject: conversationSubject,
-                                                      message,
-                                                      status: "open",
-                                                      created_at: new Date().toISOString(),
-                                                    }
+                                                    showConfirmation(
+                                                      "Send comment?",
+                                                      `Send this ${category.toLowerCase()} comment to club staff?`,
+                                                      async () => {
+                                                        setConfirmLoading(true)
+                                                        closeConfirmation()
 
-                                                    const annotatedTicket = { ...optimisticTicket, convoId: conversationId } as SupportTicket & { convoId: string }
-                                                    setSupportCategory(category)
-                                                    setSupportMessage("")
-                                                    setMessagesList((prev) => [annotatedTicket, ...prev])
-                                                    setSupportStatus("Success! System routing confirmation generated.")
-                                                    setMessagesList((prev) => [...prev, annotatedTicket])
-                                                    setSelectedConvoId(conversationId)
-                                                    setSelectedMessageId(String(annotatedTicket.id))
-                                                    setActive(overrides?.nextView ?? "support")
-                                                    showToast("Message sent successfully")
+                                                        const conversationId = `support-${Date.now()}`
+                                                        const conversationSubject = category
+                                                        const optimisticTicket: SupportTicket = {
+                                                          id: `local-${Date.now()}`,
+                                                          user_id: profile.id,
+                                                          user_email: profile.email || "",
+                                                          subject: conversationSubject,
+                                                          message,
+                                                          status: "open",
+                                                          created_at: new Date().toISOString(),
+                                                        }
 
-                                                    try {
-                                                      const savedTicket = await createSupportTicket({
-                                                        subject: conversationSubject,
-                                                        message,
-                                                      })
+                                                        const annotatedTicket = { ...optimisticTicket, convoId: conversationId } as SupportTicket & { convoId: string }
+                                                        setSupportCategory(category)
+                                                        setSupportMessage("")
+                                                        setMessagesList((prev) => [annotatedTicket, ...prev])
+                                                        setSupportStatus("Success! System routing confirmation generated.")
+                                                        setSelectedConvoId(conversationId)
+                                                        setSelectedMessageId(String(annotatedTicket.id))
+                                                        setActive(overrides?.nextView ?? "support")
 
-                                                      if (savedTicket) {
-                                                        setMessagesList((prev) => prev.map((item) => item.id === optimisticTicket.id ? savedTicket : item))
-                                                        setMessagesList((prev) => prev.map((item) => {
-                                                          if (String(item.id) !== String(optimisticTicket.id)) return item
-                                                          return {
-                                                            ...savedTicket,
-                                                            convoId: item.convoId,
-                                                          } as SupportTicket & { convoId?: string }
-                                                        }))
-                                                      }
-                                                    } catch (err) {
-                                                      console.error("❌ Support Ticket Exception:", err)
-                                                      showToast("We couldn't save that support request. Please try again.")
-                                                    }
+                                                        try {
+                                                          const savedTicket = await createSupportTicket({
+                                                            subject: conversationSubject,
+                                                            message,
+                                                          })
+
+                                                          if (savedTicket) {
+                                                            setMessagesList((prev) => prev.map((item) => {
+                                                              if (String(item.id) !== String(optimisticTicket.id)) return item
+                                                              return {
+                                                                ...savedTicket,
+                                                                convoId: item.convoId,
+                                                              } as SupportTicket & { convoId?: string }
+                                                            }))
+                                                          }
+                                                          showToast("Message sent successfully")
+                                                        } catch (err) {
+                                                          console.error("❌ Support Ticket Exception:", err)
+                                                          showToast("We couldn't save that support request. Please try again.")
+                                                        } finally {
+                                                          setConfirmLoading(false)
+                                                        }
+                                                      },
+                                                    )
                                                   }
 
                                                   

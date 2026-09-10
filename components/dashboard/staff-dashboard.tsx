@@ -139,14 +139,20 @@ function parseImageUrls(value: string | null | undefined): string[] {
 
 function getWeekdayLabel(dateValue: string | null | undefined) {
   if (!dateValue) return "Unknown"
-  const date = new Date(dateValue)
+  const dateMatch = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  const date = dateMatch
+    ? new Date(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]))
+    : new Date(dateValue)
   if (Number.isNaN(date.getTime())) return "Unknown"
   return new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(date)
 }
 
 function getMonthLabel(dateValue: string | null | undefined) {
   if (!dateValue) return "Unknown"
-  const date = new Date(dateValue)
+  const dateMatch = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  const date = dateMatch
+    ? new Date(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]))
+    : new Date(dateValue)
   if (Number.isNaN(date.getTime())) return "Unknown"
   return new Intl.DateTimeFormat("en-US", { month: "long" }).format(date)
 }
@@ -279,13 +285,15 @@ export function StaffDashboard({
       return
     }
 
-    const announcementIds = announcementsToHide.map((item) => item.id)
-    const { error } = await supabase.from("announcements").delete().in("id", announcementIds)
-    if (error) {
-      showToast(`Unable to hide announcement: ${error.message}`)
+    const results = await Promise.all(
+      announcementsToHide.map((item) => deleteAnnouncementItem(item.id)),
+    )
+    if (results.some((result) => !result)) {
+      showToast("Unable to hide one or more announcements")
       return
     }
 
+    const announcementIds = announcementsToHide.map((item) => item.id)
     setAnnouncements((prev) => prev.filter((item) => !announcementIds.includes(item.id)))
     if (featureOnly) {
       setShowNoFeatureAnnouncement(true)
@@ -351,12 +359,18 @@ export function StaffDashboard({
   }
 
   async function deleteAnnouncementItem(id: string) {
-    const { error } = await supabase.from("announcements").delete().eq("id", id)
-    if (error) {
-      alert(`Announcement delete failed: ${error.message}`)
-      return
+    const response = await fetch("/api/staff/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, type: "announcement" }),
+    })
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}))
+      alert(`Announcement delete failed: ${result.error || "Unable to delete announcement"}`)
+      return false
     }
     setAnnouncements((prev) => prev.filter((item) => item.id !== id))
+    return true
   }
 
   async function deleteSupportTicketItem(id: string) {
@@ -838,6 +852,7 @@ export function StaffDashboard({
       user_level: String(member?.level ?? "Unknown"),
       status,
       marked_at: now,
+      notes: booking.notes ?? existingRecord?.notes ?? null,
     }
 
     if (existingRecord) {
@@ -848,7 +863,7 @@ export function StaffDashboard({
       try {
         const { error } = await supabase
           .from("attendance")
-          .update({ status, marked_at: now, user_name: nextRecord.user_name, user_level: nextRecord.user_level })
+          .update({ status, marked_at: now, user_name: nextRecord.user_name, user_level: nextRecord.user_level, notes: nextRecord.notes })
           .eq("id", existingRecord.id)
 
         if (error) {
@@ -879,6 +894,7 @@ export function StaffDashboard({
             user_level: nextRecord.user_level,
             status,
             marked_at: now,
+            notes: nextRecord.notes,
           },
         ])
         .select()
@@ -922,6 +938,7 @@ export function StaffDashboard({
                   <div>
                     <div className="text-sm font-medium">{r.user_name}</div>
                     <div className="text-xs text-muted-foreground">{r.user_level} · {r.status}</div>
+                    {r.notes && <div className="mt-1 text-xs text-amber-300">Note: {r.notes}</div>}
                   </div>
                   <div className="text-xs text-muted-foreground">{r.marked_at ? new Date(r.marked_at).toLocaleString() : '—'}</div>
                 </div>
@@ -1123,6 +1140,7 @@ export function StaffDashboard({
         <div>
           <SectionHeader title="Schedule Management" desc="Create structured, multi-tier crossing sessions visible only to qualifying members." />
           <ScheduleForm
+            teachers={members.filter((member) => member.role === "teacher")}
             onCreate={async (payload) => {
               const { data, error } = await supabase
                 .from("schedule")
@@ -1580,6 +1598,7 @@ export function StaffDashboard({
                         <th className="px-4 py-3">Level</th>
                         <th className="px-4 py-3">Session Date & Title</th>
                         <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">Notes</th>
                         <th className="px-4 py-3">Marked At</th>
                       </tr>
                     </thead>
@@ -1618,6 +1637,9 @@ export function StaffDashboard({
                                 }`}>
                                   {record.status.toUpperCase()}
                                 </span>
+                              </td>
+                              <td className="px-4 py-3 text-xs text-zinc-400">
+                                {record.notes?.trim() || "—"}
                               </td>
                               <td className="px-4 py-3 text-xs text-zinc-400">{new Date(record.marked_at).toLocaleString()}</td>
                             </tr>
@@ -2149,8 +2171,10 @@ function useSubmitting() {
 }
 
 function ScheduleForm({
+  teachers,
   onCreate,
 }: {
+  teachers: Profile[]
   onCreate: (payload: {
     title: string
     date: string
@@ -2168,12 +2192,18 @@ function ScheduleForm({
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
   const [selectedTiers, setSelectedTiers] = useState<string[]>([...ALL_TIERS])
-  const [coach, setCoach] = useState("")
+  const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>([])
   const [notes, setNotes] = useState("")
 
   const toggleTier = (tier: string) => {
     setSelectedTiers((prev) =>
       prev.includes(tier) ? prev.filter((t) => t !== tier) : [...prev, tier]
+    )
+  }
+
+  const toggleTeacher = (teacherId: string) => {
+    setSelectedTeacherIds((prev) =>
+      prev.includes(teacherId) ? prev.filter((id) => id !== teacherId) : [...prev, teacherId],
     )
   }
 
@@ -2192,13 +2222,16 @@ function ScheduleForm({
             date,
             time,
             visibility_tiers: selectedTiers,
-            coach,
+            coach: teachers
+              .filter((teacher) => selectedTeacherIds.includes(teacher.id))
+              .map((teacher) => getMemberDisplayName(teacher))
+              .join(", "),
             notes,
           })
           setTitle("")
           setDate("")
           setTime("")
-          setCoach("")
+          setSelectedTeacherIds([])
           setNotes("")
           closeConfirmation()
           showToast("✓ Session posted successfully!")
@@ -2256,9 +2289,25 @@ function ScheduleForm({
             ))}
           </div>
         </div>
-        <div className="flex flex-col gap-1.5 sm:col-span-2">
-          <Label htmlFor="s-coach">Assigned Lead / Coach</Label>
-          <Input id="s-coach" placeholder="Name" value={coach} onChange={(e) => setCoach(e.target.value)} />
+        <div className="flex flex-col gap-2 sm:col-span-2">
+          <Label>Assign Teacher(s)</Label>
+          {teachers.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No teacher profiles are available.</p>
+          ) : (
+            <div className="flex flex-wrap gap-3 rounded border border-zinc-800 bg-zinc-950/40 p-3">
+              {teachers.map((teacher) => (
+                <label key={teacher.id} className="flex items-center gap-2 text-sm text-zinc-200">
+                  <input
+                    type="checkbox"
+                    checked={selectedTeacherIds.includes(teacher.id)}
+                    onChange={() => toggleTeacher(teacher.id)}
+                    className="h-4 w-4 accent-[#40938c]"
+                  />
+                  {getMemberDisplayName(teacher)}
+                </label>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex flex-col gap-1.5 sm:col-span-2">
           <Label htmlFor="s-notes">Session Notes</Label>

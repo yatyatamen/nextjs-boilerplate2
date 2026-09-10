@@ -4,6 +4,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server"
 const TABLES = {
   gear_guide: "equipment_recommendations",
   shop_item: "shop_items",
+  announcement: "announcements",
 } as const
 
 type DeletableType = keyof typeof TABLES

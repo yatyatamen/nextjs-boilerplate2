@@ -156,7 +156,11 @@ export default function LoginPage() {
 
       <div className="flex items-center gap-3 z-10 relative">
         <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-zinc-900 border border-[#14B8A6]/50 text-[#14B8A6] shadow-lg shadow-[#14B8A6]/20">
-          <Trophy className="h-4 w-4 fill-[#14B8A6]" />
+          <img
+            src="https://jmlhdtltucwhxrrunenl.supabase.co/storage/v1/object/public/pics/ChatGPT%20Image%20Jul%2018,%202026,%2007_08_37%20PM.png"
+            alt="Westmount Wolves club logo"
+            className="h-full w-full rounded-sm object-contain"
+          />
         </div>
         <div>
           <h1 className="text-xs font-black uppercase tracking-wider text-white leading-none">🐺 Westmount Wolves</h1>
