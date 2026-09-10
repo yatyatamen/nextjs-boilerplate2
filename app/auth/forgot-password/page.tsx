@@ -14,10 +14,10 @@ const FALLBACK_PRODUCTION_URL =
 
 function getResetRedirectUrl() {
   const configuredUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
-  const baseUrl = typeof window !== "undefined"
-    ? window.location.origin
-    : configuredUrl
-      ? configuredUrl.replace(/\/$/, "")
+  const baseUrl = configuredUrl
+    ? configuredUrl.replace(/\/$/, "")
+    : typeof window !== "undefined"
+      ? window.location.origin
       : FALLBACK_PRODUCTION_URL
 
   return `${baseUrl}/reset-password`

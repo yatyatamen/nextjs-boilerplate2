@@ -271,19 +271,22 @@ export function StaffDashboard({
         .sort((a: Announcement, b: Announcement) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
 
   async function hideLatestAnnouncement(featureOnly: boolean) {
-    const announcement = featureOnly ? latestFeatureAnnouncement : latestGeneralAnnouncement
-    if (!announcement) {
+    const announcementsToHide = announcementList.filter((item) =>
+      featureOnly ? isFeatureAnnouncement(item.title) : !isFeatureAnnouncement(item.title),
+    )
+    if (announcementsToHide.length === 0) {
       showToast(featureOnly ? "No website feature announcement to hide" : "No announcement to hide")
       return
     }
 
-    const { error } = await supabase.from("announcements").delete().eq("id", announcement.id)
+    const announcementIds = announcementsToHide.map((item) => item.id)
+    const { error } = await supabase.from("announcements").delete().in("id", announcementIds)
     if (error) {
       showToast(`Unable to hide announcement: ${error.message}`)
       return
     }
 
-    setAnnouncements((prev) => prev.filter((item) => item.id !== announcement.id))
+    setAnnouncements((prev) => prev.filter((item) => !announcementIds.includes(item.id)))
     if (featureOnly) {
       setShowNoFeatureAnnouncement(true)
     } else {

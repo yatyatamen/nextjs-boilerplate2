@@ -9,6 +9,8 @@ import { isValidSchoolEmail, ALLOWED_DOMAIN } from "@/lib/types"
 import { CalendarDays, Trophy, Megaphone, ShoppingBag, Mail, Lock, Loader2 } from "lucide-react"
 
 const DOMAIN_ERROR = `Only YRDSB school email addresses (${ALLOWED_DOMAIN}) are allowed.`
+const AUTH_REDIRECT_URL = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
+const FALLBACK_AUTH_REDIRECT_URL = "https://wci-badminton-club-git-main-wcibadmintonclub.vercel.app"
 
 function isDuplicateEmailError(error: { message?: string; status?: number } | null | undefined) {
   const message = `${error?.message ?? ""}`.toLowerCase()
@@ -96,7 +98,7 @@ export default function LoginPage() {
         email: normalizedEmail,
         password,
         options: {
-          emailRedirectTo: window.location.origin,
+          emailRedirectTo: AUTH_REDIRECT_URL?.replace(/\/$/, "") || FALLBACK_AUTH_REDIRECT_URL,
         },
       })
       console.debug("supabase signUp response", { data, error })

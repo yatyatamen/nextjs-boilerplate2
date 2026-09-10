@@ -11,6 +11,8 @@ import { AlertCircle, Loader2, Mail } from "lucide-react"
 type Mode = "login" | "register"
 
 const DOMAIN_ERROR = `Only YRDSB school email addresses (${ALLOWED_DOMAIN}) are allowed.`
+const AUTH_REDIRECT_URL = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
+const FALLBACK_AUTH_REDIRECT_URL = "https://wci-badminton-club-git-main-wcibadmintonclub.vercel.app"
 
 function isDuplicateEmailError(error: { message?: string; status?: number } | null | undefined) {
   const message = `${error?.message ?? ""}`.toLowerCase()
@@ -171,7 +173,7 @@ export function AuthForm() {
           email: normalizedEmail,
           password,
           options: {
-            emailRedirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
+            emailRedirectTo: AUTH_REDIRECT_URL?.replace(/\/$/, "") || FALLBACK_AUTH_REDIRECT_URL,
             data: {
               full_name: fullName.trim(),
             },
