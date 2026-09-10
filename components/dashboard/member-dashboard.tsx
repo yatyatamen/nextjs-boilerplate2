@@ -97,6 +97,10 @@ import { LEVELS } from "@/lib/types"
                                                     .filter(Boolean)
                                                 }
 
+                                                function mergeImageLists(...values: Array<string | string[] | null | undefined>) {
+                                                  return Array.from(new Set(values.flatMap((value) => parseImageList(value))))
+                                                }
+
                                                 function GalleryCarousel({ images, alt, className = "" }: { images: string[]; alt: string; className?: string }) {
                                                   const [activeIndex, setActiveIndex] = useState(0)
                                                   const touchStartX = useRef<number | null>(null)
@@ -1924,7 +1928,7 @@ import { LEVELS } from "@/lib/types"
                                                               ) : gearLayout === "large" ? (
                                                                 <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                                                                   {filteredGearGuides.map((g) => {
-                                                                    const galleryImages = parseImageList(g.image_url || (g as any).pic_url || (g as any).image_urls || null)
+                                                                    const galleryImages = mergeImageLists(g.image_url, (g as any).pic_url, (g as any).image_urls)
                                                                     return (
                                                                       <Card key={g.id} className={`overflow-hidden p-0 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                         <GalleryCarousel images={galleryImages} alt={g.title} className="h-72 w-full" />
@@ -1984,7 +1988,7 @@ import { LEVELS } from "@/lib/types"
                                                               ) : gearLayout === "list" ? (
                                                                 <div className="flex flex-col gap-3">
                                                                   {filteredGearGuides.map((g) => {
-                                                                    const galleryImages = parseImageList(g.image_url || (g as any).pic_url || (g as any).image_urls || null)
+                                                                    const galleryImages = mergeImageLists(g.image_url, (g as any).pic_url, (g as any).image_urls)
                                                                     return (
                                                                       <Card key={g.id} className={`p-3 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                         <div className="flex flex-col gap-3 md:flex-row md:items-center">
@@ -1999,6 +2003,14 @@ import { LEVELS } from "@/lib/types"
                                                                             </div>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary}`}>{g.brand}</p>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{g.specs}</p>
+                                                                            <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{g.why_recommend || (g as any).description || "No recommendation details available."}</p>
+                                                                            {g.external_link && <a href={g.external_link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-[#40938c] hover:underline">View product page</a>}
+                                                                            <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{g.why_recommend || (g as any).description || "No recommendation details available."}</p>
+                                                                            {g.external_link && (
+                                                                              <a href={g.external_link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-[#40938c] hover:underline">
+                                                                                View product page
+                                                                              </a>
+                                                                            )}
                                                                           </div>
                                                                           <div className="flex items-center justify-end">
                                                                             <Button
@@ -2020,7 +2032,7 @@ import { LEVELS } from "@/lib/types"
                                                               ) : (
                                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                                   {filteredGearGuides.map((g) => {
-                                                                    const galleryImages = parseImageList(g.image_url || (g as any).pic_url || (g as any).image_urls || null)
+                                                                    const galleryImages = mergeImageLists(g.image_url, (g as any).pic_url, (g as any).image_urls)
                                                                     return (
                                                                       <Card key={g.id} className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col justify-between gap-4`}>
                                                                         <div>
@@ -2151,7 +2163,7 @@ import { LEVELS } from "@/lib/types"
                                                               ) : shopLayout === "large" ? (
                                                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                                                                   {filteredShopItems.map((item) => {
-                                                                    const galleryImages = parseImageList(item.image_url || (item as any).pic_url || (item as any).picUrl || (item as any).image_urls || null)
+                                                                    const galleryImages = mergeImageLists(item.image_url, (item as any).pic_url, (item as any).picUrl, (item as any).image_urls)
                                                                     const unit = item.unit || (item as any).unit || "units"
                                                                     return (
                                                                       <Card key={item.id} className={`overflow-hidden p-0 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
@@ -2186,7 +2198,7 @@ import { LEVELS } from "@/lib/types"
                                                               ) : shopLayout === "list" ? (
                                                                 <div className="flex flex-col gap-3">
                                                                   {filteredShopItems.map((item) => {
-                                                                    const galleryImages = parseImageList(item.image_url || (item as any).pic_url || (item as any).picUrl || (item as any).image_urls || null)
+                                                                    const galleryImages = mergeImageLists(item.image_url, (item as any).pic_url, (item as any).picUrl, (item as any).image_urls)
                                                                     const unit = item.unit || (item as any).unit || "units"
                                                                     return (
                                                                       <Card key={item.id} className={`p-3 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
@@ -2201,6 +2213,8 @@ import { LEVELS } from "@/lib/types"
                                                                               <span className="text-base font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
                                                                             </div>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{item.description || "No description available."}</p>
+                                                                            <p className={`mt-2 text-xs ${theme.textSecondary}`}>Stock: {item.stock ?? 0} {unit}</p>
+                                                                            <p className={`mt-2 text-xs ${theme.textSecondary}`}>Stock: {item.stock ?? 0} {unit}</p>
                                                                           </div>
                                                                           <div className="flex items-center justify-end">
                                                                             <Button
@@ -2219,7 +2233,7 @@ import { LEVELS } from "@/lib/types"
                                                               ) : (
                                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                                   {filteredShopItems.map((item) => {
-                                                                    const galleryImages = parseImageList(item.image_url || (item as any).pic_url || (item as any).picUrl || (item as any).image_urls || null)
+                                                                    const galleryImages = mergeImageLists(item.image_url, (item as any).pic_url, (item as any).picUrl, (item as any).image_urls)
                                                                     const unit = item.unit || (item as any).unit || "units"
                                                                     return (
                                                                       <Card key={item.id} className={`p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col justify-between gap-3`}>
