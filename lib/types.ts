@@ -1,21 +1,9 @@
 export const ALLOWED_DOMAIN = "@gapps.yrdsb.ca"
 
-// Separate role list and tier list so they can be used independently in forms and filters.
-export const ROLES = [
+// Roles and levels share one set of selectable profile values.
+export const ROLE_AND_LEVEL_OPTIONS = [
   "staff",
   "teacher",
-  "admin",
-  "coach",
-  "for fun",
-  "member",
-] as const
-
-export const ROLE_OPTIONS = [...ROLES]
-export const getRoleOptions = () => [...ROLE_OPTIONS]
-export type Role = (typeof ROLES)[number]
-
-// Exact tier list requested by the club: Bronze, Silver, Gold, Diamond, Diamond2
-export const LEVELS = [
   "Bronze",
   "Silver",
   "Gold",
@@ -23,12 +11,18 @@ export const LEVELS = [
   "Diamond2",
 ] as const
 
+// Stored profiles may still contain legacy roles that are not selectable.
+export const ROLES = ["staff", "teacher", "admin", "coach", "for fun", "member"] as const
+export const ROLE_OPTIONS = ["staff", "teacher"] as const
+export const LEVELS = ["Bronze", "Silver", "Gold", "Diamond", "Diamond2"] as const
+
+export const getRoleOptions = () => [...ROLE_OPTIONS]
+export type Role = (typeof ROLES)[number]
 export const TIER_OPTIONS = [...LEVELS]
 export const getTierOptions = () => [...TIER_OPTIONS]
 export type Level = (typeof LEVELS)[number]
 
-// Combined list for settings that need every role and tier in one single selector.
-export const ALL_ROLE_AND_TIER_OPTIONS = [...ROLES, ...LEVELS] as const
+export const ALL_ROLE_AND_TIER_OPTIONS = [...ROLE_AND_LEVEL_OPTIONS] as const
 export const getAllRoleAndTierOptions = () => [...ALL_ROLE_AND_TIER_OPTIONS]
 
 export function isValidSchoolEmail(email: string): boolean {
@@ -95,15 +89,6 @@ export type Assessment = {
   score?: number | null 
   date: string | null
   pdf_url?: string | null
-}
-
-export type StaffProfile = {
-  id: string
-  name: string
-  role_title: string 
-  bio: string | null
-  specialties: string[] 
-  avatar_url: string | null 
 }
 
 export type AttendanceRecord = {

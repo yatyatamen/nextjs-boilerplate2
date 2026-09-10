@@ -1019,7 +1019,13 @@ export function StaffDashboard({
                         <div className="flex flex-col gap-1">
                           <Label className="text-xs text-muted-foreground">Role / Level</Label>
                           <Select
-                            value={m.level ?? m.role ?? "member"}
+                            value={
+                              m.level && ALL_ROLE_AND_TIER_OPTIONS.includes(m.level as (typeof ALL_ROLE_AND_TIER_OPTIONS)[number])
+                                ? m.level
+                                : m.role && ALL_ROLE_AND_TIER_OPTIONS.includes(m.role as (typeof ALL_ROLE_AND_TIER_OPTIONS)[number])
+                                  ? m.role
+                                  : "Bronze"
+                            }
                             onChange={(e) => {
                               const nextValue = e.target.value
                               setMembers((prev) =>
