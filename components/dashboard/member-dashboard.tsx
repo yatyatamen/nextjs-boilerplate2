@@ -2313,6 +2313,7 @@ import { LEVELS } from "@/lib/types"
                                                                       <option value="Training">Training</option>
                                                                       <option value="Club Experience">Club Experience</option>
                                                                       <option value="Booking">Booking</option>
+                                                                      <option value="Applying for a Role">Applying for a Role</option>
                                                                       <option value="Other">Other</option>
                                                                     </select>
                                                                   </div>
