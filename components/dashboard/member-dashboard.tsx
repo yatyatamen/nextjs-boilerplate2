@@ -1512,7 +1512,10 @@ import { LEVELS } from "@/lib/types"
                                                         </p>
                                                         <p className={`text-xs font-bold font-mono mt-0.5 ${theme.textSecondary}`}>[{s.title || "Standard Class Roster"}]</p>
                                                         <p className={`text-xs ${theme.textMuted} mt-1`}>
-                                                          Coach: {s.coach || "Club Staff"} | Tier: {Array.isArray((s as any).visibility_tiers) ? (s as any).visibility_tiers.join(", ") : ((s as any).level || "All Levels")}
+                                                          Coach: {s.coach || "Club Staff"}
+                                                        </p>
+                                                        <p className={`text-xs ${theme.textMuted} mt-1`}>
+                                                          {s.notes || "Session details will be provided by staff."}
                                                         </p>
                                                       </div>
                                                       <Button
@@ -1554,17 +1557,10 @@ import { LEVELS } from "@/lib/types"
                                                                         </span>
                                                                       </div>
                                                                       <div className="p-3 bg-zinc-950/40 border border-zinc-800/60 rounded-xs">
-                                                                        <span className={`${theme.textMuted} block uppercase text-[9px]`}>Target Classification</span>
+                                                                        <span className={`${theme.textMuted} block uppercase text-[9px]`}>Session Description</span>
                                                                         <span className="text-zinc-200 font-bold block mt-1">
-                                                                          Tier {Array.isArray((confirmingSession as any).visibility_tiers) ? (confirmingSession as any).visibility_tiers.join(", ") : ((confirmingSession as any).level || "All Levels")}
+                                                                          {confirmingSession.notes || "Session details will be provided by staff."}
                                                                         </span>
-                                                                      </div>
-                                                                    </div>
-
-                                                                    <div className="bg-amber-500/5 border border-amber-500/20 p-3 rounded-sm flex gap-3 items-start">
-                                                                      <CheckCircle className="h-4 w-4 text-[#40938c] shrink-0 mt-0.5" />
-                                                                      <div className={`text-[11px] leading-relaxed ${theme.textSecondary} font-mono`}>
-                                                                        <span className="text-zinc-200 font-bold">Roster Commitment:</span> Proceeding with this placement will reserve your slot inside the club&apos;s ledger array. Ensure this complies with your tier classification path.
                                                                       </div>
                                                                     </div>
 
@@ -2313,7 +2309,6 @@ import { LEVELS } from "@/lib/types"
                                                                       <option value="Training">Training</option>
                                                                       <option value="Club Experience">Club Experience</option>
                                                                       <option value="Booking">Booking</option>
-                                                                      <option value="Applying for a Role">Applying for a Role</option>
                                                                       <option value="Other">Other</option>
                                                                     </select>
                                                                   </div>
