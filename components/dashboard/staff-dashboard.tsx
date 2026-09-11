@@ -876,14 +876,17 @@ export function StaffDashboard({
       )
 
       try {
-        const { error } = await supabase
-          .from("attendance")
-          .update({ status, marked_at: now, user_name: nextRecord.user_name, user_level: nextRecord.user_level, notes: nextRecord.notes })
-          .eq("id", existingRecord.id)
+        const response = await fetch("/api/attendance", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ attendance_id: existingRecord.id, status }),
+        })
+        const result = await response.json().catch(() => ({}))
 
-        if (error) {
+        if (!response.ok) {
           setAttendanceRecords((prev) => prev.map((record) => (record.id === existingRecord.id ? existingRecord : record)))
-          showToast(`Failed to update attendance: ${error.message}`)
+          showToast(`Failed to update attendance: ${result.error ?? "unknown error"}`)
         } else {
           showToast("Attendance updated")
         }
@@ -899,28 +902,28 @@ export function StaffDashboard({
     setAttendanceRecords((prev) => [...prev, nextRecord])
 
     try {
-      const { data, error } = await supabase
-        .from("attendance")
-        .insert([
-          {
-            session_id: String(booking.session_id ?? ""),
-            user_id: String(booking.user_id ?? ""),
-            user_name: nextRecord.user_name,
-            user_level: nextRecord.user_level,
-            status,
-            marked_at: now,
-            notes: nextRecord.notes,
-          },
-        ])
-        .select()
+      const response = await fetch("/api/attendance", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: String(booking.session_id ?? ""),
+          user_id: String(booking.user_id ?? ""),
+          user_name: nextRecord.user_name,
+          user_level: nextRecord.user_level,
+          status,
+          notes: nextRecord.notes,
+        }),
+      })
+      const result = await response.json().catch(() => ({}))
 
-      if (!error && data && data[0]) {
-        const inserted = data[0] as AttendanceRecord
+      if (response.ok && result.data) {
+        const inserted = result.data as AttendanceRecord
         setAttendanceRecords((prev) => prev.map((r) => (r.id === nextRecord.id ? inserted : r)))
         showToast("Attendance recorded")
       } else {
         setAttendanceRecords((prev) => prev.filter((r) => r.id !== nextRecord.id))
-        showToast(`Failed to save attendance: ${error?.message ?? "unknown error"}`)
+        showToast(`Failed to save attendance: ${result.error ?? "unknown error"}`)
       }
     } catch (_err) {
       setAttendanceRecords((prev) => prev.filter((r) => r.id !== nextRecord.id))
