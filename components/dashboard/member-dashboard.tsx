@@ -1054,68 +1054,6 @@ import { LEVELS } from "@/lib/types"
 
                                                   
 
-                                                  async function insertBookingRecord(sessionId: string | number, notes?: string | null) {
-                                                    const cleanNotes = notes?.trim() || null
-                                                    const payload: Record<string, string | number | null> = {
-                                                      user_id: profile.id,
-                                                      session_id: sessionId,
-                                                      status: "confirmed",
-                                                      notes: cleanNotes,
-                                                    }
-
-                                                    try {
-                                                      const { data, error } = await supabase
-                                                        .from("bookings")
-                                                        .insert(payload)
-                                                        .select()
-                                                        .single()
-
-                                                      if (error) {
-                                                        if (error.code === "23505" || error.message?.toLowerCase().includes("duplicate")) {
-                                                          const { data: existingBooking, error: lookupError } = await supabase
-                                                            .from("bookings")
-                                                            .select("*")
-                                                            .eq("user_id", profile.id)
-                                                            .eq("session_id", sessionId)
-                                                            .maybeSingle()
-
-                                                          if (!lookupError && existingBooking) return existingBooking
-                                                        }
-
-                                                        if (error.message?.toLowerCase().includes("notes") || error.code === "42703") {
-                                                          const { data: retryData, error: retryError } = await supabase
-                                                            .from("bookings")
-                                                            .insert({
-                                                              user_id: profile.id,
-                                                              session_id: sessionId,
-                                                              status: "confirmed",
-                                                            })
-                                                            .select()
-                                                            .single()
-
-                                                          if (!retryError && retryData) return retryData
-                                                        }
-
-                                                        throw error
-                                                      }
-
-                                                      return data
-                                                    } catch (error) {
-                                                      const { data, error: fallbackError } = await supabase
-                                                        .from("bookings")
-                                                        .insert({
-                                                          user_id: profile.id,
-                                                          session_id: sessionId,
-                                                          status: "confirmed",
-                                                        })
-                                                        .select()
-                                                        .single()
-
-                                                      if (!fallbackError && data) return data
-                                                      throw error
-                                                    }
-                                                  }
-
                                                   async function book(session: ScheduleSession) {
                                                     const note = bookingNoteDraft.trim()
                                                     setPendingId(session.id)
@@ -1136,23 +1074,6 @@ import { LEVELS } from "@/lib/types"
                                                         setBookingNoteDraft("")
                                                         alert("✓ You've successfully joined the session!")
                                                         return
-                                                      }
-
-                                                      console.warn("⚠️ Booking API failed; attempting client-side fallback", { status: response.status, result })
-
-                                                      try {
-                                                        const clientInserted = await insertBookingRecord(session.id, note)
-                                                        if (clientInserted) {
-                                                          setBookings((prev) => [...prev, { ...(clientInserted as Booking), notes: ((clientInserted as Booking).notes ?? note) ?? null }])
-                                                          setBookingNoteDraft("")
-                                                          alert("✓ You've successfully joined the session!")
-                                                          return
-                                                        }
-
-                                                        const { data: refreshed, error: refreshError } = await supabase.from("bookings").select("*").eq("user_id", profile.id)
-                                                        if (!refreshError && refreshed) setBookings(refreshed as Booking[])
-                                                      } catch (fallbackErr) {
-                                                        console.error("❌ Booking fallback failed:", fallbackErr)
                                                       }
 
                                                       alert(`Error joining session: ${result.error || "Unknown error"}`)

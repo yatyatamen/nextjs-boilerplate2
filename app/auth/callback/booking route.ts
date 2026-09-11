@@ -5,6 +5,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const session_id = typeof body?.session_id === "string" || typeof body?.session_id === "number" ? String(body.session_id) : ""
+    const notes = typeof body?.notes === "string" ? body.notes.trim() || null : null
 
     if (!session_id) return NextResponse.json({ error: "session_id required" }, { status: 400 })
 
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabase
       .from("bookings")
-      .insert({ session_id: session_id, user_id: user.id, status: "confirmed" })
+      .insert({ session_id: session_id, user_id: user.id, status: "confirmed", notes })
       .select()
 
     if (error) {
