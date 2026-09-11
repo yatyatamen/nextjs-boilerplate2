@@ -1250,7 +1250,7 @@ export function StaffDashboard({
                                     Booked at: {booking.created_at ? new Date(booking.created_at).toLocaleString() : "N/A"}
                                   </p>
                                   {booking.notes && (
-                                    <p className="text-xs text-amber-600 dark:text-amber-300">Note: {booking.notes}</p>
+                                    <p className="text-xs text-red-600 dark:text-red-300">Note: {booking.notes}</p>
                                   )}
                                 </div>
 
