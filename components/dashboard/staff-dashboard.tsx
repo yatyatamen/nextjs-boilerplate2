@@ -1515,7 +1515,6 @@ export function StaffDashboard({
                                 <th className="px-4 py-3">Tier</th>
                                 <th className="px-4 py-3">Session</th>
                                 <th className="px-4 py-3">Status</th>
-                                <th className="px-4 py-3">Notes</th>
                                 <th className="px-4 py-3">Marked At</th>
                                 <th className="px-4 py-3">Actions</th>
                               </tr>
@@ -1541,9 +1540,6 @@ export function StaffDashboard({
                                     <div className="text-zinc-400">{formatDate(session.date)}</div>
                                   </td>
                                   <td className="px-4 py-3 align-top text-xs text-zinc-200 uppercase tracking-[0.08em]">{status}</td>
-                                  <td className="px-4 py-3 align-top text-xs text-zinc-400">
-                                    {((booking.notes ?? attendance?.notes ?? "").trim()) ? (booking.notes ?? attendance?.notes ?? "").trim() : "—"}
-                                  </td>
                                   <td className="px-4 py-3 align-top text-xs text-zinc-400">
                                     {attendance?.marked_at ? new Date(attendance.marked_at).toLocaleString() : "—"}
                                   </td>
