@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { TeacherDashboard } from "@/components/dashboard/teacher-dashboard"
+import { TeacherDashboard } from "../../components/dashboard/teacher-dashboard"
 import type { Profile } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
@@ -38,7 +38,7 @@ export default async function TeacherDashboardPage() {
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase.from("schedule").select("*").order("date", { ascending: true }),
     supabase.from("announcements").select("*").order("created_at", { ascending: false }),
-    supabase.from("bookings").select("*").eq("user_id", userData.user.id).order("created_at", { ascending: false }),
+    supabase.from("bookings").select("*").order("created_at", { ascending: false }),
     supabase.from("attendance").select("*").order("marked_at", { ascending: false }),
   ])
 

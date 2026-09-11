@@ -1,61 +1,47 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
-import { Badge, Button, Card, Input, Textarea } from "@/components/ui/primitives"
-import type {
-  Announcement,
-  AttendanceRecord,
-  Booking,
-  Profile,
-  ScheduleSession,
-} from "@/lib/types"
-import { LEVELS } from "@/lib/types"
-import {
-  CalendarDays,
-  CheckCircle,
-  LayoutDashboard,
-  LifeBuoy,
-  Megaphone,
-  Moon,
-  Settings,
-  Sun,
-  Ticket,
-  UserCheck,
-  Users,
-} from "lucide-react"
+import { Button, Card, Input, Label } from "@/components/ui/primitives"
+import type { Announcement, AttendanceRecord, Booking, Profile, ScheduleSession } from "@/lib/types"
+import { CalendarDays, LayoutDashboard, Moon, Settings, Sun, Ticket, UserCheck } from "lucide-react"
 
 const NAV: NavItem[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "schedule", label: "Schedule", icon: CalendarDays },
   { key: "bookings", label: "My Bookings", icon: Ticket },
   { key: "attendance", label: "Attendance", icon: UserCheck },
-  { key: "support", label: "Contact & Support", icon: LifeBuoy },
   { key: "settings", label: "Settings", icon: Settings },
 ]
-
-const AVAILABLE_TIME_SLOTS = [
-  "3:20-4:30 PM",
-  "3:20-4:45 PM",
-  "3:20-5:00 PM",
-  "3:20-5:15 PM",
-]
-
-const PLAYER_TIERS = LEVELS
 
 function formatDate(date: string | null) {
   if (!date) return "TBD"
   const match = date.match(/^(\d{4})-(\d{2})-(\d{2})/)
-  const d = match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(date)
-  if (Number.isNaN(d.getTime())) return date
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
+  const parsed = match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(date)
+  if (Number.isNaN(parsed.getTime())) return date
+  return parsed.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
 }
 
-function isFeatureAnnouncement(title: string | null | undefined) {
-  const normalized = String(title ?? "").toLowerCase()
-  return normalized.includes("website") || normalized.includes("feature")
+function isExpired(session: ScheduleSession | undefined) {
+  if (!session?.date || !session.time) return false
+  const dateMatch = session.date.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  const timeMatch = session.time.match(/(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
+  if (!dateMatch || !timeMatch) return false
+  const sessionDate = new Date(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]))
+  let hour = Number(timeMatch[3])
+  if (timeMatch[5]?.toUpperCase() === "PM" && hour !== 12) hour += 12
+  if (timeMatch[5]?.toUpperCase() === "AM" && hour === 12) hour = 0
+  sessionDate.setHours(hour, Number(timeMatch[4]), 0, 0)
+  return new Date() > sessionDate
 }
+
+function getName(profile: Profile | undefined) {
+  if (!profile) return "Unknown Member"
+  return `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || profile.full_name || profile.email || "Unknown Member"
+}
+
+type Theme = { card: string; input: string; muted: string }
 
 export function TeacherDashboard({
   profile,
@@ -63,7 +49,7 @@ export function TeacherDashboard({
   initialSchedule,
   initialAnnouncements,
   initialBookings,
-  initialAttendanceRecords,
+  initialAttendanceRecords = [],
 }: {
   profile: Profile
   initialMembers: Profile[]
@@ -74,462 +60,128 @@ export function TeacherDashboard({
 }) {
   const supabase = createClient()
   const [active, setActive] = useState("overview")
-  const [members] = useState(initialMembers)
-  const [schedule, setSchedule] = useState(initialSchedule)
-  const [announcements, setAnnouncements] = useState(initialAnnouncements)
+  const [schedule] = useState(initialSchedule)
   const [bookings, setBookings] = useState(initialBookings)
-  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(initialAttendanceRecords ?? [])
-  const [newSessionDate, setNewSessionDate] = useState("")
-  const [newSessionTime, setNewSessionTime] = useState(AVAILABLE_TIME_SLOTS[0])
-  const [newSessionLevel, setNewSessionLevel] = useState<string>(PLAYER_TIERS[0])
-  const [newSessionTitle, setNewSessionTitle] = useState("")
-  const [newSessionNotes, setNewSessionNotes] = useState("")
-  const [supportCategory, setSupportCategory] = useState("Advice / Feedback")
-  const [supportMessage, setSupportMessage] = useState("")
-  const [supportStatus, setSupportStatus] = useState<string | null>(null)
+  const [attendanceRecords, setAttendanceRecords] = useState(initialAttendanceRecords)
+  const [confirmingSession, setConfirmingSession] = useState<ScheduleSession | null>(null)
+  const [bookingNote, setBookingNote] = useState("")
   const [attendanceFilter, setAttendanceFilter] = useState<"all" | "present" | "absent" | "late">("all")
+  const [attendanceSelection, setAttendanceSelection] = useState<Record<string, "present" | "absent" | "late">>({})
+  const [pendingAttendance, setPendingAttendance] = useState<Record<string, boolean>>({})
   const [isDarkMode, setIsDarkMode] = useState(true)
   const [customName, setCustomName] = useState(profile.full_name || "")
+  const [savingName, setSavingName] = useState(false)
 
-  const displayName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || profile.email || "Teacher"
-  const latestGeneralAnnouncement = [...announcements]
-    .filter((item) => !isFeatureAnnouncement(item.title))
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
-  const latestFeatureAnnouncement = [...announcements]
-    .filter((item) => isFeatureAnnouncement(item.title))
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
-
-  const filteredAttendance = attendanceRecords.filter((record) => {
-    if (attendanceFilter === "all") return true
-    return record.status === attendanceFilter
-  })
-
-  async function handleCreateSchedule(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newSessionTitle.trim() || !newSessionDate) return
-
-    const payload = {
-      title: newSessionTitle.trim(),
-      date: newSessionDate,
-      time: newSessionTime,
-      min_level: newSessionLevel,
-      max_level: newSessionLevel,
-      coach: profile.full_name || profile.first_name || "Teacher",
-      notes: newSessionNotes.trim(),
-    }
-
-    const { data, error } = await supabase.from("schedule").insert(payload).select()
-    if (error) {
-      alert(`Schedule DB Error: ${error.message}`)
-      return
-    }
-
-    if (data && data[0]) {
-      setSchedule((prev) => [data[0] as ScheduleSession, ...prev])
-      setNewSessionTitle("")
-      setNewSessionDate("")
-      setNewSessionTime(AVAILABLE_TIME_SLOTS[0])
-      setNewSessionLevel(PLAYER_TIERS[0])
-      setNewSessionNotes("")
-    }
+  const displayName = customName.trim() || profile.email || "Teacher"
+  const scheduleById = useMemo(() => new Map(schedule.map((session) => [String(session.id), session])), [schedule])
+  const visibleSchedule = useMemo(() => schedule.filter((session) => !isExpired(session)), [schedule])
+  const myBookings = useMemo(() => bookings.filter((booking) => booking.user_id === profile.id), [bookings, profile.id])
+  const bookedSessionIds = useMemo(() => new Set(myBookings.map((booking) => String(booking.session_id))), [myBookings])
+  const latestAnnouncement = [...initialAnnouncements].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+  const theme: Theme = {
+    card: isDarkMode ? "bg-zinc-900/40 border-zinc-800" : "bg-white border-zinc-200",
+    input: isDarkMode ? "bg-zinc-950 text-white border-zinc-800" : "bg-white text-black border-zinc-300",
+    muted: isDarkMode ? "text-zinc-400" : "text-zinc-600",
   }
 
-  async function handleDeleteSchedule(id: string) {
-    const { error } = await supabase.from("schedule").delete().eq("id", id)
-    if (error) {
-      alert(`Schedule delete failed: ${error.message}`)
-      return
-    }
-    setSchedule((prev) => prev.filter((item) => item.id !== id))
-  }
-
-  async function handleSubmitSupportTicket(e: React.FormEvent) {
-    e.preventDefault()
-    if (!supportMessage.trim()) return
-
-    const { error } = await supabase.from("support_tickets").insert({
-      user_id: profile.id,
-      title: supportCategory,
-      message: supportMessage.trim(),
-      status: "new",
-      sender_name: displayName,
+  async function joinSession(session: ScheduleSession) {
+    const response = await fetch("/api/bookings", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: session.id, notes: bookingNote.trim() || null }),
     })
-
-    if (error) {
-      setSupportStatus(`Error: ${error.message}`)
+    const result = await response.json().catch(() => ({}))
+    const inserted = Array.isArray(result.data) ? result.data[0] : result.data
+    if (!response.ok || !inserted) {
+      alert(result.error || "Unable to join this session")
       return
     }
-
-    setSupportStatus("Success: Your comment was submitted.")
-    setSupportMessage("")
-    setSupportCategory("Advice / Feedback")
+    setBookings((prev) => [...prev, inserted as Booking])
+    setBookingNote("")
+    setConfirmingSession(null)
   }
 
   async function markAttendance(booking: Booking, status: "present" | "absent" | "late") {
-    const member = members.find((candidate) => candidate.id === booking.user_id)
+    const member = initialMembers.find((entry) => entry.id === booking.user_id)
     const existing = attendanceRecords.find((record) => record.session_id === booking.session_id && record.user_id === booking.user_id)
     const now = new Date().toISOString()
+    setPendingAttendance((prev) => ({ ...prev, [booking.id]: true }))
 
-    if (existing) {
-      const { error } = await supabase.from("attendance").update({ status, marked_at: now }).eq("id", existing.id)
-      if (!error) {
+    try {
+      if (existing) {
+        const { error } = await supabase.from("attendance").update({ status, marked_at: now }).eq("id", existing.id)
+        if (error) throw error
         setAttendanceRecords((prev) => prev.map((record) => record.id === existing.id ? { ...record, status, marked_at: now } : record))
-      }
-      return
-    }
-
-    const { data, error } = await supabase
-      .from("attendance")
-      .insert([
-        {
+      } else {
+        const { data, error } = await supabase.from("attendance").insert({
           session_id: String(booking.session_id ?? ""),
           user_id: String(booking.user_id ?? ""),
-          user_name: member ? `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || member.email || "Unknown" : "Unknown",
+          user_name: getName(member),
           user_level: member?.level ?? "Unknown",
           status,
           marked_at: now,
-        },
-      ])
-      .select()
-
-    if (!error && data && data[0]) {
-      setAttendanceRecords((prev) => [...prev, data[0] as AttendanceRecord])
+          notes: booking.notes ?? null,
+        }).select().single()
+        if (error) throw error
+        setAttendanceRecords((prev) => [...prev, data as AttendanceRecord])
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Unable to save attendance")
+    } finally {
+      setPendingAttendance((prev) => ({ ...prev, [booking.id]: false }))
     }
   }
 
-  const theme = {
-    textSecondary: isDarkMode ? "text-zinc-400" : "text-zinc-600",
-    textMuted: isDarkMode ? "text-zinc-500" : "text-zinc-600",
-    cardBg: isDarkMode ? "bg-zinc-900/70" : "bg-white",
-    cardBorder: isDarkMode ? "border-zinc-800" : "border-zinc-200",
-    headingColor: isDarkMode ? "text-zinc-100" : "text-zinc-900",
-    inputBg: isDarkMode ? "bg-zinc-950/60 border-zinc-700 text-zinc-100" : "bg-white border-zinc-300 text-zinc-900",
+  async function saveName() {
+    if (!customName.trim()) return
+    setSavingName(true)
+    const { error } = await supabase.from("profiles").update({ full_name: customName.trim() }).eq("id", profile.id)
+    setSavingName(false)
+    if (error) alert(error.message)
   }
 
-  const scheduleById = new Map<string, ScheduleSession>()
-  schedule.forEach((session) => scheduleById.set(String(session.id), session))
-
   return (
-    <DashboardShell
-      navItems={NAV}
-      activeKey={active}
-      onChange={setActive}
-      displayName={displayName}
-      subtitle={profile.email ?? ""}
-      badgeLabel="Teacher"
-    >
-      {active === "overview" && (
-        <div className="flex flex-col gap-6">
-          <Card className={`overflow-hidden border ${theme.cardBorder} ${theme.cardBg}`}>
-            <div className="bg-[#40938c] p-6 text-black">
-              <p className="text-sm font-medium opacity-80">Teacher console</p>
-              <h2 className="mt-2 text-2xl font-bold">Welcome, {displayName}</h2>
-              <p className="mt-1 text-sm opacity-80">
-                Review sessions, member progress, club updates, and upcoming coaching activity.
-              </p>
-            </div>
-          </Card>
-
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-            <Card className={`flex items-center gap-3 p-4 ${theme.cardBorder} ${theme.cardBg}`}>
-              <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#40938c]/15 text-[#40938c]">
-                <Users className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{members.length}</p>
-                <p className="text-xs text-muted-foreground">Members</p>
+    <div className={`min-h-screen ${isDarkMode ? "bg-[#0B0B0C] text-white" : "bg-zinc-50 text-black"}`}>
+      <DashboardShell navItems={NAV} activeKey={active} onChange={setActive} displayName={displayName} subtitle={profile.email ?? ""} badgeLabel="Teacher">
+        {active === "overview" && (
+          <div className="flex flex-col gap-6">
+            <Card className={`overflow-hidden ${theme.card}`}>
+              <div className="bg-[#40938c] p-6 text-black">
+                <p className="text-sm font-medium opacity-80">Teacher console</p>
+                <h2 className="mt-2 text-2xl font-bold">Welcome, {displayName}</h2>
+                <p className="mt-1 text-sm opacity-80">Review sessions, join training, and mark attendance.</p>
               </div>
             </Card>
-
-            <Card className={`flex items-center gap-3 p-4 ${theme.cardBorder} ${theme.cardBg}`}>
-              <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#40938c]/15 text-[#40938c]">
-                <CalendarDays className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{schedule.length}</p>
-                <p className="text-xs text-muted-foreground">Sessions</p>
-              </div>
-            </Card>
-
-            <Card className={`flex items-center gap-3 p-4 ${theme.cardBorder} ${theme.cardBg}`}>
-              <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#40938c]/15 text-[#40938c]">
-                <Ticket className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{bookings.length}</p>
-                <p className="text-xs text-muted-foreground">Bookings</p>
-              </div>
-            </Card>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <StatCard icon={CalendarDays} label="Upcoming Sessions" value={visibleSchedule.length} theme={theme} />
+              <StatCard icon={Ticket} label="My Bookings" value={myBookings.length} theme={theme} />
+              <StatCard icon={UserCheck} label="Attendance Records" value={attendanceRecords.length} theme={theme} />
+            </div>
+            {latestAnnouncement && <Card className={`p-6 ${theme.card}`}><p className="text-xs font-semibold uppercase tracking-wide text-[#40938c]">Latest Announcement</p><h3 className="mt-2 text-xl font-bold">{latestAnnouncement.title}</h3><p className={`mt-3 whitespace-pre-line text-sm leading-relaxed ${theme.muted}`}>{latestAnnouncement.content}</p></Card>}
           </div>
+        )}
 
-          {latestGeneralAnnouncement && (
-            <Card className={`p-6 border ${theme.cardBorder} ${theme.cardBg}`}>
-              <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#40938c]/15 text-[#40938c]">
-                  <Megaphone className="h-6 w-6" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#40938c]">Latest Announcement</p>
-                  <h3 className={`mt-2 text-2xl font-bold ${theme.headingColor}`}>{latestGeneralAnnouncement.title}</h3>
-                  <p className={`mt-3 text-base leading-relaxed whitespace-pre-line ${theme.textSecondary}`}>
-                    {latestGeneralAnnouncement.content}
-                  </p>
-                  <p className={`mt-3 text-xs ${theme.textMuted}`}>Posted {formatDate(latestGeneralAnnouncement.created_at)}</p>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {latestFeatureAnnouncement && (
-            <Card className="border border-[#40938c]/30 bg-[#40938c]/5 p-6">
-              <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#40938c]/15 text-[#40938c]">
-                  <Megaphone className="h-6 w-6" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#40938c]">Website Feature Update</p>
-                  <h3 className={`mt-2 text-2xl font-bold ${theme.headingColor}`}>{latestFeatureAnnouncement.title}</h3>
-                  <p className={`mt-3 text-base leading-relaxed whitespace-pre-line ${theme.textSecondary}`}>
-                    {latestFeatureAnnouncement.content}
-                  </p>
-                  <p className={`mt-3 text-xs ${theme.textMuted}`}>Posted {formatDate(latestFeatureAnnouncement.created_at)}</p>
-                </div>
-              </div>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {active === "schedule" && (
-        <div>
-          <div className="mb-4">
-            <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Session Schedule</h2>
+        {active === "schedule" && (
+          <div>
+            <h2 className="mb-4 text-xs font-bold uppercase tracking-widest">Session Schedule</h2>
+            {!confirmingSession ? <div className="flex flex-col gap-3">{visibleSchedule.map((session) => {
+              const booked = bookedSessionIds.has(String(session.id))
+              return <Card key={session.id} className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between ${theme.card}`}><div><p className="text-sm font-bold uppercase">{formatDate(session.date)} · <span className="font-mono text-xs text-[#40938c]">{session.time}</span></p><p className={`mt-1 text-xs ${theme.muted}`}>{session.title || "Standard Training Session"}</p><p className={`mt-1 text-xs ${theme.muted}`}>Coach: {session.coach || "Club Staff"}</p></div><Button type="button" size="sm" disabled={booked} onClick={() => setConfirmingSession(session)} className={booked ? "bg-zinc-700 text-white" : "bg-[#40938c] text-black font-bold"}>{booked ? "Claimed" : "Join Session"}</Button></Card>
+            })}</div> : <Card className={`mx-auto flex max-w-xl flex-col gap-5 p-6 ${theme.card}`}><div><p className="text-[10px] uppercase tracking-widest text-[#40938c]">Selected Session</p><h3 className="mt-1 text-2xl font-black uppercase">{formatDate(confirmingSession.date)}</h3><p className="font-mono text-sm font-bold text-[#40938c]">{confirmingSession.time}</p></div><div className="flex flex-col gap-2"><Label>Optional note for staff</Label><textarea value={bookingNote} onChange={(event) => setBookingNote(event.target.value)} rows={3} className={`rounded-sm border px-3 py-2 text-xs ${theme.input}`} placeholder="Late arrival, early leave, or another note" /></div><div className="flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => setConfirmingSession(null)}>Cancel</Button><Button type="button" onClick={() => void joinSession(confirmingSession)} className="bg-[#40938c] text-black font-bold">Confirm & Join</Button></div></Card>}
           </div>
+        )}
 
-          <Card className={`mb-4 flex flex-col gap-3 border p-4 ${theme.cardBorder} ${theme.cardBg}`}>
-            <p className="text-[11px] font-bold uppercase tracking-wide text-[#40938c]">Create New Schedule Track</p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <input type="date" value={newSessionDate} onChange={(e) => setNewSessionDate(e.target.value)} className={`rounded-sm border px-2 py-1.5 text-xs ${theme.inputBg}`} />
-              <select value={newSessionTime} onChange={(e) => setNewSessionTime(e.target.value)} className={`rounded-sm border px-2 py-1.5 text-xs ${theme.inputBg}`}>
-                {AVAILABLE_TIME_SLOTS.map((slot) => (
-                  <option key={slot} value={slot}>{slot}</option>
-                ))}
-              </select>
-              <select value={newSessionLevel} onChange={(e) => setNewSessionLevel(e.target.value)} className={`rounded-sm border px-2 py-1.5 text-xs ${theme.inputBg}`}>
-                {PLAYER_TIERS.map((tier) => (
-                  <option key={tier} value={tier}>{tier}</option>
-                ))}
-              </select>
-            </div>
+        {active === "bookings" && <div><h2 className="mb-4 text-xs font-bold uppercase tracking-widest">My Confirmed Bookings</h2>{myBookings.length === 0 ? <p className={`text-xs ${theme.muted}`}>No active bookings found.</p> : <div className="flex flex-col gap-3">{myBookings.map((booking) => { const session = scheduleById.get(String(booking.session_id)); return <Card key={booking.id} className={`p-4 ${theme.card}`}><p className="text-sm font-bold uppercase">{session ? formatDate(session.date) : "Training Session"} {session?.time && `· ${session.time}`}</p><p className={`mt-1 text-xs ${theme.muted}`}>{session?.title || "Session details"}</p></Card> })}</div>}</div>}
 
-            <div className="flex flex-col gap-1.5">
-              <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>Session title</label>
-              <input value={newSessionTitle} onChange={(e) => setNewSessionTitle(e.target.value)} placeholder="Training context title" className={`rounded-sm border px-2 py-1.5 text-xs ${theme.inputBg}`} />
-            </div>
+        {active === "attendance" && <div><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xs font-bold uppercase tracking-widest">Attendance</h2><p className={`mt-1 text-[11px] ${theme.muted}`}>Mark attendance for booked members.</p></div><div className="flex gap-1 rounded-sm border border-zinc-700 bg-zinc-950 p-1">{(["all", "present", "absent", "late"] as const).map((filter) => <button key={filter} type="button" onClick={() => setAttendanceFilter(filter)} className={`rounded-sm px-2 py-1 text-[10px] uppercase ${attendanceFilter === filter ? "bg-[#40938c] text-black font-bold" : "text-zinc-300"}`}>{filter}</button>)}</div></div><div className="flex flex-col gap-4">{schedule.map((session) => { const rows = bookings.filter((booking) => booking.session_id === session.id).filter((booking) => { const record = attendanceRecords.find((item) => item.session_id === booking.session_id && item.user_id === booking.user_id); return attendanceFilter === "all" || record?.status === attendanceFilter }); if (rows.length === 0) return null; return <Card key={session.id} className={`p-4 ${theme.card}`}><div className="mb-3"><h3 className="font-semibold">{session.title || "Training Session"}</h3><p className={`text-sm ${theme.muted}`}>{formatDate(session.date)} · {session.time || "TBD"}</p></div><div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950"><table className="min-w-full text-left text-sm"><thead className="border-b border-zinc-800 bg-zinc-900 text-zinc-300"><tr><th className="px-4 py-3">Member</th><th className="px-4 py-3">Tier</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Marked At</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y divide-zinc-800">{rows.map((booking) => { const member = initialMembers.find((entry) => entry.id === booking.user_id); const record = attendanceRecords.find((item) => item.session_id === booking.session_id && item.user_id === booking.user_id); const status = record?.status ?? "not marked"; return <tr key={booking.id} className="hover:bg-zinc-900"><td className="px-4 py-3"><p className="font-medium text-zinc-100">{getName(member)}</p><p className="text-xs text-zinc-400">{booking.user_id}</p></td><td className="px-4 py-3 text-xs text-zinc-400">{member?.level || "N/A"}</td><td className="px-4 py-3 text-xs uppercase text-zinc-200">{status}</td><td className="px-4 py-3 text-xs text-zinc-400">{record?.marked_at ? new Date(record.marked_at).toLocaleString() : "—"}</td><td className="px-4 py-3"><div className="flex gap-3">{(["present", "late", "absent"] as const).map((option) => <label key={option} className="inline-flex items-center gap-2"><input type="radio" name={`attendance-${booking.id}`} checked={(attendanceSelection[booking.id] ?? record?.status ?? "present") === option} disabled={pendingAttendance[booking.id]} onChange={() => { setAttendanceSelection((prev) => ({ ...prev, [booking.id]: option })); void markAttendance(booking, option) }} /><span className={`text-xs ${option === "present" ? "text-emerald-400" : option === "late" ? "text-amber-400" : "text-rose-400"}`}>{option}</span></label>)}</div></td></tr> })}</tbody></table></div></Card> })}</div></div>}
 
-            <div className="flex flex-col gap-1.5">
-              <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>Session notes</label>
-              <textarea value={newSessionNotes} onChange={(e) => setNewSessionNotes(e.target.value)} rows={3} placeholder="Add session notes" className={`rounded-sm border px-2 py-1.5 text-xs ${theme.inputBg}`} />
-            </div>
-
-            <form onSubmit={handleCreateSchedule}>
-              <Button type="submit" className="mt-2 self-end rounded-sm border-none bg-[#40938c] px-4 py-2 text-xs font-bold uppercase text-black">
-                Inject Slot
-              </Button>
-            </form>
-          </Card>
-
-          <div className="flex flex-col gap-3">
-            {schedule.map((session) => (
-              <Card key={session.id} className={`flex flex-col gap-3 border p-4 sm:flex-row sm:items-center sm:justify-between ${theme.cardBorder} ${theme.cardBg}`}>
-                <div>
-                  <p className={`text-sm font-bold uppercase ${theme.headingColor}`}>
-                    {formatDate(session.date)} · <span className="text-xs font-mono text-[#40938c]">{session.time}</span>
-                  </p>
-                  <p className={`mt-0.5 text-xs font-mono ${theme.textSecondary}`}>[{session.title || "Standard Class Roster"}]</p>
-                  <p className={`mt-1 text-xs ${theme.textMuted}`}>
-                    Coach: {session.coach || "Club Staff"} | Tier: {session.min_level || "All Levels"}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" type="button" className="rounded-sm border-none bg-[#40938c] px-3 py-2 text-xs font-bold uppercase text-black">
-                    Booked
-                  </Button>
-                  <Button size="sm" type="button" variant="outline" onClick={() => handleDeleteSchedule(session.id)} className="rounded-sm text-xs uppercase">
-                    Delete
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {active === "bookings" && (
-        <div>
-          <div className="mb-4">
-            <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>My Confirmed Placements</h2>
-          </div>
-
-          {bookings.filter((booking) => booking.user_id === profile.id).length === 0 ? (
-            <p className={`text-xs ${theme.textMuted}`}>No active bookings found.</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {bookings.filter((booking) => booking.user_id === profile.id).map((booking) => {
-                const session = booking.session_id ? scheduleById.get(String(booking.session_id)) : undefined
-                return (
-                  <Card key={booking.id} className={`flex flex-col gap-3 border p-4 sm:flex-row sm:items-center sm:justify-between ${theme.cardBorder} ${theme.cardBg}`}>
-                    <div>
-                      <p className={`text-sm font-bold uppercase ${theme.headingColor}`}>
-                        {session ? formatDate(session.date) : "Training Interval"} {session?.time ? `· ${session.time}` : ""}
-                      </p>
-                      {session?.title && <p className={`mt-0.5 text-xs font-mono ${theme.textSecondary}`}>Focus: {session.title}</p>}
-                    </div>
-                    <Button type="button" size="sm" className="rounded-sm border border-zinc-500 bg-transparent text-xs uppercase text-red-400">
-                      Retract Spot
-                    </Button>
-                  </Card>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {active === "attendance" && (
-        <div>
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Active Bookings Checklist</h2>
-              <p className={`text-[11px] ${theme.textMuted}`}>Verify and toggle member check-in status</p>
-            </div>
-            <div className="flex gap-1 rounded-sm border border-zinc-700 bg-zinc-950 p-1">
-              {(["all", "present", "absent", "late"] as const).map((filterOpt) => (
-                <button
-                  key={filterOpt}
-                  type="button"
-                  onClick={() => setAttendanceFilter(filterOpt)}
-                  className={`rounded-xs px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider ${attendanceFilter === filterOpt ? "bg-[#40938c] font-bold text-black" : theme.textSecondary}`}
-                >
-                  {filterOpt}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            {filteredAttendance.length === 0 ? (
-              <p className={`text-xs ${theme.textMuted}`}>No attendance profiles correspond to the selected filter.</p>
-            ) : (
-              filteredAttendance.map((record) => (
-                <Card key={record.id} className={`flex flex-col gap-3 border p-4 sm:flex-row sm:items-center sm:justify-between ${theme.cardBorder} ${theme.cardBg}`}>
-                  <div>
-                    <p className={`text-xs font-bold ${theme.headingColor}`}>{record.user_name}</p>
-                    <p className={`mt-0.5 text-[10px] font-mono ${theme.textMuted}`}>
-                      Tier: {record.user_level} · Session ID: {record.session_id?.substring(0, 8) || "unknown"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 self-end sm:self-auto">
-                    {(["present", "absent", "late"] as const).map((statusType) => (
-                      <button
-                        key={statusType}
-                        type="button"
-                        onClick={() => markAttendance({
-                          id: "", user_id: record.user_id, session_id: record.session_id, status: record.status, created_at: record.marked_at || new Date().toISOString(),
-                        } as Booking, statusType)}
-                        className={`rounded-sm border px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide ${record.status === statusType ? (statusType === "present" ? "border-green-500/40 bg-green-500/10 text-green-400" : statusType === "absent" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-yellow-500/40 bg-yellow-500/10 text-yellow-400") : `border-zinc-800 ${theme.textMuted}`}`}
-                      >
-                        {statusType}
-                      </button>
-                    ))}
-                  </div>
-                </Card>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {active === "support" && (
-        <div className="grid grid-cols-1 gap-6">
-          <Card className={`rounded-sm border p-6 ${theme.cardBorder} ${theme.cardBg}`}>
-            <div className="mb-5">
-              <h3 className="text-sm font-bold uppercase tracking-wide text-[#40938c]">Share advice or feedback</h3>
-              <p className={`mt-0.5 text-[11px] font-mono ${theme.textMuted}`}>
-                Send a short comment or suggestion for the club staff to review.
-              </p>
-            </div>
-
-            <form onSubmit={handleSubmitSupportTicket} className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>Comment topic</label>
-                <select value={supportCategory} onChange={(e) => setSupportCategory(e.target.value)} className={`rounded-sm border px-2 py-1.5 text-xs font-mono ${theme.inputBg}`}>
-                  <option value="Advice / Feedback">Advice / Feedback</option>
-                  <option value="Training">Training</option>
-                  <option value="Club Experience">Club Experience</option>
-                  <option value="Booking">Booking</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>Your comment</label>
-                <textarea rows={5} placeholder="Share any advice, comment, or improvement idea for the team..." value={supportMessage} onChange={(e) => setSupportMessage(e.target.value)} className={`rounded-sm border px-3 py-2 text-xs font-mono outline-none ${theme.inputBg}`} />
-              </div>
-
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => window.open("https://www.instagram.com/wci_badminton_club", "_blank", "noopener,noreferrer")} className="inline-flex items-center justify-center rounded-sm border border-[#40938c] bg-[#40938c] px-3 py-2 text-[10px] font-mono font-bold uppercase text-black">
-                    View Club Profile on Instagram
-                  </button>
-                  <button type="button" onClick={() => window.open("https://www.instagram.com/m/wci_badminton_club", "_blank", "noopener,noreferrer")} className="inline-flex items-center justify-center rounded-sm border border-[#40938c] bg-[#40938c] px-3 py-2 text-[10px] font-mono font-bold uppercase text-black">
-                    DM on Instagram
-                  </button>
-                </div>
-                <Button type="submit" size="sm" className="rounded-sm border-none bg-[#40938c] px-4 py-2 text-xs font-bold uppercase text-black">
-                  Submit comment
-                </Button>
-              </div>
-
-              {supportStatus && (
-                <p className={`text-[11px] font-mono ${supportStatus.startsWith("Success") ? "text-green-400" : "text-red-400"}`}>
-                  {supportStatus}
-                </p>
-              )}
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {active === "settings" && (
-        <div className="flex flex-col gap-4">
-          <Card className={`flex flex-col gap-4 border p-5 ${theme.cardBorder} ${theme.cardBg}`}>
-            <div>
-              <h3 className="text-sm font-bold uppercase tracking-wide text-[#40938c]">Account Configuration</h3>
-              <p className={`text-[11px] ${theme.textMuted}`}>Modify display identities and visual configuration flags</p>
-            </div>
-            <div className="flex max-w-md flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="flex w-full flex-col gap-1">
-                <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>User Display Identity</label>
-                <input value={customName} onChange={(e) => setCustomName(e.target.value)} className={`rounded-sm border px-3 py-2 text-xs font-mono ${theme.inputBg}`} />
-              </div>
-              <Button size="sm" className="shrink-0 rounded-sm border-none bg-[#40938c] px-4 py-2 text-xs font-bold uppercase text-black">
-                Commit Change
-              </Button>
-            </div>
-          </Card>
-
-          <Card className={`flex items-center justify-between border p-5 ${theme.cardBorder} ${theme.cardBg}`}>
-            <div>
-              <h4 className={`text-xs font-bold uppercase tracking-wide ${theme.textSecondary}`}>Visual Display Mode</h4>
-              <p className={`text-[11px] font-mono ${theme.textMuted}`}>Toggle alternative color layouts</p>
-            </div>
-            <button type="button" onClick={() => setIsDarkMode(!isDarkMode)} className="rounded-sm border border-zinc-800 bg-zinc-950/40 p-2 text-[#40938c] hover:bg-zinc-950">
-              {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
-          </Card>
-        </div>
-      )}
-    </DashboardShell>
+        {active === "settings" && <div className="flex flex-col gap-4"><Card className={`flex flex-col gap-4 p-5 ${theme.card}`}><div><h3 className="text-sm font-bold uppercase tracking-wide text-[#40938c]">Account Configuration</h3><p className={`text-[11px] ${theme.muted}`}>Update your display name.</p></div><div className="flex max-w-md flex-col gap-3 sm:flex-row sm:items-end"><div className="flex w-full flex-col gap-1"><Label>Display Name</Label><Input value={customName} onChange={(event) => setCustomName(event.target.value)} className={theme.input} /></div><Button type="button" onClick={() => void saveName()} disabled={savingName} className="bg-[#40938c] text-black font-bold">{savingName ? "Saving..." : "Save"}</Button></div></Card><Card className={`flex items-center justify-between p-5 ${theme.card}`}><div><h4 className="text-xs font-bold uppercase tracking-wide">Visual Display Mode</h4><p className={`text-[11px] ${theme.muted}`}>Toggle the dashboard theme.</p></div><button type="button" onClick={() => setIsDarkMode((value) => !value)} className="rounded-sm border border-zinc-800 bg-zinc-950/40 p-2 text-[#40938c]">{isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button></Card></div>}
+      </DashboardShell>
+    </div>
   )
+}
+
+function StatCard({ icon: Icon, label, value, theme }: { icon: typeof CalendarDays; label: string; value: number; theme: Theme }) {
+  return <Card className={`flex items-center gap-4 p-4 ${theme.card}`}><div className="rounded-sm bg-[#40938c]/10 p-2.5 text-[#40938c]"><Icon className="h-5 w-5" /></div><div><p className="text-2xl font-black">{value}</p><p className="text-[10px] uppercase tracking-wider text-zinc-400">{label}</p></div></Card>
 }
