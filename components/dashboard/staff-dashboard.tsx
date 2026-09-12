@@ -1214,6 +1214,8 @@ export function StaffDashboard({
                     const member = members.find((m) => m.id === b.user_id)
                     return { booking: b, member }
                   })
+                  const teacherBookings = bookedMembers.filter(({ member }) => member?.role === "teacher")
+                  const memberBookings = bookedMembers.filter(({ member }) => member?.role !== "teacher")
 
                   const tierText = (() => {
                     const tiers = [session.min_level, session.max_level].filter((value): value is string => Boolean(value && value.trim()))
@@ -1233,11 +1235,15 @@ export function StaffDashboard({
                       {bookedMembers.length === 0 ? (
                         <p className="text-sm text-muted-foreground">No bookings yet</p>
                       ) : (
-                        <div className="space-y-2">
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            {bookedMembers.length} Member{bookedMembers.length !== 1 ? "s" : ""} Booked
-                          </p>
-                          {bookedMembers.map(({ booking, member }) => (
+                        <div className="space-y-4">
+                          {[{ label: "Teacher Bookings", items: teacherBookings }, { label: "Member Bookings", items: memberBookings }]
+                            .filter(({ items }) => items.length > 0)
+                            .map(({ label, items }) => (
+                              <div key={label} className="space-y-2">
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                  {label} · {items.length} Booked
+                                </p>
+                                {items.map(({ booking, member }) => (
                             <div
                               key={booking.id}
                               className="rounded-md bg-muted/50 p-2.5 text-sm"
@@ -1292,7 +1298,9 @@ export function StaffDashboard({
                                 </Button>
                               </div>
                             </div>
-                          ))}
+                                ))}
+                              </div>
+                            ))}
                         </div>
                       )}
                     </Card>

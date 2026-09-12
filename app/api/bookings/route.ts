@@ -56,6 +56,13 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 })
     }
 
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", userData.user.id)
+      .maybeSingle()
+    const canCancelAnyBooking = profile?.role === "staff" || profile?.role === "admin"
+
     const database = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY
       ? await createServiceClient()
       : supabase
@@ -64,7 +71,7 @@ export async function DELETE(request: NextRequest) {
       .from("bookings")
       .delete()
       .eq("id", bookingId)
-      .eq("user_id", userData.user.id)
+      .match(canCancelAnyBooking ? { id: bookingId } : { id: bookingId, user_id: userData.user.id })
 
     if (error) {
       console.error("Booking cancellation failed:", error)
