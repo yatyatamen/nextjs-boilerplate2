@@ -121,17 +121,35 @@ export function TeacherDashboard({ profile, initialMembers, initialSchedule, ini
   async function markAttendance(booking: Booking, nextStatus: Status) {
     const member = initialMembers.find((item) => item.id === booking.user_id)
     const existing = recordFor(booking)
-    const markedAt = new Date().toISOString()
     setSaving((previous) => ({ ...previous, [booking.id]: true }))
     try {
       if (existing) {
-        const { error } = await supabase.from("attendance").update({ status: nextStatus, marked_at: markedAt }).eq("id", existing.id)
-        if (error) throw error
-        setRecords((previous) => previous.map((record) => record.id === existing.id ? { ...record, status: nextStatus, marked_at: markedAt } : record))
+        const response = await fetch("/api/attendance", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ attendance_id: existing.id, status: nextStatus }),
+        })
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok || !result.data) throw new Error(result.error || "Unable to update attendance")
+        setRecords((previous) => previous.map((record) => record.id === existing.id ? result.data as AttendanceRecord : record))
       } else {
-        const { data, error } = await supabase.from("attendance").insert({ session_id: String(booking.session_id ?? ""), user_id: String(booking.user_id ?? ""), user_name: nameOf(member), user_level: member?.level ?? "Unknown", status: nextStatus, marked_at: markedAt, notes: booking.notes ?? null }).select().single()
-        if (error) throw error
-        setRecords((previous) => [...previous, data as AttendanceRecord])
+        const response = await fetch("/api/attendance", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: String(booking.session_id ?? ""),
+            user_id: String(booking.user_id ?? ""),
+            user_name: nameOf(member),
+            user_level: member?.level ?? "Unknown",
+            status: nextStatus,
+            notes: booking.notes ?? null,
+          }),
+        })
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok || !result.data) throw new Error(result.error || "Unable to save attendance")
+        setRecords((previous) => [...previous, result.data as AttendanceRecord])
       }
     } catch (error) {
       alert(error instanceof Error ? error.message : "Unable to save attendance")
