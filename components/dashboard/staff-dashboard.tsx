@@ -1103,7 +1103,7 @@ export function StaffDashboard({
                                   x.id === m.id
                                     ? ROLES.includes(nextValue as Profile["role"])
                                       ? { ...x, role: nextValue as Profile["role"], level: null }
-                                      : { ...x, level: nextValue }
+                                      : { ...x, role: "member", level: nextValue }
                                     : x,
                                 ),
                               )
