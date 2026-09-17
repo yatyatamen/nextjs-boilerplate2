@@ -38,6 +38,9 @@ export type Profile = {
   role: Role
   level: string | null
   avatar_url?: string | null
+  marketing_emails?: boolean | null
+  session_reminder_emails?: boolean | null
+  session_alert_emails?: boolean | null
   created_at: string
 }
 
@@ -48,6 +51,7 @@ export type ScheduleSession = {
   time: string | null          // Supports formats like "3:20-4:30"
   min_level: string | null     // Added: Multi-tier lower limit restriction
   max_level: string | null     // Added: Multi-tier upper limit restriction
+  max_capacity?: number | null
   coach: string | null
   notes: string | null
 }

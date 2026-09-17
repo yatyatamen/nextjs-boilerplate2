@@ -47,14 +47,27 @@ function getRecoveryTokens() {
 
 async function getActiveRecoverySession(supabase: ReturnType<typeof createClient>) {
   const searchParams = new URLSearchParams(window.location.search)
-  const code = searchParams.get("code")
-  const tokenHash = searchParams.get("token_hash")
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""))
+  const code = searchParams.get("code") ?? hashParams.get("code")
+  const tokenHash = searchParams.get("token_hash") ?? hashParams.get("token_hash")
+  const token = searchParams.get("token") ?? hashParams.get("token")
   const hasRecoveryLink = hasRecoveryParams()
   const recoveryTokens = getRecoveryTokens()
 
   if (tokenHash) {
     const { data, error } = await supabase.auth.verifyOtp({
       token_hash: tokenHash,
+      type: "recovery",
+    })
+
+    if (!error && data.session) {
+      return data.session
+    }
+  }
+
+  if (token) {
+    const { data, error } = await supabase.auth.verifyOtp({
+      token,
       type: "recovery",
     })
 

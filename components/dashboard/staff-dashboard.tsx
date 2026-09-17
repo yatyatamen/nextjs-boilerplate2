@@ -27,6 +27,19 @@ import type {
 } from "@/lib/types"
 import { ALL_ROLE_AND_TIER_OPTIONS, LEVELS, ROLES } from "@/lib/types"
 import {
+  sendAnnouncementEmail,
+  sendAssessmentEmail,
+  sendAbsenceEmail,
+  sendSessionAlertEmail,
+  sendShopUpdateEmail,
+} from "@/lib/supabase/email"
+import {
+  DEFAULT_EMAIL_TEMPLATES,
+  getEmailTemplateConfig,
+  saveEmailTemplateConfig,
+  type EmailTemplateConfig,
+} from "@/lib/email-templates"
+import {
   LayoutDashboard,
   Users,
   CalendarDays,
@@ -72,6 +85,7 @@ const NAV: NavItem[] = [
   { key: "attendance", label: "Attendance", icon: UserCheck },
   { key: "resources", label: "Resources", icon: BookOpen },
   { key: "announcements", label: "Announcements", icon: Megaphone },
+  { key: "email-templates", label: "Email Templates", icon: Megaphone },
   { key: "shop", label: "Shop", icon: ShoppingBag },
   { key: "gear", label: "Gear Guides", icon: Trophy },
   { key: "assessments", label: "Assessments", icon: ClipboardList },
@@ -220,6 +234,7 @@ export function StaffDashboard({
   const [assessmentTierFilter, setAssessmentTierFilter] = useState<string>("all")
   const [assessmentSearch, setAssessmentSearch] = useState("")
   const [announcementSearch, setAnnouncementSearch] = useState("")
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplateConfig>(() => getEmailTemplateConfig())
   const [showNoAnnouncement, setShowNoAnnouncement] = useState(false)
   const [showNoFeatureAnnouncement, setShowNoFeatureAnnouncement] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -362,6 +377,36 @@ export function StaffDashboard({
     }
 
     setShopItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...(data as ShopItem) } : item)))
+  }
+
+  async function updateExistingShopItem(id: string, payload: Partial<ShopItem>) {
+    const { data, error } = await supabase
+      .from("shop_items")
+      .update(payload)
+      .eq("id", id)
+      .select()
+      .single()
+
+    if (error) {
+      throw new Error(error.message || "Unable to update shop item")
+    }
+
+    setShopItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...(data as ShopItem) } : item)))
+  }
+
+  async function updateExistingGearGuide(id: string, payload: Partial<EquipmentRecommendation>) {
+    const { data, error } = await supabase
+      .from("equipment_recommendations")
+      .update(payload)
+      .eq("id", id)
+      .select()
+      .single()
+
+    if (error) {
+      throw new Error(error.message || "Unable to update gear guide")
+    }
+
+    setGearGuides((prev) => prev.map((guide) => (guide.id === id ? { ...guide, ...(data as EquipmentRecommendation) } : guide)))
   }
 
   async function deleteAssessmentItem(id: string) {
@@ -920,6 +965,9 @@ export function StaffDashboard({
       if (response.ok && result.data) {
         const inserted = result.data as AttendanceRecord
         setAttendanceRecords((prev) => prev.map((r) => (r.id === nextRecord.id ? inserted : r)))
+        if (status === "absent" && member?.email) {
+          await sendAbsenceEmail({ to: member.email, memberName: getMemberDisplayName(member), sessionTitle: String(booking.session_id ?? "session") })
+        }
         showToast("Attendance recorded")
       } else {
         setAttendanceRecords((prev) => prev.filter((r) => r.id !== nextRecord.id))
@@ -1750,6 +1798,21 @@ export function StaffDashboard({
         </div>
       )}
 
+      {active === "email-templates" && (
+        <div className="space-y-6">
+          <SectionHeader title="Auto Email Templates" desc="Customize the message content for each automatic email type. These are the templates used for live club communication." />
+          <EmailTemplatesEditor
+            value={emailTemplates}
+            onChange={setEmailTemplates}
+            onSave={(nextConfig) => {
+              saveEmailTemplateConfig(nextConfig)
+              setEmailTemplates(nextConfig)
+              showToast("Auto email templates saved")
+            }}
+          />
+        </div>
+      )}
+
       {active === "announcements" && (
         <div className="space-y-6">
           <SectionHeader title="Announcements" desc="Post global updates for your student body dashboard." />
@@ -1806,6 +1869,11 @@ export function StaffDashboard({
                       setAnnouncements((prev) => [data[0] as Announcement, ...prev])
                       setShowNoFeatureAnnouncement(false)
                       setWebsiteFeatureText("")
+                      await Promise.all(
+                        members
+                          .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
+                          .map((member) => sendAnnouncementEmail({ to: member.email!, title: "Website Feature Update", content: websiteFeatureText.trim() }))
+                      )
                       showToast("✓ Website feature update posted")
                     }
                   }}
@@ -1854,6 +1922,11 @@ export function StaffDashboard({
               if (data && data[0]) {
                 setAnnouncements((prev) => [data[0] as Announcement, ...prev])
                 setShowNoAnnouncement(false)
+                await Promise.all(
+                  members
+                    .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
+                    .map((member) => sendAnnouncementEmail({ to: member.email!, title: title, content }))
+                )
               }
             }}
           />
@@ -1920,6 +1993,11 @@ export function StaffDashboard({
               if (error) alert(`Shop DB Error: ${error.message}`)
               if (data && data[0]) {
                 setShopItems((prev) => [data[0] as ShopItem, ...prev])
+                await Promise.all(
+                  members
+                    .filter((member) => member.email && member.marketing_emails !== false)
+                    .map((member) => sendShopUpdateEmail({ to: member.email!, itemName: data[0].name || "a new shop item" }))
+                )
               }
             }}
           />
@@ -1953,6 +2031,7 @@ export function StaffDashboard({
                           item={item}
                           onSave={(stock, unit) => updateShopStock(item.id, stock, unit)}
                         />
+                        <EditShopItemButton item={item} onSave={(updates) => updateExistingShopItem(item.id, updates)} />
                         <Button size="sm" variant="outline" onClick={() => confirmDelete("shop item", async () => { await deleteShopItem(item.id) })} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
                           Delete
                         </Button>
@@ -2009,6 +2088,7 @@ export function StaffDashboard({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <EditGearGuideButton guide={guide} onSave={(updates) => updateExistingGearGuide(guide.id, updates)} />
                         <Button size="sm" variant="outline" onClick={() => confirmDelete("gear guide", async () => { await deleteGearGuide(guide.id) })} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
                           Delete
                         </Button>
@@ -2040,6 +2120,14 @@ export function StaffDashboard({
                 setAssessments((prev) => [data[0] as Assessment, ...prev])
                 await supabase.from("profiles").update({ level }).eq("id", userId)
                 setMembers((prev) => prev.map((m) => (m.id === userId ? { ...m, level } : m)))
+                const targetMember = members.find((member) => member.id === userId)
+                if (targetMember?.email) {
+                  await sendAssessmentEmail({
+                    to: targetMember.email,
+                    memberName: getMemberDisplayName(targetMember),
+                    level,
+                  })
+                }
               }
             }}
           />
@@ -2520,6 +2608,91 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
   )
 }
 
+function EditShopItemButton({
+  item,
+  onSave,
+}: {
+  item: ShopItem
+  onSave: (updates: Partial<ShopItem>) => Promise<void>
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [name, setName] = useState(item.name ?? "")
+  const [category, setCategory] = useState(item.category ?? "Rackets")
+  const [price, setPrice] = useState(String(item.price ?? 0))
+  const [description, setDescription] = useState(item.description ?? "")
+  const [picUrl, setPicUrl] = useState(item.pic_url ?? item.image_url ?? "")
+  const [stock, setStock] = useState(String(item.stock ?? 0))
+  const [unit, setUnit] = useState(item.unit ?? "units")
+  const [confirmLoading, setConfirmLoading] = useState(false)
+  const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
+
+  function submitEditor(e: React.FormEvent) {
+    e.preventDefault()
+    showConfirmation(
+      "Update shop item?",
+      `Apply your edits to ${item.name || "this item"}?`,
+      async () => {
+        setConfirmLoading(true)
+        try {
+          await onSave({
+            name,
+            category,
+            price: Number(price) || 0,
+            description,
+            pic_url: picUrl,
+            stock: Number(stock) || 0,
+            unit,
+          })
+          closeConfirmation()
+          setIsOpen(false)
+        } finally {
+          setConfirmLoading(false)
+        }
+      },
+    )
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setIsOpen(true)} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
+        Edit details
+      </Button>
+      {isOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
+          <Card className="w-full max-w-lg border border-zinc-800 bg-white p-5 text-black shadow-2xl">
+            <h3 className="text-base font-semibold">Edit shop item</h3>
+            <form onSubmit={submitEditor} className="mt-4 flex flex-col gap-3">
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Title</span><Input value={name} onChange={(e) => setName(e.target.value)} required /></label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Category</span><Input value={category} onChange={(e) => setCategory(e.target.value)} required /></label>
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Price</span><Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required /></label>
+              </div>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Image URL</span><Input value={picUrl} onChange={(e) => setPicUrl(e.target.value)} /></label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Stock</span><Input type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)} /></label>
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Unit</span><Input value={unit} onChange={(e) => setUnit(e.target.value)} /></label>
+              </div>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Description</span><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></label>
+              <div className="mt-2 flex justify-end gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
+                <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold">Save item</Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+      <ConfirmationDialog
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        isLoading={confirmLoading}
+        onConfirm={() => confirmState.onConfirm()}
+        onCancel={closeConfirmation}
+      />
+    </>
+  )
+}
+
 function ShopStockEditor({
   item,
   onSave,
@@ -2588,6 +2761,92 @@ function ShopStockEditor({
                 <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold">
                   Review change
                 </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+      <ConfirmationDialog
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        isLoading={confirmLoading}
+        onConfirm={() => confirmState.onConfirm()}
+        onCancel={closeConfirmation}
+      />
+    </>
+  )
+}
+
+function EditGearGuideButton({
+  guide,
+  onSave,
+}: {
+  guide: EquipmentRecommendation
+  onSave: (updates: Partial<EquipmentRecommendation>) => Promise<void>
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [title, setTitle] = useState(guide.title ?? "")
+  const [brand, setBrand] = useState(guide.brand ?? "")
+  const [category, setCategory] = useState(guide.category ?? "")
+  const [specs, setSpecs] = useState(guide.specs ?? "")
+  const [whyRecommend, setWhyRecommend] = useState(guide.why_recommend ?? "")
+  const [recommendedForTier, setRecommendedForTier] = useState(guide.recommended_for_tier ?? "")
+  const [externalLink, setExternalLink] = useState(guide.external_link ?? "")
+  const [imageUrl, setImageUrl] = useState(guide.image_url ?? "")
+  const [confirmLoading, setConfirmLoading] = useState(false)
+  const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
+
+  function submitEditor(e: React.FormEvent) {
+    e.preventDefault()
+    showConfirmation(
+      "Update gear guide?",
+      `Apply your edits to ${guide.title || "this guide"}?`,
+      async () => {
+        setConfirmLoading(true)
+        try {
+          await onSave({
+            title,
+            brand,
+            category,
+            specs,
+            why_recommend: whyRecommend,
+            recommended_for_tier: recommendedForTier,
+            external_link: externalLink,
+            image_url: imageUrl,
+          })
+          closeConfirmation()
+          setIsOpen(false)
+        } finally {
+          setConfirmLoading(false)
+        }
+      },
+    )
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setIsOpen(true)} className="border-white bg-white text-black hover:bg-zinc-100 text-xs">
+        Edit details
+      </Button>
+      {isOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
+          <Card className="w-full max-w-lg border border-zinc-800 bg-white p-5 text-black shadow-2xl">
+            <h3 className="text-base font-semibold">Edit gear guide</h3>
+            <form onSubmit={submitEditor} className="mt-4 flex flex-col gap-3">
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Title</span><Input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Brand</span><Input value={brand} onChange={(e) => setBrand(e.target.value)} required /></label>
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Category</span><Input value={category} onChange={(e) => setCategory(e.target.value)} /></label>
+              </div>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Recommended for tier</span><Input value={recommendedForTier} onChange={(e) => setRecommendedForTier(e.target.value)} /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Image URL</span><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>External link</span><Input value={externalLink} onChange={(e) => setExternalLink(e.target.value)} /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Specs</span><Textarea value={specs} onChange={(e) => setSpecs(e.target.value)} /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Why recommend</span><Textarea value={whyRecommend} onChange={(e) => setWhyRecommend(e.target.value)} /></label>
+              <div className="mt-2 flex justify-end gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
+                <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold">Save guide</Button>
               </div>
             </form>
           </Card>
@@ -2905,6 +3164,103 @@ function AssessmentForm({
         />
       </Card>
       <Toast isOpen={toast.isOpen} message={toast.message} />
+    </>
+  )
+}
+
+function EmailTemplatesEditor({
+  value,
+  onChange,
+  onSave,
+}: {
+  value: EmailTemplateConfig
+  onChange: (next: EmailTemplateConfig) => void
+  onSave: (next: EmailTemplateConfig) => void
+}) {
+  const { showConfirmation, closeConfirmation, confirmState } = useConfirmation()
+  const [saving, setSaving] = useState(false)
+
+  const onSaveClick = () => {
+    showConfirmation(
+      "Save email templates?",
+      "This updates the auto-email text used for reminders, announcements, assessments, and shop updates.",
+      async () => {
+        closeConfirmation()
+        setSaving(true)
+        try {
+          onSave(value)
+        } finally {
+          setSaving(false)
+        }
+      },
+    )
+  }
+
+  const templateEntries = [
+    { key: "booking_confirmation", label: "Booking confirmation" },
+    { key: "booking_reminder", label: "Booking reminder" },
+    { key: "announcement", label: "Announcement" },
+    { key: "session_alert", label: "New session alert" },
+    { key: "assessment", label: "Assessment" },
+    { key: "absence", label: "Absence notice" },
+    { key: "shop_update", label: "Shop update" },
+  ] as const
+
+  return (
+    <>
+      <Card className="p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-foreground">Automatic email content</h3>
+            <p className="text-xs text-muted-foreground">Use placeholders like {'{memberName}'}, {'{sessionTitle}'}, {'{title}'}, {'{content}'}, {'{level}'}, {'{itemName}'}</p>
+          </div>
+          <Button type="button" onClick={onSaveClick} disabled={saving} className="bg-[#40938c] text-black font-bold">
+            {saving ? "Saving..." : "Save all templates"}
+          </Button>
+        </div>
+
+        <div className="space-y-5">
+          {templateEntries.map(({ key, label }) => (
+            <Card key={key} className="border border-zinc-800 bg-zinc-950/40 p-4">
+              <div className="mb-3">
+                <h4 className="text-sm font-semibold text-foreground">{label}</h4>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <Label className="mb-1 block text-xs uppercase tracking-[0.2em] text-muted-foreground">Subject</Label>
+                  <Input
+                    value={value[key].subject}
+                    onChange={(event) => onChange({
+                      ...value,
+                      [key]: { ...value[key], subject: event.target.value },
+                    })}
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1 block text-xs uppercase tracking-[0.2em] text-muted-foreground">Body</Label>
+                  <Textarea
+                    value={value[key].body}
+                    onChange={(event) => onChange({
+                      ...value,
+                      [key]: { ...value[key], body: event.target.value },
+                    })}
+                    className="min-h-32"
+                  />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </Card>
+
+      <ConfirmationDialog
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        isLoading={false}
+        onConfirm={() => confirmState.onConfirm()}
+        onCancel={closeConfirmation}
+      />
     </>
   )
 }

@@ -17,6 +17,7 @@
                                                   Resource,
                                                 } from "@/lib/types"
 import { LEVELS } from "@/lib/types"
+import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling"
                                                 import {
                                                   LayoutDashboard,
                                                   CalendarDays,
@@ -237,6 +238,10 @@ import { LEVELS } from "@/lib/types"
                                                   const [isDarkMode, setIsDarkMode] = useState(true)
                                                   const [customName, setCustomName] = useState(profile.full_name || "")
                                                   const [isSavingName, setIsSavingName] = useState(false)
+                                                  const [marketingEmails, setMarketingEmails] = useState(Boolean(profile.marketing_emails ?? true))
+                                                  const [sessionReminderEmails, setSessionReminderEmails] = useState(Boolean(profile.session_reminder_emails ?? true))
+                                                  const [sessionAlertEmails, setSessionAlertEmails] = useState(Boolean(profile.session_alert_emails ?? true))
+                                                  const [isSavingEmailPrefs, setIsSavingEmailPrefs] = useState(false)
                                                   
                                                   // Interactive Confirmation Window State
                                                   const [confirmingSession, setConfirmingSession] = useState<ScheduleSession | null>(null)
@@ -259,6 +264,7 @@ import { LEVELS } from "@/lib/types"
                                                   const [newSessionDate, setNewSessionDate] = useState("")
                                                   const [newSessionTime, setNewSessionTime] = useState(AVAILABLE_TIME_SLOTS[0])
                                                   const [newSessionLevel, setNewSessionLevel] = useState<string>(PLAYER_TIERS[0])
+                                                  const [newSessionCapacity, setNewSessionCapacity] = useState<string>("")
                                                   const [sessionTitles, setSessionTitles] = useState<string[]>(["Core Training Focus"])
 
                                                   const [newAnnTitle, setNewAnnTitle] = useState("")
@@ -482,6 +488,30 @@ import { LEVELS } from "@/lib/types"
                                                     }
                                                   }
 
+                                                  async function saveEmailPreferences() {
+                                                    setIsSavingEmailPrefs(true)
+                                                    try {
+                                                      const response = await fetch("/api/support/profile", {
+                                                        method: "PATCH",
+                                                        credentials: "include",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({
+                                                          memberId: profile.id,
+                                                          marketing_emails: marketingEmails,
+                                                          session_reminder_emails: sessionReminderEmails,
+                                                          session_alert_emails: sessionAlertEmails,
+                                                        }),
+                                                      })
+                                                      const result = await response.json().catch(() => ({ error: "Unable to update email settings." }))
+                                                      if (!response.ok) throw new Error(result.error || "Unable to update email settings.")
+                                                      showToast("Email preferences updated")
+                                                    } catch (error) {
+                                                      showToast(error instanceof Error ? error.message : "Unable to update email settings.")
+                                                    } finally {
+                                                      setIsSavingEmailPrefs(false)
+                                                    }
+                                                  }
+
                                                   const handleAddTitleInputRow = () => setSessionTitles([...sessionTitles, ""])
                                                   const handleRemoveTitleInputRow = (index: number) => setSessionTitles(sessionTitles.filter((_, i) => i !== index))
                                                   const handleUpdateTitleRowValue = (index: number, value: string) => {
@@ -504,8 +534,10 @@ import { LEVELS } from "@/lib/types"
             date: newSessionDate,
             time: newSessionTime,
             level: newSessionLevel,
+            max_capacity: newSessionCapacity ? Number(newSessionCapacity) : null,
             coach: displayName,
-            title: combinedFocusTitle
+            title: combinedFocusTitle,
+            notes: getSessionBookingNotes({ date: newSessionDate, time: newSessionTime, max_capacity: newSessionCapacity ? Number(newSessionCapacity) : null, notes: "" }, 0)
           })
           .select()
           .single()
@@ -1056,6 +1088,13 @@ import { LEVELS } from "@/lib/types"
 
                                                   async function book(session: ScheduleSession) {
                                                     const note = bookingNoteDraft.trim()
+                                                    const currentBookingCount = bookings.filter((b) => String(b.session_id) === String(session.id)).length
+                                                    const ruleSet = getSessionBookingRules(session, currentBookingCount, new Date())
+                                                    if (ruleSet.isFull || ruleSet.isBookingBlocked) {
+                                                      alert(ruleSet.bookingBlockReason || "This session is full or booking is closed.")
+                                                      return
+                                                    }
+
                                                     setPendingId(session.id)
                                                     try {
                                                       const response = await fetch("/api/bookings", {
@@ -1144,6 +1183,11 @@ import { LEVELS } from "@/lib/types"
                                                   async function cancel(booking: Booking) {
                                                     const sessionDetail = booking.session_id ? scheduleById.get(String(booking.session_id)) : null
                                                     const sessionInfo = sessionDetail ? `${formatDate(sessionDetail.date)} at ${sessionDetail.time || "TBD"}` : "this session"
+                                                    const ruleSet = sessionDetail ? getSessionBookingRules(sessionDetail, bookings.filter((b) => String(b.session_id) === String(sessionDetail.id)).length, new Date()) : null
+                                                    if (ruleSet?.isCancellationBlocked) {
+                                                      alert(ruleSet.cancellationBlockReason || "Cancellation is disabled within 24 hours of the session start. Please talk to the club leaders if you need help.")
+                                                      return
+                                                    }
                                                     
                                                     showConfirmation(
                                                       "Retract Spot?",
@@ -1429,7 +1473,7 @@ import { LEVELS } from "@/lib/types"
                                                                   {isStaff && (
                                                                     <Card className={`p-4 border border-[#40938c]/30 bg-[#40938c]/5 rounded-sm mb-4 flex flex-col gap-3`}>
                                                                       <p className="text-[11px] font-bold uppercase tracking-wide text-[#40938c]">Create New Schedule Track</p>
-                                                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                                                                         <input type="date" value={newSessionDate} onChange={(e) => setNewSessionDate(e.target.value)} className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`} />
                                                                         
                                                                         <select value={newSessionTime} onChange={(e) => setNewSessionTime(e.target.value)} className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`}>
@@ -1439,6 +1483,8 @@ import { LEVELS } from "@/lib/types"
                                                                         <select value={newSessionLevel} onChange={(e) => setNewSessionLevel(e.target.value)} className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`}>
                                                                           {PLAYER_TIERS.map(tier => <option key={tier} value={tier}>{tier}</option>)}
                                                                         </select>
+
+                                                                        <input type="number" min={1} value={newSessionCapacity} onChange={(e) => setNewSessionCapacity(e.target.value)} placeholder="Capacity" className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`} />
                                                                       </div>
 
                                                                       <div className="flex flex-col gap-1.5 mt-2">
@@ -1479,18 +1525,25 @@ import { LEVELS } from "@/lib/types"
                                                         <p className={`text-xs ${theme.textMuted} mt-1 whitespace-pre-line`}>
                                                           Coach: {s.coach || "Club Staff"}
                                                         </p>
-                                                        <p className={`text-xs ${theme.textMuted} mt-1`}>
-                                                          {s.notes || "Session details will be provided by staff."}
+                                                        <p className={`text-xs ${theme.textMuted} mt-1 whitespace-pre-line`}>
+                                                          {getSessionBookingNotes(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length)}
                                                         </p>
                                                       </div>
                                                       <Button
                                                         size="sm"
                                                         type="button"
-                                                        disabled={booked || pendingId === String(s.id)}
-                                                        onClick={() => setConfirmingSession(s)}
-                                                        className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${booked ? "bg-zinc-700 text-white" : "bg-[#40938c] text-black font-bold"}`}
+                                                        disabled={booked || pendingId === String(s.id) || getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date()).isBookingBlocked || getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date()).isFull}
+                                                        onClick={() => {
+                                                          const ruleSet = getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date())
+                                                          if (ruleSet.isFull || ruleSet.isBookingBlocked) {
+                                                            alert(ruleSet.bookingBlockReason || "This session is full or booking is closed.")
+                                                            return
+                                                          }
+                                                          setConfirmingSession(s)
+                                                        }}
+                                                        className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${booked || getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date()).isBookingBlocked || getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date()).isFull ? "bg-zinc-700 text-white" : "bg-[#40938c] text-black font-bold"}`}
                                                       >
-                                                        {booked ? "Claimed" : "Join Session"}
+                                                        {booked ? "Claimed" : getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date()).isFull ? "Session Full" : getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date()).isBookingBlocked ? "Booking Closed" : "Join Session"}
                                                       </Button>
                                                     </Card>
                                                   )
@@ -2324,6 +2377,30 @@ import { LEVELS } from "@/lib/types"
                                                                     {isSavingName ? "Saving..." : "Commit Change"}
                                                                   </Button>
                                                                 </div>
+                                                              </Card>
+
+                                                              <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col gap-4`}>
+                                                                <div>
+                                                                  <h4 className={`text-xs font-bold uppercase tracking-wide ${theme.textSecondary}`}>Email notifications</h4>
+                                                                  <p className={`text-[11px] ${theme.textMuted} font-mono`}>Choose which automatic club emails you want to receive.</p>
+                                                                </div>
+                                                                <div className="space-y-3">
+                                                                  <label className="flex items-center justify-between gap-3 text-sm">
+                                                                    <span>Marketing / shop updates</span>
+                                                                    <input type="checkbox" checked={marketingEmails} onChange={(e) => setMarketingEmails(e.target.checked)} className="h-4 w-4 accent-[#40938c]" />
+                                                                  </label>
+                                                                  <label className="flex items-center justify-between gap-3 text-sm">
+                                                                    <span>Session reminder emails</span>
+                                                                    <input type="checkbox" checked={sessionReminderEmails} onChange={(e) => setSessionReminderEmails(e.target.checked)} className="h-4 w-4 accent-[#40938c]" />
+                                                                  </label>
+                                                                  <label className="flex items-center justify-between gap-3 text-sm">
+                                                                    <span>New session alerts</span>
+                                                                    <input type="checkbox" checked={sessionAlertEmails} onChange={(e) => setSessionAlertEmails(e.target.checked)} className="h-4 w-4 accent-[#40938c]" />
+                                                                  </label>
+                                                                </div>
+                                                                <Button size="sm" onClick={saveEmailPreferences} disabled={isSavingEmailPrefs} className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-2 px-4 rounded-sm border-none self-start">
+                                                                  {isSavingEmailPrefs ? "Saving..." : "Save email settings"}
+                                                                </Button>
                                                               </Card>
 
                                                               <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex justify-between items-center`}>
