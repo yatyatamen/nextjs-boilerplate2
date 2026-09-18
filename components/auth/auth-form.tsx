@@ -70,7 +70,7 @@ export function AuthForm() {
   ) {
     const { data: existingProfile } = await supabase
       .from("profiles")
-      .select("id, role, level, full_name, email")
+      .select("id, role, level, full_name, email, marketing_emails, session_reminder_emails, session_alert_emails")
       .eq("id", userId)
       .maybeSingle()
 
@@ -84,6 +84,9 @@ export function AuthForm() {
       full_name: fullNameFromUser.trim() || existingProfile?.full_name || null,
       role: normalizedRole,
       level: normalizedLevel,
+      marketing_emails: existingProfile?.marketing_emails ?? true,
+      session_reminder_emails: existingProfile?.session_reminder_emails ?? true,
+      session_alert_emails: existingProfile?.session_alert_emails ?? true,
     }
 
     const { error } = await supabase.from("profiles").upsert(upsertPayload, { onConflict: "id" })

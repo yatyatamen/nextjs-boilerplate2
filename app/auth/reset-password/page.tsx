@@ -9,6 +9,7 @@ import { Lock, Loader2, ArrowLeft } from "lucide-react"
 
 const BACKGROUND_IMAGE =
   "https://jmlhdtltucwhxrrunenl.supabase.co/storage/v1/object/public/pics/Screenshot%202026-07-14%201459121.png"
+const RESET_LINK_TTL_MS = 10 * 60 * 1000
 
 function hasRecoveryParams() {
   if (typeof window === "undefined") return false
@@ -43,6 +44,57 @@ function getRecoveryTokens() {
   }
 
   return null
+}
+
+function getResetRequestTimestamp(): number | null {
+  if (typeof window === "undefined") return null
+
+  const searchParams = new URLSearchParams(window.location.search)
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""))
+  const rawValue = searchParams.get("reset_requested_at") ?? hashParams.get("reset_requested_at")
+  if (!rawValue) return null
+
+  const parsed = Number(rawValue)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function decodeJwtPayload<T = Record<string, unknown>>(token: string): T | null {
+  try {
+    const [, payloadSegment] = token.split(".")
+    if (!payloadSegment) return null
+
+    const normalized = payloadSegment.replace(/-/g, "+").replace(/_/g, "/")
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")
+    const decoded = atob(padded)
+    const json = decodeURIComponent(
+      Array.from(decoded)
+        .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
+        .join(""),
+    )
+
+    return JSON.parse(json) as T
+  } catch {
+    return null
+  }
+}
+
+function isRecoveryLinkExpired() {
+  if (typeof window === "undefined") return false
+
+  const requestedAt = getResetRequestTimestamp()
+  if (requestedAt) {
+    return Date.now() - requestedAt > RESET_LINK_TTL_MS
+  }
+
+  const recoveryTokens = getRecoveryTokens()
+  if (!recoveryTokens?.accessToken) return false
+
+  const payload = decodeJwtPayload<{ exp?: number }>(recoveryTokens.accessToken)
+  if (payload?.exp) {
+    return Date.now() > payload.exp * 1000
+  }
+
+  return false
 }
 
 async function getActiveRecoverySession(supabase: ReturnType<typeof createClient>) {
@@ -131,6 +183,15 @@ export default function ResetPasswordPage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: any) => {
       if (!isMounted || redirectingRef.current) return
 
+      if (isRecoveryLinkExpired()) {
+        setAccountEmail(null)
+        setIsLinkReady(false)
+        setVerifyingLink(false)
+        setMessage("This reset link has expired. Please request a new reset email.")
+        setStatus("error")
+        return
+      }
+
       void (async () => {
         if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || session) {
           const {
@@ -168,6 +229,15 @@ export default function ResetPasswordPage() {
     })
 
     const verifyRecoveryLink = async () => {
+      if (isRecoveryLinkExpired()) {
+        setAccountEmail(null)
+        setIsLinkReady(false)
+        setVerifyingLink(false)
+        setMessage("This reset link has expired. Please request a new reset email.")
+        setStatus("error")
+        return
+      }
+
       const session = await getActiveRecoverySession(supabase)
 
       if (!isMounted) return
@@ -214,6 +284,13 @@ export default function ResetPasswordPage() {
     e.preventDefault()
     setMessage(null)
     setStatus("idle")
+
+    if (isRecoveryLinkExpired()) {
+      setStatus("error")
+      setMessage("This reset link has expired. Please request a new reset email.")
+      setIsLinkReady(false)
+      return
+    }
 
     if (!isLinkReady) {
       setStatus("error")

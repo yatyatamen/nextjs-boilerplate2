@@ -20,7 +20,7 @@ function getResetRedirectUrl() {
       ? window.location.origin
       : FALLBACK_PRODUCTION_URL
 
-  return `${baseUrl}/reset-password`
+  return `${baseUrl}/auth/reset-password?reset_requested_at=${Date.now()}`
 }
 
 export default function ForgotPasswordPage() {

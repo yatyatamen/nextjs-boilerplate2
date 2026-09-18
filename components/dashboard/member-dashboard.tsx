@@ -2386,7 +2386,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                 </div>
                                                                 <div className="space-y-3">
                                                                   <label className="flex items-center justify-between gap-3 text-sm">
-                                                                    <span>Marketing / shop updates</span>
+                                                                    <span>Shop updates</span>
                                                                     <input type="checkbox" checked={marketingEmails} onChange={(e) => setMarketingEmails(e.target.checked)} className="h-4 w-4 accent-[#40938c]" />
                                                                   </label>
                                                                   <label className="flex items-center justify-between gap-3 text-sm">
