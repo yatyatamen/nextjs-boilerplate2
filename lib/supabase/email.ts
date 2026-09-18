@@ -38,6 +38,7 @@ export async function sendEmail({
   text?: string
 }) {
   if (!resend) {
+    console.error("[email] RESEND_API_KEY is not configured. Email delivery is disabled.")
     return { ok: false, error: "RESEND_API_KEY is not configured" }
   }
 
@@ -58,14 +59,17 @@ export async function sendEmail({
     })
 
     if (result.error) {
+      console.error("[email] Resend rejected the message:", result.error)
       return { ok: false, error: result.error.message }
     }
 
     return { ok: true, id: result.data?.id }
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to send email"
+    console.error("[email] send failed:", message)
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Unable to send email",
+      error: message,
     }
   }
 }

@@ -117,7 +117,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
 
                                                   if (validImages.length === 0) {
                                                     return (
-                                                      <div className={`flex items-center justify-center rounded-sm border border-dashed border-zinc-700 bg-zinc-950/40 ${className}`}>
+                                                      <div className={`flex items-center justify-center rounded-sm border border-dashed border-zinc-700 bg-white ${className}`}>
                                                         <span className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">No image</span>
                                                       </div>
                                                     )
@@ -129,7 +129,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
 
                                                   return (
                                                     <div
-                                                      className={`relative overflow-hidden rounded-sm bg-zinc-950 ${className}`}
+                                                      className={`relative overflow-hidden rounded-sm border border-zinc-200 bg-white ${className}`}
                                                       onTouchStart={(event) => { touchStartX.current = event.touches[0]?.clientX ?? null }}
                                                       onTouchEnd={(event) => {
                                                         if (touchStartX.current === null || validImages.length < 2) return
@@ -140,7 +140,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                         else showNext()
                                                       }}
                                                     >
-                                                      <img src={currentImage} alt={alt} className="h-full w-full object-cover" />
+                                                      <img src={currentImage} alt={alt} className="h-full w-full object-contain p-2" />
                                                       {validImages.length > 1 && (
                                                         <>
                                                           <button type="button" aria-label="Previous image" onClick={showPrevious} className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-1 text-white transition hover:bg-black/80">
@@ -242,6 +242,20 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                   const [sessionReminderEmails, setSessionReminderEmails] = useState(Boolean(profile.session_reminder_emails ?? true))
                                                   const [sessionAlertEmails, setSessionAlertEmails] = useState(Boolean(profile.session_alert_emails ?? true))
                                                   const [isSavingEmailPrefs, setIsSavingEmailPrefs] = useState(false)
+                                                  const [selectedProduct, setSelectedProduct] = useState<{
+                                                    kind: "gear" | "shop"
+                                                    title: string
+                                                    brand?: string
+                                                    category?: string
+                                                    badge?: string
+                                                    description?: string
+                                                    specs?: string
+                                                    price?: number | null
+                                                    stock?: number | null
+                                                    unit?: string
+                                                    externalLink?: string | null
+                                                    images: string[]
+                                                  } | null>(null)
                                                   
                                                   // Interactive Confirmation Window State
                                                   const [confirmingSession, setConfirmingSession] = useState<ScheduleSession | null>(null)
@@ -1912,11 +1926,11 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                         <GalleryCarousel images={galleryImages} alt={g.title} className="h-72 w-full" />
                                                                         <div className="flex flex-col gap-4 p-5">
                                                                           <div className="flex items-start justify-between gap-3">
-                                                                            <div>
+                                                                            <div className="min-w-0 flex-1">
                                                                               <h4 className={`text-lg font-bold ${theme.headingColor}`}>{g.title}</h4>
                                                                               <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{g.category || "Gear"}</p>
                                                                             </div>
-                                                                            <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase">{g.recommended_for_tier}</Badge>
+                                                                            <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{g.recommended_for_tier}</Badge>
                                                                           </div>
                                                                           <div className="flex items-center justify-between gap-3 border-b border-zinc-800/40 pb-2">
                                                                             <p className={`text-sm ${theme.textSecondary} font-medium`}>{g.brand}</p>
@@ -1933,6 +1947,25 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                             <p className={`text-xs ${theme.textSecondary} leading-relaxed`}>{g.why_recommend}</p>
                                                                           </div>
                                                                           <div className="flex flex-wrap items-center gap-2 pt-1">
+                                                                            <Button
+                                                                              type="button"
+                                                                              variant="outline"
+                                                                              size="sm"
+                                                                              onClick={() => setSelectedProduct({
+                                                                                kind: "gear",
+                                                                                title: g.title,
+                                                                                brand: g.brand,
+                                                                                category: g.category || "Gear",
+                                                                                badge: g.recommended_for_tier,
+                                                                                description: g.why_recommend,
+                                                                                specs: g.specs,
+                                                                                externalLink: g.external_link,
+                                                                                images: galleryImages,
+                                                                              })}
+                                                                              className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
+                                                                            >
+                                                                              Learn more
+                                                                            </Button>
                                                                             <Button
                                                                               type="button"
                                                                               variant="outline"
@@ -1988,7 +2021,26 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               </a>
                                                                             )}
                                                                           </div>
-                                                                          <div className="flex items-center justify-end">
+                                                                          <div className="flex items-center justify-end gap-2">
+                                                                            <Button
+                                                                              type="button"
+                                                                              variant="outline"
+                                                                              size="sm"
+                                                                              onClick={() => setSelectedProduct({
+                                                                                kind: "gear",
+                                                                                title: g.title,
+                                                                                brand: g.brand,
+                                                                                category: g.category || "Gear",
+                                                                                badge: g.recommended_for_tier,
+                                                                                description: g.why_recommend,
+                                                                                specs: g.specs,
+                                                                                externalLink: g.external_link,
+                                                                                images: galleryImages,
+                                                                              })}
+                                                                              className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
+                                                                            >
+                                                                              Learn more
+                                                                            </Button>
                                                                             <Button
                                                                               type="button"
                                                                               variant="outline"
@@ -2014,13 +2066,13 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                         <div>
                                                                           <div className="flex items-start gap-4">
                                                                             <GalleryCarousel images={galleryImages} alt={g.title} className="h-32 w-32 shrink-0" />
-                                                                            <div className="flex-1">
-                                                                              <div className="flex items-center justify-between gap-3">
-                                                                                <div>
+                                                                            <div className="min-w-0 flex-1">
+                                                                              <div className="flex items-start justify-between gap-3">
+                                                                                <div className="min-w-0 flex-1">
                                                                                   <h4 className={`text-base font-bold ${theme.headingColor}`}>{g.title}</h4>
                                                                                   <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{g.category || "Gear"}</p>
                                                                                 </div>
-                                                                                <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase">{g.recommended_for_tier}</Badge>
+                                                                                <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{g.recommended_for_tier}</Badge>
                                                                               </div>
                                                                               <p className={`text-xs ${theme.textSecondary} mt-2`}>{g.brand}</p>
                                                                             </div>
@@ -2038,6 +2090,25 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               View product page
                                                                             </a>
                                                                           )}
+                                                                          <Button
+                                                                            type="button"
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            onClick={() => setSelectedProduct({
+                                                                              kind: "gear",
+                                                                              title: g.title,
+                                                                              brand: g.brand,
+                                                                              category: g.category || "Gear",
+                                                                              badge: g.recommended_for_tier,
+                                                                              description: g.why_recommend,
+                                                                              specs: g.specs,
+                                                                              externalLink: g.external_link,
+                                                                              images: galleryImages,
+                                                                            })}
+                                                                            className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
+                                                                          >
+                                                                            Learn more
+                                                                          </Button>
                                                                           <Button
                                                                             type="button"
                                                                             variant="outline"
@@ -2137,27 +2208,44 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                   <p className={`text-sm ${theme.textSecondary}`}>No shop items match that filter.</p>
                                                                 </Card>
                                                               ) : shopLayout === "large" ? (
-                                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                                                <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                                                                   {filteredShopItems.map((item) => {
                                                                     const galleryImages = mergeImageLists(item.image_url, (item as any).pic_url, (item as any).picUrl, (item as any).image_urls)
                                                                     const unit = item.unit || (item as any).unit || "units"
                                                                     return (
                                                                       <Card key={item.id} className={`overflow-hidden p-0 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                         <GalleryCarousel images={galleryImages} alt={item.name || "product"} className="h-72 w-full" />
-                                                                        <div className="flex flex-col gap-3 p-4">
+                                                                        <div className="flex flex-col gap-4 p-5">
                                                                           <div className="flex items-start justify-between gap-3">
-                                                                            <div>
-                                                                              <h4 className={`text-base font-bold ${theme.headingColor}`}>{item.name}</h4>
+                                                                            <div className="min-w-0 flex-1">
+                                                                              <h4 className={`text-lg font-bold ${theme.headingColor}`}>{item.name}</h4>
                                                                               <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{item.category || "Item"}</p>
                                                                             </div>
-                                                                            <span className="text-base font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
+                                                                            <span className="text-lg font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
                                                                           </div>
-                                                                          <p className={`text-xs ${theme.textSecondary} leading-relaxed`}>{item.description || "No description available."}</p>
-                                                                          <div className={`flex items-center justify-between border-t border-zinc-800/30 pt-2 text-[10px] ${theme.textSecondary}`}>
-                                                                            <span>Stock: {item.stock ?? 0} {unit}</span>
-                                                                            <span>{unit}</span>
+                                                                          <div className="flex items-center justify-between gap-3 border-b border-zinc-800/40 pb-2">
+                                                                            <p className={`text-sm ${theme.textSecondary}`}>{item.stock ?? 0} {unit} in stock</p>
+                                                                            <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
                                                                           </div>
-                                                                          <div className="flex flex-wrap gap-2 pt-1">
+                                                                          <p className={`text-sm ${theme.textSecondary} leading-relaxed`}>{item.description || "No description available."}</p>
+                                                                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                                                                            <Button
+                                                                              size="sm"
+                                                                              onClick={() => setSelectedProduct({
+                                                                                kind: "shop",
+                                                                                title: item.name || "Shop item",
+                                                                                category: item.category || "Shop item",
+                                                                                description: item.description || "No description available.",
+                                                                                price: item.price,
+                                                                                stock: item.stock,
+                                                                                unit,
+                                                                                externalLink: undefined,
+                                                                                images: galleryImages,
+                                                                              })}
+                                                                              className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                                                                            >
+                                                                              Learn more
+                                                                            </Button>
                                                                             <Button
                                                                               size="sm"
                                                                               onClick={() => openGuideInquiry(item.name, item.category ?? "Shop Item")}
@@ -2180,18 +2268,38 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                       <Card key={item.id} className={`p-3 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                         <div className="flex flex-col gap-3 md:flex-row md:items-center">
                                                                           <GalleryCarousel images={galleryImages} alt={item.name || "product"} className="h-24 w-full md:w-28 shrink-0" />
-                                                                          <div className="flex-1">
-                                                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                                                              <div>
+                                                                          <div className="flex-1 min-w-0">
+                                                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                                                              <div className="min-w-0 flex-1">
                                                                                 <h4 className={`text-base font-bold ${theme.headingColor}`}>{item.name}</h4>
                                                                                 <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{item.category || "Item"}</p>
                                                                               </div>
-                                                                              <span className="text-base font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
+                                                                              <div className="flex items-center gap-2">
+                                                                                <span className="text-base font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
+                                                                                <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
+                                                                              </div>
                                                                             </div>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{item.description || "No description available."}</p>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary}`}>Stock: {item.stock ?? 0} {unit}</p>
                                                                           </div>
-                                                                          <div className="flex items-center justify-end">
+                                                                          <div className="flex items-center justify-end gap-2">
+                                                                            <Button
+                                                                              size="sm"
+                                                                              onClick={() => setSelectedProduct({
+                                                                                kind: "shop",
+                                                                                title: item.name || "Shop item",
+                                                                                category: item.category || "Shop item",
+                                                                                description: item.description || "No description available.",
+                                                                                price: item.price,
+                                                                                stock: item.stock,
+                                                                                unit,
+                                                                                externalLink: undefined,
+                                                                                images: galleryImages,
+                                                                              })}
+                                                                              className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                                                                            >
+                                                                              Learn more
+                                                                            </Button>
                                                                             <Button
                                                                               size="sm"
                                                                               onClick={() => openGuideInquiry(item.name, item.category ?? "Shop Item")}
@@ -2214,9 +2322,9 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                       <Card key={item.id} className={`p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col justify-between gap-3`}>
                                                                         <div className="flex gap-3">
                                                                           <GalleryCarousel images={galleryImages} alt={item.name || "product"} className="h-32 w-32 shrink-0" />
-                                                                          <div className="flex-1">
+                                                                          <div className="flex-1 min-w-0">
                                                                             <div className="flex justify-between items-start gap-2">
-                                                                              <div>
+                                                                              <div className="min-w-0 flex-1">
                                                                                 <h4 className={`text-sm font-bold ${theme.headingColor}`}>{item.name}</h4>
                                                                                 <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{item.category || "Item"}</p>
                                                                               </div>
@@ -2225,11 +2333,28 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                             <p className={`text-xs ${theme.textSecondary} mt-2 leading-relaxed`}>{item.description || "No description available."}</p>
                                                                           </div>
                                                                         </div>
-                                                                        <div className={`flex items-center justify-between border-t border-zinc-800/30 pt-2 mt-1 text-[10px] ${theme.textSecondary}`}>
-                                                                          <span>Stock: {item.stock ?? 0} {unit}</span>
-                                                                          <span>{unit}</span>
+                                                                        <div className="flex items-center justify-between gap-2 border-t border-zinc-800/30 pt-2 mt-1">
+                                                                          <span className={`text-[10px] ${theme.textSecondary}`}>Stock: {item.stock ?? 0} {unit}</span>
+                                                                          <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
                                                                         </div>
                                                                         <div className="flex flex-wrap gap-2 mt-3">
+                                                                          <Button
+                                                                            size="sm"
+                                                                            onClick={() => setSelectedProduct({
+                                                                              kind: "shop",
+                                                                              title: item.name || "Shop item",
+                                                                              category: item.category || "Shop item",
+                                                                              description: item.description || "No description available.",
+                                                                              price: item.price,
+                                                                              stock: item.stock,
+                                                                              unit,
+                                                                              externalLink: undefined,
+                                                                              images: galleryImages,
+                                                                            })}
+                                                                            className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                                                                          >
+                                                                            Learn more
+                                                                          </Button>
                                                                           <Button
                                                                             size="sm"
                                                                             onClick={() => openGuideInquiry(item.name, item.category ?? "Shop Item")}
@@ -2420,6 +2545,90 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
 
                                                         </div>
                                                       </DashboardShell>
+                                                      {selectedProduct && (
+                                                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+                                                          <div className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+                                                            <button
+                                                              type="button"
+                                                              aria-label="Close product details"
+                                                              onClick={() => setSelectedProduct(null)}
+                                                              className="absolute right-4 top-4 z-10 rounded-full border border-zinc-700 bg-zinc-950/80 p-2 text-zinc-200 hover:bg-zinc-800"
+                                                            >
+                                                              <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
+                                                                <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                                                              </svg>
+                                                            </button>
+                                                            <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] md:p-8">
+                                                              <div className="rounded-xl border border-zinc-700 bg-white p-3">
+                                                                <GalleryCarousel images={selectedProduct.images} alt={selectedProduct.title} className="h-[420px] w-full" />
+                                                              </div>
+                                                              <div className="flex flex-col gap-4 text-zinc-100">
+                                                                <div className="flex items-start justify-between gap-3">
+                                                                  <div className="min-w-0 flex-1">
+                                                                    <p className="text-[10px] uppercase tracking-[0.3em] text-[#40938c]">{selectedProduct.category || "Product"}</p>
+                                                                    <h3 className="mt-2 text-2xl font-black tracking-tight text-white">{selectedProduct.title}</h3>
+                                                                  </div>
+                                                                  {selectedProduct.badge && (
+                                                                    <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{selectedProduct.badge}</Badge>
+                                                                  )}
+                                                                </div>
+
+                                                                {(selectedProduct.brand || selectedProduct.price !== undefined) && (
+                                                                  <div className="flex flex-wrap items-center gap-3 border-b border-zinc-800 pb-3">
+                                                                    {selectedProduct.brand && <p className="text-sm text-zinc-300">{selectedProduct.brand}</p>}
+                                                                    {selectedProduct.price !== undefined && selectedProduct.price !== null && (
+                                                                      <span className="text-lg font-mono font-bold text-[#40938c]">${Number(selectedProduct.price).toFixed(2)}</span>
+                                                                    )}
+                                                                  </div>
+                                                                )}
+
+                                                                {selectedProduct.stock !== undefined && selectedProduct.stock !== null && (
+                                                                  <p className="text-sm text-zinc-300">Stock: {selectedProduct.stock} {selectedProduct.unit || "units"}</p>
+                                                                )}
+
+                                                                {selectedProduct.specs && (
+                                                                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                                                                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-zinc-400">Specs</p>
+                                                                    <p className="mt-2 text-sm leading-relaxed text-zinc-200">{selectedProduct.specs}</p>
+                                                                  </div>
+                                                                )}
+
+                                                                {selectedProduct.description && (
+                                                                  <div>
+                                                                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-zinc-400">Why we recommend it</p>
+                                                                    <p className="mt-2 text-sm leading-7 text-zinc-200">{selectedProduct.description}</p>
+                                                                  </div>
+                                                                )}
+
+                                                                <div className="mt-auto flex flex-wrap gap-3 pt-2">
+                                                                  {selectedProduct.externalLink && (
+                                                                    <a
+                                                                      href={selectedProduct.externalLink}
+                                                                      target="_blank"
+                                                                      rel="noreferrer"
+                                                                      className="inline-flex items-center justify-center rounded-md border border-[#40938c] bg-[#40938c] px-4 py-2 text-sm font-semibold text-black hover:bg-[#5cc7bb]"
+                                                                    >
+                                                                      View product page
+                                                                    </a>
+                                                                  )}
+                                                                  <Button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                      const itemName = selectedProduct.title
+                                                                      const category = selectedProduct.category || "Product"
+                                                                      openGuideInquiry(itemName, category)
+                                                                      setSelectedProduct(null)
+                                                                    }}
+                                                                    className="bg-[#40938c] text-black hover:bg-[#5cc7bb]"
+                                                                  >
+                                                                    Ask about this product
+                                                                  </Button>
+                                                                </div>
+                                                              </div>
+                                                            </div>
+                                                          </div>
+                                                        </div>
+                                                      )}
                                                       <GuideInquiryModal
                                                         isOpen={guideInquiry.isOpen}
                                                         title={guideInquiry.title}

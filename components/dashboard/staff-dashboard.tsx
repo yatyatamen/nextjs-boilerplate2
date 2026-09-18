@@ -2296,6 +2296,7 @@ function ScheduleForm({
     visibility_tiers: string[]
     coach: string
     notes: string
+    max_capacity?: number | null
   }) => Promise<void>
 }) {
   const { loading } = useSubmitting()
@@ -2305,6 +2306,7 @@ function ScheduleForm({
   const [title, setTitle] = useState("")
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
+  const [maxCapacity, setMaxCapacity] = useState("")
   const [selectedTiers, setSelectedTiers] = useState<string[]>([...ALL_TIERS])
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>([])
   const [notes, setNotes] = useState("")
@@ -2341,10 +2343,12 @@ function ScheduleForm({
               .map((teacher) => getMemberDisplayName(teacher))
               .join(", "),
             notes,
+            max_capacity: maxCapacity ? Number(maxCapacity) : null,
           })
           setTitle("")
           setDate("")
           setTime("")
+          setMaxCapacity("")
           setSelectedTeacherIds([])
           setNotes("")
           closeConfirmation()
@@ -2386,6 +2390,17 @@ function ScheduleForm({
                 <option key={slot} value={slot}>{slot}</option>
               ))}
             </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="s-capacity">People limit</Label>
+            <Input
+              id="s-capacity"
+              type="number"
+              min={1}
+              value={maxCapacity}
+              onChange={(e) => setMaxCapacity(e.target.value)}
+              placeholder="Optional limit"
+            />
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2 border border-zinc-800 p-3 rounded bg-zinc-950/40">
             <Label className="text-[#40938c] font-bold">Select Visible Ranks</Label>
