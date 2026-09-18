@@ -2077,14 +2077,14 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                           <div className="flex items-start gap-4">
                                                                             <GalleryCarousel images={galleryImages} alt={g.title} className="h-32 w-32 shrink-0" />
                                                                             <div className="min-w-0 flex-1">
-                                                                              <div className="flex items-start justify-between gap-3">
-                                                                                <div className="min-w-0 flex-1">
-                                                                                  <h4 className={`text-base font-bold ${theme.headingColor}`}>{g.title}</h4>
-                                                                                  <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{g.category || "Gear"}</p>
+                                                                              <div className="flex min-w-0 flex-col gap-2">
+                                                                                <div className="flex min-w-0 items-center gap-2">
+                                                                                  <p className={`truncate text-xs ${theme.textSecondary}`}>{g.brand}</p>
+                                                                                  <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{g.recommended_for_tier}</Badge>
                                                                                 </div>
-                                                                                <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{g.recommended_for_tier}</Badge>
+                                                                                <h4 className={`text-base font-bold ${theme.headingColor}`}>{g.title}</h4>
+                                                                                <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted}`}>{g.category || "Gear"}</p>
                                                                               </div>
-                                                                              <p className={`text-xs ${theme.textSecondary} mt-2`}>{g.brand}</p>
                                                                             </div>
                                                                           </div>
                                                                           <div className="mt-4 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-3">
@@ -2337,12 +2337,14 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                         <div className="flex gap-3">
                                                                           <GalleryCarousel images={galleryImages} alt={item.name || "product"} className="h-32 w-32 shrink-0" />
                                                                           <div className="flex-1 min-w-0">
-                                                                            <div className="flex justify-between items-start gap-2">
-                                                                              <div className="min-w-0 flex-1">
-                                                                                <h4 className={`text-sm font-bold ${theme.headingColor}`}>{item.name}</h4>
-                                                                                <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{item.category || "Item"}</p>
+                                                                            <div className="flex min-w-0 flex-col gap-2">
+                                                                              <div className="flex min-w-0 items-center justify-between gap-2">
+                                                                                <div className="min-w-0 flex-1">
+                                                                                  <p className={`truncate text-[10px] uppercase tracking-[0.3em] ${theme.textMuted}`}>{item.category || "Item"}</p>
+                                                                                </div>
+                                                                                <span className="text-xs font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
                                                                               </div>
-                                                                              <span className="text-xs font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
+                                                                              <h4 className={`text-sm font-bold ${theme.headingColor}`}>{item.name}</h4>
                                                                             </div>
                                                                             <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
                                                                               <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
@@ -2581,14 +2583,17 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                 <GalleryCarousel images={selectedProduct.images} alt={selectedProduct.title} className="h-[420px] w-full" />
                                                               </div>
                                                               <div className="flex flex-col gap-4 text-zinc-100">
-                                                                <div className="flex items-start justify-between gap-3">
-                                                                  <div className="min-w-0 flex-1">
-                                                                    <p className="text-[10px] uppercase tracking-[0.3em] text-[#40938c]">{selectedProduct.category || "Product"}</p>
-                                                                    <h3 className="mt-2 text-2xl font-black tracking-tight text-white">{selectedProduct.title}</h3>
+                                                                <div className="flex min-w-0 flex-col gap-2">
+                                                                  <div className="flex min-w-0 items-center gap-2">
+                                                                    {selectedProduct.brand && (
+                                                                      <p className="truncate text-sm text-zinc-300">{selectedProduct.brand}</p>
+                                                                    )}
+                                                                    {selectedProduct.badge && (
+                                                                      <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{selectedProduct.badge}</Badge>
+                                                                    )}
                                                                   </div>
-                                                                  {selectedProduct.badge && (
-                                                                    <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{selectedProduct.badge}</Badge>
-                                                                  )}
+                                                                  <p className="text-[10px] uppercase tracking-[0.3em] text-[#40938c]">{selectedProduct.category || "Product"}</p>
+                                                                  <h3 className="text-2xl font-black tracking-tight text-white">{selectedProduct.title}</h3>
                                                                 </div>
 
                                                                 {(selectedProduct.brand || selectedProduct.price !== undefined) && (

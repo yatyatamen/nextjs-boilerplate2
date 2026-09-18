@@ -3303,8 +3303,16 @@ function useConfirmation() {
     onConfirm: async () => {},
   })
 
-  const showConfirmation = (title: string, message: string, onConfirm: () => Promise<void>) => {
-    setConfirmState({ isOpen: true, title, message, onConfirm })
+  const showConfirmation = (title: string, message: string, onConfirm: () => Promise<void> | void) => {
+    setConfirmState({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: async () => {
+        setConfirmState((prev) => ({ ...prev, isOpen: false }))
+        await onConfirm()
+      },
+    })
   }
 
   const closeConfirmation = () => {
@@ -3325,7 +3333,7 @@ function ConfirmationDialog({
   isOpen: boolean
   title: string
   message: string
-  onConfirm: () => void
+  onConfirm: () => void | Promise<void>
   onCancel: () => void
   isLoading: boolean
 }) {
@@ -3348,7 +3356,9 @@ function ConfirmationDialog({
           </Button>
           <Button
             type="button"
-            onClick={onConfirm}
+            onClick={() => {
+              void onConfirm()
+            }}
             disabled={isLoading}
             className="border border-black bg-white px-4 text-black hover:bg-zinc-100"
           >
