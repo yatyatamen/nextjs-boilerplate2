@@ -63,8 +63,6 @@ export function getSessionBookingRules(
 
   const sessionNotes = [
     session.notes?.trim() || "Session details will be provided by staff.",
-    "Booking policy: members can only book before 6 hours remain until the session start. Please talk to the club leaders if you need help.",
-    "Cancellation policy: bookings cannot be cancelled within 24 hours of the session start. Please talk to the club leaders if you need help.",
     limit !== null ? `Spots left: ${Math.max(limit - currentCount, 0)} of ${limit}.` : "Spots left: no fixed member cap for this session.",
   ].join("\n\n")
 

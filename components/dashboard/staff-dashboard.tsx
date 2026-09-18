@@ -2537,7 +2537,7 @@ function TitleContentForm({
   )
 }
 
-function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; category: string; price: number; description: string; pic_url: string; stock: number; unit: string }) => Promise<void> }) {
+function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; category: string; price: number; description: string; specs?: string; pic_url: string; stock: number; unit: string }) => Promise<void> }) {
   const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
@@ -2545,6 +2545,7 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
   const [name, setName] = useState("")
   const [category, setCategory] = useState("Rackets")
   const [price, setPrice] = useState("")
+  const [specs, setSpecs] = useState("")
   const [description, setDescription] = useState("")
   const [picUrl, setPicUrl] = useState("")
   const [stock, setStock] = useState(0)
@@ -2565,12 +2566,14 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
             category,
             price: Number(price) || 0,
             description,
+            specs,
             pic_url: imageUrls.join(", "),
             stock: Number(stock) || 0,
             unit,
           })
           setName("")
           setPrice("")
+          setSpecs("")
           setDescription("")
           setPicUrl("")
           setStock(0)
@@ -2606,7 +2609,8 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
           <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Product Image URLs</Label><Textarea value={picUrl} onChange={(e) => setPicUrl(e.target.value)} placeholder="Add multiple image URLs, separated by commas or new lines" required /></div>
           <div className="flex flex-col gap-1.5"><Label>Stock Quantity</Label><Input type="number" min={0} value={stock} onChange={(e) => setStock(Number(e.target.value))} /></div>
           <div className="flex flex-col gap-1.5"><Label>Unit Label</Label><Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="units, set, pack, box" /></div>
-          <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Specification Overview</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Specs</Label><Textarea value={specs} onChange={(e) => setSpecs(e.target.value)} /></div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Overview</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></div>
           <Button type="submit" disabled={loading} className="sm:col-span-2 bg-[#40938c] text-black font-bold">List Product Stock</Button>
         </form>
         <ConfirmationDialog
@@ -2635,6 +2639,7 @@ function EditShopItemButton({
   const [category, setCategory] = useState(item.category ?? "Rackets")
   const [price, setPrice] = useState(String(item.price ?? 0))
   const [description, setDescription] = useState(item.description ?? "")
+  const [specs, setSpecs] = useState(item.specs ?? "")
   const [picUrl, setPicUrl] = useState(item.pic_url ?? item.image_url ?? "")
   const [stock, setStock] = useState(String(item.stock ?? 0))
   const [unit, setUnit] = useState(item.unit ?? "units")
@@ -2654,6 +2659,7 @@ function EditShopItemButton({
             category,
             price: Number(price) || 0,
             description,
+            specs,
             pic_url: picUrl,
             stock: Number(stock) || 0,
             unit,
@@ -2687,7 +2693,8 @@ function EditShopItemButton({
                 <label className="flex flex-col gap-1 text-xs font-medium"><span>Stock</span><Input type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)} /></label>
                 <label className="flex flex-col gap-1 text-xs font-medium"><span>Unit</span><Input value={unit} onChange={(e) => setUnit(e.target.value)} /></label>
               </div>
-              <label className="flex flex-col gap-1 text-xs font-medium"><span>Description</span><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Specs</span><Textarea value={specs} onChange={(e) => setSpecs(e.target.value)} /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Overview</span><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></label>
               <div className="mt-2 flex justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
                 <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold">Save item</Button>
@@ -2858,7 +2865,7 @@ function EditGearGuideButton({
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Image URL</span><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} /></label>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>External link</span><Input value={externalLink} onChange={(e) => setExternalLink(e.target.value)} /></label>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Specs</span><Textarea value={specs} onChange={(e) => setSpecs(e.target.value)} /></label>
-              <label className="flex flex-col gap-1 text-xs font-medium"><span>Why recommend</span><Textarea value={whyRecommend} onChange={(e) => setWhyRecommend(e.target.value)} /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Overview</span><Textarea value={whyRecommend} onChange={(e) => setWhyRecommend(e.target.value)} /></label>
               <div className="mt-2 flex justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
                 <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold">Save guide</Button>
@@ -2886,6 +2893,7 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [title, setTitle] = useState("")
   const [category, setCategory] = useState("Rackets")
+  const [specs, setSpecs] = useState("")
   const [description, setDescription] = useState("")
   const [picUrl, setPicUrl] = useState("")
   const [recommendedTiers, setRecommendedTiers] = useState<string[]>(["Beginner"])
@@ -2901,10 +2909,11 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
       async () => {
         setConfirmLoading(true)
         try {
-          const specs = priceEstimate ? `Estimated price: $${Number(priceEstimate).toFixed(2)}` : ""
+          const formattedSpecs = [specs.trim(), priceEstimate ? `Estimated price: $${Number(priceEstimate).toFixed(2)}` : ""].filter(Boolean).join("\n")
           const recommended_for_tier = recommendedTiers.join(", ")
-          await onCreate({ title, category, description, image_url: joinedUrls, recommended_for_tier, specs })
+          await onCreate({ title, category, description, image_url: joinedUrls, recommended_for_tier, specs: formattedSpecs })
           setTitle("")
+          setSpecs("")
           setDescription("")
           setPicUrl("")
           setRecommendedTiers(["Beginner"])
@@ -2961,7 +2970,8 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
               </div>
             </div>
           </div>
-          <div className="flex flex-col gap-1.5"><Label>Technical Recommendation Summary</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required /></div>
+          <div className="flex flex-col gap-1.5"><Label>Specs</Label><Textarea value={specs} onChange={(e) => setSpecs(e.target.value)} /></div>
+          <div className="flex flex-col gap-1.5"><Label>Overview</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required /></div>
           <Button type="submit" disabled={loading} className="bg-[#40938c] text-black font-bold">Publish Review Guide</Button>
         </form>
         <ConfirmationDialog

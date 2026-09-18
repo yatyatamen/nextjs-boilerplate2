@@ -1596,6 +1596,16 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                       </div>
                                                                     </div>
 
+                                                                    <div className="space-y-2 rounded-sm border border-zinc-800/60 bg-zinc-950/40 p-3">
+                                                                      <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#40938c]">Booking Policy</p>
+                                                                      <p className="text-xs leading-relaxed text-zinc-200">
+                                                                        Booking policy: members can only book before 6 hours remain until the session start. Please talk to the club leaders if you need help.
+                                                                      </p>
+                                                                      <p className="text-xs leading-relaxed text-zinc-200">
+                                                                        Cancellation policy: bookings cannot be cancelled within 24 hours of the session start. Please talk to the club leaders if you need help.
+                                                                      </p>
+                                                                    </div>
+
                                                                     <div className="space-y-2">
                                                                       <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>
                                                                         Optional note for staff/teacher
@@ -1942,9 +1952,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                           </div>
                                                                           <div className="space-y-2 text-sm">
                                                                             <p className={`font-semibold ${theme.headingColor}`}>Specs</p>
-                                                                            <p className={`text-xs ${theme.textSecondary}`}>{g.specs}</p>
-                                                                            <p className={`font-semibold ${theme.headingColor}`}>Why we recommend it</p>
-                                                                            <p className={`text-xs ${theme.textSecondary} leading-relaxed`}>{g.why_recommend}</p>
+                                                                            <p className={`text-xs ${theme.textSecondary} leading-relaxed`}>{g.specs || "No specs provided."}</p>
                                                                           </div>
                                                                           <div className="flex flex-wrap items-center gap-2 pt-1">
                                                                             <Button
@@ -2013,8 +2021,10 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase">{g.recommended_for_tier}</Badge>
                                                                             </div>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary}`}>{g.brand}</p>
-                                                                            <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{g.specs}</p>
-                                                                            <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{g.why_recommend || (g as any).description || "No recommendation details available."}</p>
+                                                                            <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
+                                                                              <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
+                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed`}>{g.specs || "No specs provided."}</p>
+                                                                            </div>
                                                                             {g.external_link && (
                                                                               <a href={g.external_link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-[#40938c] hover:underline">
                                                                                 View product page
@@ -2077,11 +2087,9 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               <p className={`text-xs ${theme.textSecondary} mt-2`}>{g.brand}</p>
                                                                             </div>
                                                                           </div>
-                                                                          <div className="mt-4 space-y-2 text-sm">
-                                                                            <p className={`font-semibold ${theme.headingColor}`}>Specs</p>
-                                                                            <p className={`text-xs ${theme.textSecondary}`}>{g.specs}</p>
-                                                                            <p className={`font-semibold ${theme.headingColor}`}>Why we recommend it</p>
-                                                                            <p className={`text-xs ${theme.textSecondary} leading-relaxed`}>{g.why_recommend}</p>
+                                                                          <div className="mt-4 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-3">
+                                                                            <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
+                                                                            <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{g.specs || "No specs provided."}</p>
                                                                           </div>
                                                                         </div>
                                                                         <div className="flex flex-wrap items-center gap-2">
@@ -2227,7 +2235,10 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                             <p className={`text-sm ${theme.textSecondary}`}>{item.stock ?? 0} {unit} in stock</p>
                                                                             <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
                                                                           </div>
-                                                                          <p className={`text-sm ${theme.textSecondary} leading-relaxed`}>{item.description || "No description available."}</p>
+                                                                          <div className="rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-3">
+                                                                            <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
+                                                                            <p className={`mt-2 text-sm ${theme.textSecondary} leading-relaxed`}>{item.specs || item.description || "No specs provided."}</p>
+                                                                          </div>
                                                                           <div className="flex flex-wrap items-center gap-2 pt-1">
                                                                             <Button
                                                                               size="sm"
@@ -2279,7 +2290,10 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                                 <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
                                                                               </div>
                                                                             </div>
-                                                                            <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{item.description || "No description available."}</p>
+                                                                            <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
+                                                                              <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
+                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed`}>{item.specs || item.description || "No specs provided."}</p>
+                                                                            </div>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary}`}>Stock: {item.stock ?? 0} {unit}</p>
                                                                           </div>
                                                                           <div className="flex items-center justify-end gap-2">
@@ -2330,7 +2344,10 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               </div>
                                                                               <span className="text-xs font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
                                                                             </div>
-                                                                            <p className={`text-xs ${theme.textSecondary} mt-2 leading-relaxed`}>{item.description || "No description available."}</p>
+                                                                            <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
+                                                                              <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
+                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed`}>{item.specs || item.description || "No specs provided."}</p>
+                                                                            </div>
                                                                           </div>
                                                                         </div>
                                                                         <div className="flex items-center justify-between gap-2 border-t border-zinc-800/30 pt-2 mt-1">
@@ -2345,6 +2362,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               title: item.name || "Shop item",
                                                                               category: item.category || "Shop item",
                                                                               description: item.description || "No description available.",
+                                                                              specs: item.specs || item.description || "No specs provided.",
                                                                               price: item.price,
                                                                               stock: item.stock,
                                                                               unit,
@@ -2595,7 +2613,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
 
                                                                 {selectedProduct.description && (
                                                                   <div>
-                                                                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-zinc-400">Why we recommend it</p>
+                                                                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-zinc-400">Overview</p>
                                                                     <p className="mt-2 text-sm leading-7 text-zinc-200">{selectedProduct.description}</p>
                                                                   </div>
                                                                 )}
