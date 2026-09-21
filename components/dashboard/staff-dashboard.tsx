@@ -2317,32 +2317,37 @@ function EditScheduleButton({
   const [notes, setNotes] = useState(session.notes ?? "")
   const [maxCapacity, setMaxCapacity] = useState(session.max_capacity ? String(session.max_capacity) : "")
   const [confirmLoading, setConfirmLoading] = useState(false)
-  const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
+
+  async function saveSession() {
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle || !date) {
+      showToast("Please add a title and date before saving.")
+      return
+    }
+
+    setConfirmLoading(true)
+    try {
+      await onSave({
+        title: trimmedTitle,
+        date,
+        time,
+        coach,
+        notes,
+        max_capacity: maxCapacity ? Number(maxCapacity) : null,
+      })
+      setIsOpen(false)
+      showToast("✓ Session saved!")
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to save session")
+    } finally {
+      setConfirmLoading(false)
+    }
+  }
 
   function submitEditor(e: React.FormEvent) {
     e.preventDefault()
-    showConfirmation(
-      "Update session?",
-      `Apply edits to ${session.title || "this session"}?`,
-      async () => {
-        setConfirmLoading(true)
-        try {
-          await onSave({
-            title,
-            date,
-            time,
-            coach,
-            notes,
-            max_capacity: maxCapacity ? Number(maxCapacity) : null,
-          })
-          setIsOpen(false)
-          showToast("✓ Session updated!")
-        } finally {
-          setConfirmLoading(false)
-        }
-      },
-    )
+    void saveSession()
   }
 
   return (
@@ -2372,20 +2377,14 @@ function EditScheduleButton({
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Notes</span><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
               <div className="mt-2 flex justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
-                <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold">Save session</Button>
+                <Button type="submit" size="sm" disabled={confirmLoading} className="bg-[#40938c] text-black font-bold">
+                  {confirmLoading ? "Saving..." : "Save session"}
+                </Button>
               </div>
             </form>
           </Card>
         </div>
       )}
-      <ConfirmationDialog
-        isOpen={confirmState.isOpen}
-        title={confirmState.title}
-        message={confirmState.message}
-        isLoading={confirmLoading}
-        onConfirm={() => confirmState.onConfirm()}
-        onCancel={closeConfirmation}
-      />
       <Toast isOpen={toast.isOpen} message={toast.message} />
     </>
   )
@@ -2750,35 +2749,40 @@ function EditShopItemButton({
   const [picUrl, setPicUrl] = useState(item.pic_url ?? item.image_url ?? "")
   const [stock, setStock] = useState(String(item.stock ?? 0))
   const [unit, setUnit] = useState(item.unit ?? "units")
-  const [confirmLoading, setConfirmLoading] = useState(false)
-  const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
+  const [saving, setSaving] = useState(false)
   const { toast, showToast } = useToast()
+
+  async function saveShopItem() {
+    const trimmedName = name.trim()
+    if (!trimmedName || !price.trim()) {
+      showToast("Please add a title and price before saving.")
+      return
+    }
+
+    setSaving(true)
+    try {
+      await onSave({
+        name: trimmedName,
+        category,
+        price: Number(price) || 0,
+        description,
+        specs,
+        pic_url: picUrl,
+        stock: Number(stock) || 0,
+        unit,
+      })
+      setIsOpen(false)
+      showToast("✓ Shop item saved!")
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to save shop item")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   function submitEditor(e: React.FormEvent) {
     e.preventDefault()
-    showConfirmation(
-      "Update shop item?",
-      `Apply your edits to ${item.name || "this item"}?`,
-      async () => {
-        setConfirmLoading(true)
-        try {
-          await onSave({
-            name,
-            category,
-            price: Number(price) || 0,
-            description,
-            specs,
-            pic_url: picUrl,
-            stock: Number(stock) || 0,
-            unit,
-          })
-          setIsOpen(false)
-          showToast("✓ Shop item updated!")
-        } finally {
-          setConfirmLoading(false)
-        }
-      },
-    )
+    void saveShopItem()
   }
 
   return (
@@ -2804,20 +2808,14 @@ function EditShopItemButton({
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Overview</span><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></label>
               <div className="mt-2 flex justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
-                <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold">Save item</Button>
+                <Button type="submit" size="sm" disabled={saving} className="bg-[#40938c] text-black font-bold">
+                  {saving ? "Saving..." : "Save item"}
+                </Button>
               </div>
             </form>
           </Card>
         </div>
       )}
-      <ConfirmationDialog
-        isOpen={confirmState.isOpen}
-        title={confirmState.title}
-        message={confirmState.message}
-        isLoading={confirmLoading}
-        onConfirm={() => confirmState.onConfirm()}
-        onCancel={closeConfirmation}
-      />
       <Toast isOpen={toast.isOpen} message={toast.message} />
     </>
   )
@@ -2926,35 +2924,40 @@ function EditGearGuideButton({
   const [recommendedForTier, setRecommendedForTier] = useState(guide.recommended_for_tier ?? "")
   const [externalLink, setExternalLink] = useState(guide.external_link ?? "")
   const [imageUrl, setImageUrl] = useState(guide.image_url ?? "")
-  const [confirmLoading, setConfirmLoading] = useState(false)
-  const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
+  const [saving, setSaving] = useState(false)
   const { toast, showToast } = useToast()
+
+  async function saveGuide() {
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle) {
+      showToast("Please add a title before saving.")
+      return
+    }
+
+    setSaving(true)
+    try {
+      await onSave({
+        title: trimmedTitle,
+        brand,
+        category,
+        specs,
+        why_recommend: whyRecommend,
+        recommended_for_tier: recommendedForTier,
+        external_link: externalLink,
+        image_url: imageUrl,
+      })
+      setIsOpen(false)
+      showToast("✓ Gear guide saved!")
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to save gear guide")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   function submitEditor(e: React.FormEvent) {
     e.preventDefault()
-    showConfirmation(
-      "Update gear guide?",
-      `Apply your edits to ${guide.title || "this guide"}?`,
-      async () => {
-        setConfirmLoading(true)
-        try {
-          await onSave({
-            title,
-            brand,
-            category,
-            specs,
-            why_recommend: whyRecommend,
-            recommended_for_tier: recommendedForTier,
-            external_link: externalLink,
-            image_url: imageUrl,
-          })
-          setIsOpen(false)
-          showToast("✓ Gear guide updated!")
-        } finally {
-          setConfirmLoading(false)
-        }
-      },
-    )
+    void saveGuide()
   }
 
   return (
@@ -2975,20 +2978,14 @@ function EditGearGuideButton({
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Overview</span><Textarea value={whyRecommend} onChange={(e) => setWhyRecommend(e.target.value)} /></label>
               <div className="mt-2 flex justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
-                <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold">Save guide</Button>
+                <Button type="submit" size="sm" disabled={saving} className="bg-[#40938c] text-black font-bold">
+                  {saving ? "Saving..." : "Save guide"}
+                </Button>
               </div>
             </form>
           </Card>
         </div>
       )}
-      <ConfirmationDialog
-        isOpen={confirmState.isOpen}
-        title={confirmState.title}
-        message={confirmState.message}
-        isLoading={confirmLoading}
-        onConfirm={() => confirmState.onConfirm()}
-        onCancel={closeConfirmation}
-      />
       <Toast isOpen={toast.isOpen} message={toast.message} />
     </>
   )
