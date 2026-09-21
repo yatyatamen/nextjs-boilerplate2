@@ -2101,7 +2101,7 @@ export function StaffDashboard({
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-black">{guide.title}</p>
-                          <p className="text-xs text-black/70 mt-1">{guide.brand ?? "Equipment"}</p>
+                          <p className="text-xs text-black/70 mt-1">{guide.category ?? "Equipment"}</p>
                           <p className="mt-2 text-xs text-black/80 leading-relaxed">{guide.why_recommend || guide.specs || "No details available."}</p>
                         </div>
                       </div>
@@ -2917,7 +2917,6 @@ function EditGearGuideButton({
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [title, setTitle] = useState(guide.title ?? "")
-  const brand = guide.brand ?? ""
   const category = guide.category ?? ""
   const [specs, setSpecs] = useState(guide.specs ?? "")
   const [whyRecommend, setWhyRecommend] = useState(guide.why_recommend ?? "")
@@ -2938,7 +2937,6 @@ function EditGearGuideButton({
     try {
       await onSave({
         title: trimmedTitle,
-        brand,
         category,
         specs,
         why_recommend: whyRecommend,

@@ -419,7 +419,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
 
                                                       const searchMatch =
                                                         !normalizedSearchValue ||
-                                                        [g.title, g.brand, g.specs, g.why_recommend, g.category, g.recommended_for_tier]
+                                                        [g.title, g.specs, g.why_recommend, g.category, g.recommended_for_tier]
                                                           .map((value) => normalizeFilterValue(value))
                                                           .some((text) => text.includes(normalizedSearchValue))
 
@@ -1943,7 +1943,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                             <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{g.recommended_for_tier}</Badge>
                                                                           </div>
                                                                           <div className="flex items-center justify-between gap-3 border-b border-zinc-800/40 pb-2">
-                                                                            <p className={`text-sm ${theme.textSecondary} font-medium`}>{g.brand}</p>
+                                                                            <p className={`text-sm ${theme.textSecondary} font-medium`}>{g.category || "Gear"}</p>
                                                                             {g.external_link && (
                                                                               <a href={g.external_link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#40938c] hover:underline">
                                                                                 View product page
@@ -1962,7 +1962,6 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               onClick={() => setSelectedProduct({
                                                                                 kind: "gear",
                                                                                 title: g.title,
-                                                                                brand: g.brand,
                                                                                 category: g.category || "Gear",
                                                                                 badge: g.recommended_for_tier,
                                                                                 description: g.why_recommend,
@@ -1978,7 +1977,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               type="button"
                                                                               variant="outline"
                                                                               size="sm"
-                                                                              onClick={() => openGuideInquiry(g.title, g.brand)}
+                                                                              onClick={() => openGuideInquiry(g.title, g.category || "Gear")}
                                                                               className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
                                                                             >
                                                                               <SendHorizontal className="h-3.5 w-3.5" />
@@ -2020,7 +2019,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               </div>
                                                                               <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase">{g.recommended_for_tier}</Badge>
                                                                             </div>
-                                                                            <p className={`mt-2 text-xs ${theme.textSecondary}`}>{g.brand}</p>
+                                                                            <p className={`mt-2 text-xs ${theme.textSecondary}`}>{g.category || "Gear"}</p>
                                                                             <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
                                                                               <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
                                                                               <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed`}>{g.specs || "No specs provided."}</p>
@@ -2039,7 +2038,6 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               onClick={() => setSelectedProduct({
                                                                                 kind: "gear",
                                                                                 title: g.title,
-                                                                                brand: g.brand,
                                                                                 category: g.category || "Gear",
                                                                                 badge: g.recommended_for_tier,
                                                                                 description: g.why_recommend,
@@ -2055,7 +2053,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               type="button"
                                                                               variant="outline"
                                                                               size="sm"
-                                                                              onClick={() => openGuideInquiry(g.title, g.brand)}
+                                                                              onClick={() => openGuideInquiry(g.title, g.category || "Gear")}
                                                                               className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
                                                                             >
                                                                               <SendHorizontal className="h-3.5 w-3.5" />
@@ -2079,7 +2077,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                             <div className="min-w-0 flex-1">
                                                                               <div className="flex min-w-0 flex-col gap-2">
                                                                                 <div className="flex min-w-0 items-center gap-2">
-                                                                                  <p className={`truncate text-xs ${theme.textSecondary}`}>{g.brand}</p>
+                                                                                  <p className={`truncate text-xs ${theme.textSecondary}`}>{g.category || "Gear"}</p>
                                                                                   <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{g.recommended_for_tier}</Badge>
                                                                                 </div>
                                                                                 <h4 className={`text-base font-bold ${theme.headingColor}`}>{g.title}</h4>
@@ -2105,7 +2103,6 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                             onClick={() => setSelectedProduct({
                                                                               kind: "gear",
                                                                               title: g.title,
-                                                                              brand: g.brand,
                                                                               category: g.category || "Gear",
                                                                               badge: g.recommended_for_tier,
                                                                               description: g.why_recommend,
@@ -2121,7 +2118,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                             type="button"
                                                                             variant="outline"
                                                                             size="sm"
-                                                                            onClick={() => openGuideInquiry(g.title, g.brand)}
+                                                                            onClick={() => openGuideInquiry(g.title, g.category || "Gear")}
                                                                             className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
                                                                           >
                                                                             <SendHorizontal className="h-3.5 w-3.5" />
