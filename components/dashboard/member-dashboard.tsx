@@ -2397,7 +2397,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                               <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                 <h3 className="text-2xl font-bold uppercase tracking-wide text-[#40938c]">About Wolves Badminton Club</h3>
                                                                 <p className={`text-base ${theme.textSecondary} leading-relaxed mt-3 font-mono`}>
-                                                                  Founded upon principles of systematic tracking, rigorous court development, and tiered progression architectures, the Wolves Badminton Club provides student athletes and competitive players with premier training infrastructure. Our focus balances technical precision, structural agility metrics, and tournament execution frameworks.
+                                                                  Wolves Badminton Club is dedicated to developing student-athletes and competitive players through structured training, technical skill-building, and tournament prep. We focus on continuous athletic progression, on-court agility, and game strategy to help every member reach their full potential.
                                                                 </p>
                                                               </Card>
                                                             </div>

@@ -329,6 +329,21 @@ export function StaffDashboard({
     setSchedule((prev) => prev.filter((item) => item.id !== id))
   }
 
+  async function updateScheduleItem(id: string, payload: Partial<ScheduleSession>) {
+    const { data, error } = await supabase
+      .from("schedule")
+      .update(payload)
+      .eq("id", id)
+      .select()
+      .single()
+
+    if (error) {
+      throw new Error(error.message || "Unable to update schedule item")
+    }
+
+    setSchedule((prev) => sortSessions(prev.map((item) => (item.id === id ? { ...item, ...(data as ScheduleSession) } : item))))
+  }
+
   const confirmAction = (title: string, message: string, callback: () => Promise<void> | void) => {
     showConfirmation(title, message, async () => {
       closeConfirmation()
@@ -1234,9 +1249,12 @@ export function StaffDashboard({
                     </p>
                   </div>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => confirmDelete("schedule item", async () => { await deleteScheduleItem(s.id) })} className="text-xs">
-                  Delete
-                </Button>
+                <div className="flex items-center gap-2">
+                  <EditScheduleButton session={s} onSave={(updates) => updateScheduleItem(s.id, updates)} />
+                  <Button size="sm" variant="outline" onClick={() => confirmDelete("schedule item", async () => { await deleteScheduleItem(s.id) })} className="text-xs">
+                    Delete
+                  </Button>
+                </div>
               </Card>
             ))}
           </div>
@@ -2284,6 +2302,95 @@ function useSubmitting() {
   return { loading, setLoading }
 }
 
+function EditScheduleButton({
+  session,
+  onSave,
+}: {
+  session: ScheduleSession
+  onSave: (updates: Partial<ScheduleSession>) => Promise<void>
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [title, setTitle] = useState(session.title ?? "")
+  const [date, setDate] = useState(session.date ?? "")
+  const [time, setTime] = useState(session.time ?? "")
+  const [coach, setCoach] = useState(session.coach ?? "")
+  const [notes, setNotes] = useState(session.notes ?? "")
+  const [maxCapacity, setMaxCapacity] = useState(session.max_capacity ? String(session.max_capacity) : "")
+  const [confirmLoading, setConfirmLoading] = useState(false)
+  const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
+  const { toast, showToast } = useToast()
+
+  function submitEditor(e: React.FormEvent) {
+    e.preventDefault()
+    showConfirmation(
+      "Update session?",
+      `Apply edits to ${session.title || "this session"}?`,
+      async () => {
+        setConfirmLoading(true)
+        try {
+          await onSave({
+            title,
+            date,
+            time,
+            coach,
+            notes,
+            max_capacity: maxCapacity ? Number(maxCapacity) : null,
+          })
+          setIsOpen(false)
+          showToast("✓ Session updated!")
+        } finally {
+          setConfirmLoading(false)
+        }
+      },
+    )
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setIsOpen(true)} className="text-xs">
+        Edit
+      </Button>
+      {isOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
+          <Card className="w-full max-w-lg border border-zinc-800 bg-white p-5 text-black shadow-2xl">
+            <h3 className="text-base font-semibold">Edit session</h3>
+            <form onSubmit={submitEditor} className="mt-4 flex flex-col gap-3">
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Title</span><Input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Date</span><Input type="date" value={date ?? ""} onChange={(e) => setDate(e.target.value)} required /></label>
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Time</span><Select value={time} onChange={(e) => setTime(e.target.value)}>
+                  <option value="">Select time slot</option>
+                  {TIME_SLOTS.map((slot) => (
+                    <option key={slot} value={slot}>{slot}</option>
+                  ))}
+                </Select></label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Coach</span><Input value={coach} onChange={(e) => setCoach(e.target.value)} /></label>
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Capacity</span><Input type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="Optional" /></label>
+              </div>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Notes</span><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+              <div className="mt-2 flex justify-end gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
+                <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold">Save session</Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+      <ConfirmationDialog
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        isLoading={confirmLoading}
+        onConfirm={() => confirmState.onConfirm()}
+        onCancel={closeConfirmation}
+      />
+      <Toast isOpen={toast.isOpen} message={toast.message} />
+    </>
+  )
+}
+
 function ScheduleForm({
   teachers,
   onCreate,
@@ -2636,7 +2743,7 @@ function EditShopItemButton({
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [name, setName] = useState(item.name ?? "")
-  const [category, setCategory] = useState(item.category ?? "Rackets")
+  const category = item.category ?? "Rackets"
   const [price, setPrice] = useState(String(item.price ?? 0))
   const [description, setDescription] = useState(item.description ?? "")
   const [specs, setSpecs] = useState(item.specs ?? "")
@@ -2645,6 +2752,7 @@ function EditShopItemButton({
   const [unit, setUnit] = useState(item.unit ?? "units")
   const [confirmLoading, setConfirmLoading] = useState(false)
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
+  const { toast, showToast } = useToast()
 
   function submitEditor(e: React.FormEvent) {
     e.preventDefault()
@@ -2664,8 +2772,8 @@ function EditShopItemButton({
             stock: Number(stock) || 0,
             unit,
           })
-          closeConfirmation()
           setIsOpen(false)
+          showToast("✓ Shop item updated!")
         } finally {
           setConfirmLoading(false)
         }
@@ -2685,7 +2793,6 @@ function EditShopItemButton({
             <form onSubmit={submitEditor} className="mt-4 flex flex-col gap-3">
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Title</span><Input value={name} onChange={(e) => setName(e.target.value)} required /></label>
               <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1 text-xs font-medium"><span>Category</span><Input value={category} onChange={(e) => setCategory(e.target.value)} required /></label>
                 <label className="flex flex-col gap-1 text-xs font-medium"><span>Price</span><Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required /></label>
               </div>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Image URL</span><Input value={picUrl} onChange={(e) => setPicUrl(e.target.value)} /></label>
@@ -2711,6 +2818,7 @@ function EditShopItemButton({
         onConfirm={() => confirmState.onConfirm()}
         onCancel={closeConfirmation}
       />
+      <Toast isOpen={toast.isOpen} message={toast.message} />
     </>
   )
 }
@@ -2727,6 +2835,7 @@ function ShopStockEditor({
   const [unit, setUnit] = useState(item.unit || "units")
   const [confirmLoading, setConfirmLoading] = useState(false)
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
+  const { toast, showToast } = useToast()
 
   function openEditor() {
     setStock(String(item.stock ?? 0))
@@ -2746,8 +2855,8 @@ function ShopStockEditor({
         setConfirmLoading(true)
         try {
           await onSave(nextStock, nextUnit)
-          closeConfirmation()
           setIsOpen(false)
+          showToast("✓ Shop stock updated!")
         } catch (error) {
           alert(error instanceof Error ? error.message : "Unable to update shop stock")
         } finally {
@@ -2796,6 +2905,7 @@ function ShopStockEditor({
         onConfirm={() => confirmState.onConfirm()}
         onCancel={closeConfirmation}
       />
+      <Toast isOpen={toast.isOpen} message={toast.message} />
     </>
   )
 }
@@ -2809,8 +2919,8 @@ function EditGearGuideButton({
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [title, setTitle] = useState(guide.title ?? "")
-  const [brand, setBrand] = useState(guide.brand ?? "")
-  const [category, setCategory] = useState(guide.category ?? "")
+  const brand = guide.brand ?? ""
+  const category = guide.category ?? ""
   const [specs, setSpecs] = useState(guide.specs ?? "")
   const [whyRecommend, setWhyRecommend] = useState(guide.why_recommend ?? "")
   const [recommendedForTier, setRecommendedForTier] = useState(guide.recommended_for_tier ?? "")
@@ -2818,6 +2928,7 @@ function EditGearGuideButton({
   const [imageUrl, setImageUrl] = useState(guide.image_url ?? "")
   const [confirmLoading, setConfirmLoading] = useState(false)
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
+  const { toast, showToast } = useToast()
 
   function submitEditor(e: React.FormEvent) {
     e.preventDefault()
@@ -2837,8 +2948,8 @@ function EditGearGuideButton({
             external_link: externalLink,
             image_url: imageUrl,
           })
-          closeConfirmation()
           setIsOpen(false)
+          showToast("✓ Gear guide updated!")
         } finally {
           setConfirmLoading(false)
         }
@@ -2857,10 +2968,6 @@ function EditGearGuideButton({
             <h3 className="text-base font-semibold">Edit gear guide</h3>
             <form onSubmit={submitEditor} className="mt-4 flex flex-col gap-3">
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Title</span><Input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1 text-xs font-medium"><span>Brand</span><Input value={brand} onChange={(e) => setBrand(e.target.value)} required /></label>
-                <label className="flex flex-col gap-1 text-xs font-medium"><span>Category</span><Input value={category} onChange={(e) => setCategory(e.target.value)} /></label>
-              </div>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Recommended for tier</span><Input value={recommendedForTier} onChange={(e) => setRecommendedForTier(e.target.value)} /></label>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Image URL</span><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} /></label>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>External link</span><Input value={externalLink} onChange={(e) => setExternalLink(e.target.value)} /></label>
@@ -2882,6 +2989,7 @@ function EditGearGuideButton({
         onConfirm={() => confirmState.onConfirm()}
         onCancel={closeConfirmation}
       />
+      <Toast isOpen={toast.isOpen} message={toast.message} />
     </>
   )
 }
