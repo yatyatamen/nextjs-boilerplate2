@@ -1,8 +1,21 @@
 import { Resend } from "resend"
 import { applyTemplateText, getEmailTemplateConfig } from "@/lib/email-templates"
 
-const resendApiKey = process.env.RESEND_API_KEY
+const resendApiKey = process.env.RESEND_API_KEY?.trim()
+const emailFrom = process.env.EMAIL_FROM?.trim()
 const resend = resendApiKey ? new Resend(resendApiKey) : null
+
+function getEmailConfigError() {
+  if (!resendApiKey) {
+    return "RESEND_API_KEY is not configured. Add it to .env.local and restart the app."
+  }
+
+  if (!emailFrom) {
+    return "EMAIL_FROM is not configured. Set a verified Resend sender address in .env.local."
+  }
+
+  return null
+}
 
 export async function sendSupportEmail({
   to,
@@ -37,12 +50,17 @@ export async function sendEmail({
   html: string
   text?: string
 }) {
-  if (!resend) {
-    console.error("[email] RESEND_API_KEY is not configured. Email delivery is disabled.")
-    return { ok: false, error: "RESEND_API_KEY is not configured" }
+  const configError = getEmailConfigError()
+  if (configError) {
+    console.error(`[email] ${configError}`)
+    return { ok: false, error: configError }
   }
 
-  const from = process.env.EMAIL_FROM || "no-reply@yourdomain.com"
+  if (!resend || !emailFrom) {
+    return { ok: false, error: "Email sender is not configured." }
+  }
+
+  const from = emailFrom
   const recipients = Array.isArray(to) ? to.filter(Boolean) : [to]
 
   if (recipients.length === 0) {
