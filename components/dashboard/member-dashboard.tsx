@@ -245,7 +245,6 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                   const [selectedProduct, setSelectedProduct] = useState<{
                                                     kind: "gear" | "shop"
                                                     title: string
-                                                    brand?: string
                                                     category?: string
                                                     badge?: string
                                                     description?: string
@@ -419,7 +418,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
 
                                                       const searchMatch =
                                                         !normalizedSearchValue ||
-                                                        [g.title, g.specs, g.why_recommend, g.category, g.recommended_for_tier]
+                                                        [g.title, g.specs, g.description, g.category, g.recommended_for_tier]
                                                           .map((value) => normalizeFilterValue(value))
                                                           .some((text) => text.includes(normalizedSearchValue))
 
@@ -1028,10 +1027,10 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                     }
                                                   }
 
-                                                  function openGuideInquiry(productName: string | null, brand?: string | null) {
+                                                  function openGuideInquiry(productName: string | null, category?: string | null) {
                                                     const normalizedProductName = productName ?? "this item"
-                                                    const normalizedBrand = brand ?? ""
-                                                    const displayName = normalizedBrand ? `${normalizedProductName} (${normalizedBrand})` : normalizedProductName
+                                                    const normalizedCategory = category ?? ""
+                                                    const displayName = normalizedCategory ? `${normalizedProductName} (${normalizedCategory})` : normalizedProductName
                                                     const instagramDmUrl = "https://www.instagram.com/m/wci_badminton_club"
                                                     window.open(instagramDmUrl, "_blank", "noopener,noreferrer")
                                                     return displayName
@@ -1944,8 +1943,8 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                           </div>
                                                                           <div className="flex items-center justify-between gap-3 border-b border-zinc-800/40 pb-2">
                                                                             <p className={`text-sm ${theme.textSecondary} font-medium`}>{g.category || "Gear"}</p>
-                                                                            {g.external_link && (
-                                                                              <a href={g.external_link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#40938c] hover:underline">
+                                                                            {g.link && (
+                                                                              <a href={g.link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#40938c] hover:underline">
                                                                                 View product page
                                                                               </a>
                                                                             )}
@@ -1963,10 +1962,10 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                                 kind: "gear",
                                                                                 title: g.title,
                                                                                 category: g.category || "Gear",
-                                                                                badge: g.recommended_for_tier,
-                                                                                description: g.why_recommend,
-                                                                                specs: g.specs,
-                                                                                externalLink: g.external_link,
+                                                                                badge: g.recommended_for_tier ?? undefined,
+                                                                                description: g.description ?? undefined,
+                                                                                specs: g.specs ?? undefined,
+                                                                                externalLink: g.link ?? undefined,
                                                                                 images: galleryImages,
                                                                               })}
                                                                               className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
@@ -2024,8 +2023,8 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
                                                                               <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed`}>{g.specs || "No specs provided."}</p>
                                                                             </div>
-                                                                            {g.external_link && (
-                                                                              <a href={g.external_link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-[#40938c] hover:underline">
+                                                                            {g.link && (
+                                                                              <a href={g.link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-[#40938c] hover:underline">
                                                                                 View product page
                                                                               </a>
                                                                             )}
@@ -2039,10 +2038,10 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                                 kind: "gear",
                                                                                 title: g.title,
                                                                                 category: g.category || "Gear",
-                                                                                badge: g.recommended_for_tier,
-                                                                                description: g.why_recommend,
-                                                                                specs: g.specs,
-                                                                                externalLink: g.external_link,
+                                                                                badge: g.recommended_for_tier ?? undefined,
+                                                                                description: g.description ?? undefined,
+                                                                                specs: g.specs ?? undefined,
+                                                                                externalLink: g.link ?? undefined,
                                                                                 images: galleryImages,
                                                                               })}
                                                                               className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
@@ -2091,8 +2090,8 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                           </div>
                                                                         </div>
                                                                         <div className="flex flex-wrap items-center gap-2">
-                                                                          {g.external_link && (
-                                                                            <a href={g.external_link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#40938c] hover:underline">
+                                                                          {g.link && (
+                                                                            <a href={g.link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#40938c] hover:underline">
                                                                               View product page
                                                                             </a>
                                                                           )}
@@ -2104,10 +2103,10 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               kind: "gear",
                                                                               title: g.title,
                                                                               category: g.category || "Gear",
-                                                                              badge: g.recommended_for_tier,
-                                                                              description: g.why_recommend,
-                                                                              specs: g.specs,
-                                                                              externalLink: g.external_link,
+                                                                              badge: g.recommended_for_tier ?? undefined,
+                                                                              description: g.description ?? undefined,
+                                                                              specs: g.specs ?? undefined,
+                                                                              externalLink: g.link ?? undefined,
                                                                               images: galleryImages,
                                                                             })}
                                                                             className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
@@ -2215,7 +2214,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                               ) : shopLayout === "large" ? (
                                                                 <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                                                                   {filteredShopItems.map((item) => {
-                                                                    const galleryImages = mergeImageLists(item.image_url, (item as any).pic_url, (item as any).picUrl, (item as any).image_urls)
+                                                                    const galleryImages = mergeImageLists((item as any).image_url, item.pic_url, (item as any).picUrl, item.image_urls)
                                                                     const unit = item.unit || (item as any).unit || "units"
                                                                     return (
                                                                       <Card key={item.id} className={`overflow-hidden p-0 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
@@ -2234,7 +2233,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                           </div>
                                                                           <div className="rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-3">
                                                                             <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
-                                                                            <p className={`mt-2 text-sm ${theme.textSecondary} leading-relaxed`}>{item.specs || item.description || "No specs provided."}</p>
+                                                                            <p className={`mt-2 text-sm ${theme.textSecondary} leading-relaxed`}>{item.description || "No description provided."}</p>
                                                                           </div>
                                                                           <div className="flex flex-wrap items-center gap-2 pt-1">
                                                                             <Button
@@ -2270,7 +2269,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                               ) : shopLayout === "list" ? (
                                                                 <div className="flex flex-col gap-3">
                                                                   {filteredShopItems.map((item) => {
-                                                                    const galleryImages = mergeImageLists(item.image_url, (item as any).pic_url, (item as any).picUrl, (item as any).image_urls)
+                                                                    const galleryImages = mergeImageLists((item as any).image_url, item.pic_url, (item as any).picUrl, item.image_urls)
                                                                     const unit = item.unit || (item as any).unit || "units"
                                                                     return (
                                                                       <Card key={item.id} className={`p-3 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
@@ -2289,7 +2288,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                             </div>
                                                                             <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
                                                                               <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
-                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed`}>{item.specs || item.description || "No specs provided."}</p>
+                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed`}>{item.description || "No description provided."}</p>
                                                                             </div>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary}`}>Stock: {item.stock ?? 0} {unit}</p>
                                                                           </div>
@@ -2327,7 +2326,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                               ) : (
                                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                                   {filteredShopItems.map((item) => {
-                                                                    const galleryImages = mergeImageLists(item.image_url, (item as any).pic_url, (item as any).picUrl, (item as any).image_urls)
+                                                                    const galleryImages = mergeImageLists((item as any).image_url, item.pic_url, (item as any).picUrl, item.image_urls)
                                                                     const unit = item.unit || (item as any).unit || "units"
                                                                     return (
                                                                       <Card key={item.id} className={`p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col justify-between gap-3`}>
@@ -2345,7 +2344,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                             </div>
                                                                             <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
                                                                               <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
-                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed`}>{item.specs || item.description || "No specs provided."}</p>
+                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed`}>{item.description || "No description provided."}</p>
                                                                             </div>
                                                                           </div>
                                                                         </div>
@@ -2361,7 +2360,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               title: item.name || "Shop item",
                                                                               category: item.category || "Shop item",
                                                                               description: item.description || "No description available.",
-                                                                              specs: item.specs || item.description || "No specs provided.",
+                                                                              specs: item.description || "No description provided.",
                                                                               price: item.price,
                                                                               stock: item.stock,
                                                                               unit,
@@ -2582,9 +2581,6 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                               <div className="flex flex-col gap-4 text-zinc-100">
                                                                 <div className="flex min-w-0 flex-col gap-2">
                                                                   <div className="flex min-w-0 items-center gap-2">
-                                                                    {selectedProduct.brand && (
-                                                                      <p className="truncate text-sm text-zinc-300">{selectedProduct.brand}</p>
-                                                                    )}
                                                                     {selectedProduct.badge && (
                                                                       <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{selectedProduct.badge}</Badge>
                                                                     )}
@@ -2593,10 +2589,9 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                   <h3 className="text-2xl font-black tracking-tight text-white">{selectedProduct.title}</h3>
                                                                 </div>
 
-                                                                {(selectedProduct.brand || selectedProduct.price !== undefined) && (
+                                                                {selectedProduct.price !== undefined && (
                                                                   <div className="flex flex-wrap items-center gap-3 border-b border-zinc-800 pb-3">
-                                                                    {selectedProduct.brand && <p className="text-sm text-zinc-300">{selectedProduct.brand}</p>}
-                                                                    {selectedProduct.price !== undefined && selectedProduct.price !== null && (
+                                                                    {selectedProduct.price !== null && (
                                                                       <span className="text-lg font-mono font-bold text-[#40938c]">${Number(selectedProduct.price).toFixed(2)}</span>
                                                                     )}
                                                                   </div>

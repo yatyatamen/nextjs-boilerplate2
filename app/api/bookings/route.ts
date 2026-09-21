@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
     const { data: session, error: sessionError } = await supabase
       .from("schedule")
-      .select("id, title, date, time, max_capacity, notes")
+      .select("id, title, date, time, max_level, notes")
       .eq("id", sessionId)
       .maybeSingle()
 

@@ -50,7 +50,7 @@ export function getSessionBookingRules(
   currentCount = 0,
   now = new Date(),
 ): SessionBookingRuleResult {
-  const rawLimit = session.max_capacity
+  const rawLimit = session.max_capacity ?? null
   const parsedLimit = typeof rawLimit === "string" ? Number(rawLimit) : typeof rawLimit === "number" ? rawLimit : null
   const limit = Number.isFinite(parsedLimit) && parsedLimit !== null && parsedLimit > 0 ? parsedLimit : null
   const start = parseSessionStart(session.date, session.time)

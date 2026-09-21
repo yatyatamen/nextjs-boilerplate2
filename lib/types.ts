@@ -46,14 +46,13 @@ export type Profile = {
 
 export type ScheduleSession = {
   id: string
-  title: string | null         // Added: Custom Session Title (e.g. "Free Play Section")
+  title: string | null
   date: string | null
-  time: string | null          // Supports formats like "3:20-4:30"
-  min_level: string | null     // Added: Multi-tier lower limit restriction
-  max_level: string | null     // Added: Multi-tier upper limit restriction
-  max_capacity?: number | null
+  time: string | null
+  max_level: string | null
   coach: string | null
   notes: string | null
+  visibility_tiers?: string[] | null
 }
 
 export type Booking = {
@@ -78,9 +77,7 @@ export type ShopItem = {
   category: string | null
   price: number | null
   description: string | null
-  specs?: string | null
   stock: number | null
-  image_url?: string | null
   pic_url?: string | null
   image_urls?: string[] | null
   unit?: string | null
@@ -111,11 +108,12 @@ export type EquipmentRecommendation = {
   id: string
   title: string
   category: string | null
-  specs: string 
-  why_recommend: string
-  recommended_for_tier: string 
-  external_link: string | null
-  image_url: string | null 
+  description: string | null
+  specs: string | null
+  recommended_for_tier: string | null
+  link: string | null
+  image_url: string | null
+  pic_url?: string | null
   image_urls?: string[] | null
 }
 

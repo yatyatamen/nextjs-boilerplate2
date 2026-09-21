@@ -1284,10 +1284,9 @@ export function StaffDashboard({
                   const memberBookings = bookedMembers.filter(({ member }) => member?.role !== "teacher")
 
                   const tierText = (() => {
-                    const tiers = [session.min_level, session.max_level].filter((value): value is string => Boolean(value && value.trim()))
+                    const tiers = [session.max_level].filter((value): value is string => Boolean(value && value.trim()))
                     if (tiers.length === 0) return "No tier restrictions"
-                    if (tiers.length === 1) return tiers[0]
-                    return [...new Set(tiers)].join(", ")
+                    return tiers[0]
                   })()
 
                   return (
@@ -2026,7 +2025,7 @@ export function StaffDashboard({
             ) : (
               <div className="space-y-3">
                 {shopItems.map((item) => {
-                  const imageUrls = parseImageUrls(item.image_url || item.pic_url || (item.image_urls ? JSON.stringify(item.image_urls) : null))
+                  const imageUrls = parseImageUrls(item.pic_url || (item.image_urls ? JSON.stringify(item.image_urls) : null))
                   const firstImage = imageUrls[0]
                   return (
                     <Card key={item.id} className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
@@ -2102,7 +2101,7 @@ export function StaffDashboard({
                         <div>
                           <p className="text-sm font-semibold text-black">{guide.title}</p>
                           <p className="text-xs text-black/70 mt-1">{guide.category ?? "Equipment"}</p>
-                          <p className="mt-2 text-xs text-black/80 leading-relaxed">{guide.why_recommend || guide.specs || "No details available."}</p>
+                          <p className="mt-2 text-xs text-black/80 leading-relaxed">{guide.description || guide.specs || "No details available."}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -2315,7 +2314,6 @@ function EditScheduleButton({
   const [time, setTime] = useState(session.time ?? "")
   const [coach, setCoach] = useState(session.coach ?? "")
   const [notes, setNotes] = useState(session.notes ?? "")
-  const [maxCapacity, setMaxCapacity] = useState(session.max_capacity ? String(session.max_capacity) : "")
   const [confirmLoading, setConfirmLoading] = useState(false)
   const { toast, showToast } = useToast()
 
@@ -2334,7 +2332,6 @@ function EditScheduleButton({
         time,
         coach,
         notes,
-        max_capacity: maxCapacity ? Number(maxCapacity) : null,
       })
       setIsOpen(false)
       showToast("✓ Session saved!")
@@ -2372,7 +2369,6 @@ function EditScheduleButton({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <label className="flex flex-col gap-1 text-xs font-medium"><span>Coach</span><Input value={coach} onChange={(e) => setCoach(e.target.value)} /></label>
-                <label className="flex flex-col gap-1 text-xs font-medium"><span>Capacity</span><Input type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="Optional" /></label>
               </div>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Notes</span><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
               <div className="mt-2 flex justify-end gap-2">
@@ -2402,7 +2398,6 @@ function ScheduleForm({
     visibility_tiers: string[]
     coach: string
     notes: string
-    max_capacity?: number | null
   }) => Promise<void>
 }) {
   const { loading } = useSubmitting()
@@ -2412,7 +2407,6 @@ function ScheduleForm({
   const [title, setTitle] = useState("")
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
-  const [maxCapacity, setMaxCapacity] = useState("")
   const [selectedTiers, setSelectedTiers] = useState<string[]>([...ALL_TIERS])
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>([])
   const [notes, setNotes] = useState("")
@@ -2449,12 +2443,10 @@ function ScheduleForm({
               .map((teacher) => getMemberDisplayName(teacher))
               .join(", "),
             notes,
-            max_capacity: maxCapacity ? Number(maxCapacity) : null,
           })
           setTitle("")
           setDate("")
           setTime("")
-          setMaxCapacity("")
           setSelectedTeacherIds([])
           setNotes("")
           closeConfirmation()
@@ -2496,17 +2488,6 @@ function ScheduleForm({
                 <option key={slot} value={slot}>{slot}</option>
               ))}
             </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="s-capacity">People limit</Label>
-            <Input
-              id="s-capacity"
-              type="number"
-              min={1}
-              value={maxCapacity}
-              onChange={(e) => setMaxCapacity(e.target.value)}
-              placeholder="Optional limit"
-            />
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2 border border-zinc-800 p-3 rounded bg-zinc-950/40">
             <Label className="text-[#40938c] font-bold">Select Visible Ranks</Label>
@@ -2745,8 +2726,7 @@ function EditShopItemButton({
   const category = item.category ?? "Rackets"
   const [price, setPrice] = useState(String(item.price ?? 0))
   const [description, setDescription] = useState(item.description ?? "")
-  const [specs, setSpecs] = useState(item.specs ?? "")
-  const [picUrl, setPicUrl] = useState(item.pic_url ?? item.image_url ?? "")
+  const [picUrl, setPicUrl] = useState(item.pic_url ?? "")
   const [stock, setStock] = useState(String(item.stock ?? 0))
   const [unit, setUnit] = useState(item.unit ?? "units")
   const [saving, setSaving] = useState(false)
@@ -2766,7 +2746,6 @@ function EditShopItemButton({
         category,
         price: Number(price) || 0,
         description,
-        specs,
         pic_url: picUrl,
         stock: Number(stock) || 0,
         unit,
@@ -2804,7 +2783,6 @@ function EditShopItemButton({
                 <label className="flex flex-col gap-1 text-xs font-medium"><span>Stock</span><Input type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)} /></label>
                 <label className="flex flex-col gap-1 text-xs font-medium"><span>Unit</span><Input value={unit} onChange={(e) => setUnit(e.target.value)} /></label>
               </div>
-              <label className="flex flex-col gap-1 text-xs font-medium"><span>Specs</span><Textarea value={specs} onChange={(e) => setSpecs(e.target.value)} /></label>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Overview</span><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></label>
               <div className="mt-2 flex justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
@@ -2919,9 +2897,9 @@ function EditGearGuideButton({
   const [title, setTitle] = useState(guide.title ?? "")
   const category = guide.category ?? ""
   const [specs, setSpecs] = useState(guide.specs ?? "")
-  const [whyRecommend, setWhyRecommend] = useState(guide.why_recommend ?? "")
+  const [description, setDescription] = useState(guide.description ?? "")
   const [recommendedForTier, setRecommendedForTier] = useState(guide.recommended_for_tier ?? "")
-  const [externalLink, setExternalLink] = useState(guide.external_link ?? "")
+  const [link, setLink] = useState(guide.link ?? "")
   const [imageUrl, setImageUrl] = useState(guide.image_url ?? "")
   const [saving, setSaving] = useState(false)
   const { toast, showToast } = useToast()
@@ -2939,9 +2917,9 @@ function EditGearGuideButton({
         title: trimmedTitle,
         category,
         specs,
-        why_recommend: whyRecommend,
+        description,
         recommended_for_tier: recommendedForTier,
-        external_link: externalLink,
+        link,
         image_url: imageUrl,
       })
       setIsOpen(false)
@@ -2971,9 +2949,9 @@ function EditGearGuideButton({
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Title</span><Input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Recommended for tier</span><Input value={recommendedForTier} onChange={(e) => setRecommendedForTier(e.target.value)} /></label>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Image URL</span><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} /></label>
-              <label className="flex flex-col gap-1 text-xs font-medium"><span>External link</span><Input value={externalLink} onChange={(e) => setExternalLink(e.target.value)} /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Product link</span><Input value={link} onChange={(e) => setLink(e.target.value)} /></label>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Specs</span><Textarea value={specs} onChange={(e) => setSpecs(e.target.value)} /></label>
-              <label className="flex flex-col gap-1 text-xs font-medium"><span>Overview</span><Textarea value={whyRecommend} onChange={(e) => setWhyRecommend(e.target.value)} /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Overview</span><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></label>
               <div className="mt-2 flex justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
                 <Button type="submit" size="sm" disabled={saving} className="bg-[#40938c] text-black font-bold">
