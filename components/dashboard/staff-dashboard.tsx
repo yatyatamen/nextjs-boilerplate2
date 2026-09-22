@@ -2040,7 +2040,7 @@ export function StaffDashboard({
                         <div>
                           <p className="text-sm font-semibold text-black">{item.name}</p>
                           <p className="text-xs text-black/70 mt-1">${item.price ?? 0} · {item.category ?? "General"}</p>
-                          <p className="text-xs text-black/80 mt-1">{item.description || "No description provided."}</p>
+                          <p className="mt-1 text-xs text-black/80 whitespace-pre-wrap break-words">{item.description || "No description provided."}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -2101,7 +2101,7 @@ export function StaffDashboard({
                         <div>
                           <p className="text-sm font-semibold text-black">{guide.title}</p>
                           <p className="text-xs text-black/70 mt-1">{guide.category ?? "Equipment"}</p>
-                          <p className="mt-2 text-xs text-black/80 leading-relaxed">{guide.description || guide.specs || "No details available."}</p>
+                          <p className="mt-2 text-xs leading-relaxed text-black/80 whitespace-pre-wrap break-words">{guide.description || guide.specs || "No details available."}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">

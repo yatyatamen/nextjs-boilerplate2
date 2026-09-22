@@ -1951,7 +1951,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                           </div>
                                                                           <div className="space-y-2 text-sm">
                                                                             <p className={`font-semibold ${theme.headingColor}`}>Specs</p>
-                                                                            <p className={`text-xs ${theme.textSecondary} leading-relaxed`}>{g.specs || "No specs provided."}</p>
+                                                                            <p className={`text-xs ${theme.textSecondary} leading-relaxed whitespace-pre-wrap break-words`}>{g.specs || "No specs provided."}</p>
                                                                           </div>
                                                                           <div className="flex flex-wrap items-center gap-2 pt-1">
                                                                             <Button
@@ -2021,7 +2021,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary}`}>{g.category || "Gear"}</p>
                                                                             <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
                                                                               <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
-                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed`}>{g.specs || "No specs provided."}</p>
+                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed whitespace-pre-wrap break-words`}>{g.specs || "No specs provided."}</p>
                                                                             </div>
                                                                             {g.link && (
                                                                               <a href={g.link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-[#40938c] hover:underline">
@@ -2086,7 +2086,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                           </div>
                                                                           <div className="mt-4 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-3">
                                                                             <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
-                                                                            <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed`}>{g.specs || "No specs provided."}</p>
+                                                                            <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed whitespace-pre-wrap break-words`}>{g.specs || "No specs provided."}</p>
                                                                           </div>
                                                                         </div>
                                                                         <div className="flex flex-wrap items-center gap-2">
@@ -2604,7 +2604,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                 {selectedProduct.specs && (
                                                                   <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
                                                                     <p className="text-xs font-bold uppercase tracking-[0.24em] text-zinc-400">Specs</p>
-                                                                    <p className="mt-2 text-sm leading-relaxed text-zinc-200">{selectedProduct.specs}</p>
+                                                                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-200">{selectedProduct.specs}</p>
                                                                   </div>
                                                                 )}
 
