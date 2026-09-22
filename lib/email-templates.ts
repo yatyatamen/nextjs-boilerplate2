@@ -28,8 +28,8 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateConfig = {
     body: `Hello everyone,\n\n{content}`,
   },
   session_alert: {
-    subject: "New session posted: {title}",
-    body: `A new {title} session has been posted and is ready for booking.\n\nDate: {date}\nTime: {time}\n\nPlease check the dashboard and book as soon as possible.`,
+    subject: "New session posted: {sessionTitle}",
+    body: `A new {sessionTitle} session has been posted and is ready for booking.\n\nDate: {sessionDate}\nTime: {sessionTime}\n\nPlease check the dashboard and book as soon as possible.`,
   },
   assessment: {
     subject: "Your assessment is ready",
@@ -37,7 +37,7 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateConfig = {
   },
   absence: {
     subject: "Attendance update: {sessionTitle}",
-    body: `Hello {memberName},\n\nWe have marked your attendance for {sessionTitle} as absent.\n\nIf this was a mistake, please contact club leaders as soon as possible.`,
+    body: `Hello {memberName},\n\nWe have marked your attendance for {sessionTitle} as absent.\n\nDate: {sessionDate}\nTime: {sessionTime}\n\nIf this was a mistake, please contact club leaders as soon as possible.`,
   },
   shop_update: {
     subject: "New shop item: {itemName}",

@@ -27,14 +27,6 @@ import type {
 } from "@/lib/types"
 import { ALL_ROLE_AND_TIER_OPTIONS, LEVELS, ROLES } from "@/lib/types"
 import {
-  sendAnnouncementEmail,
-  sendAssessmentEmail,
-  sendAbsenceEmail,
-  sendSessionAlertEmail,
-  sendShopUpdateEmail,
-} from "@/lib/supabase/email"
-import {
-  DEFAULT_EMAIL_TEMPLATES,
   getEmailTemplateConfig,
   saveEmailTemplateConfig,
   type EmailTemplateConfig,
@@ -244,6 +236,31 @@ export function StaffDashboard({
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
 
+  async function sendConfiguredEmail(
+    event: "announcement" | "session_alert" | "assessment" | "absence" | "shop_update",
+    to: string,
+    payload: Record<string, string>,
+  ) {
+    try {
+      const response = await fetch("/api/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event, to, template: emailTemplates[event], ...payload }),
+      })
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}))
+        console.error(`Failed to send ${event} email:`, result.error)
+        return false
+      }
+
+      return true
+    } catch (error) {
+      console.error(`Failed to send ${event} email:`, error)
+      return false
+    }
+  }
+
   // initialize attendanceSelection defaults when bookings or attendanceRecords change
   useEffect(() => {
     const next: Record<string, "present" | "late" | "absent"> = {}
@@ -415,7 +432,7 @@ export function StaffDashboard({
       .update(payload)
       .eq("id", id)
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) {
       throw new Error(error.message || "Unable to update gear guide")
@@ -948,7 +965,17 @@ export function StaffDashboard({
           setAttendanceRecords((prev) => prev.map((record) => (record.id === existingRecord.id ? existingRecord : record)))
           showToast(`Failed to update attendance: ${result.error ?? "unknown error"}`)
         } else {
-          showToast("Attendance updated")
+          let absenceEmailSent = true
+          const session = schedule.find((entry) => String(entry.id) === String(booking.session_id))
+          if (status === "absent" && existingRecord.status !== "absent" && member?.email) {
+            absenceEmailSent = await sendConfiguredEmail("absence", member.email, {
+              memberName: getMemberDisplayName(member),
+              sessionTitle: session?.title || String(booking.session_id ?? "session"),
+              sessionDate: session?.date || "TBD",
+              sessionTime: session?.time || "TBD",
+            })
+          }
+          showToast(absenceEmailSent ? "Attendance updated" : "Attendance updated, but the absence email could not be sent")
         }
       } catch (_err) {
         setAttendanceRecords((prev) => prev.map((record) => (record.id === existingRecord.id ? existingRecord : record)))
@@ -980,10 +1007,17 @@ export function StaffDashboard({
       if (response.ok && result.data) {
         const inserted = result.data as AttendanceRecord
         setAttendanceRecords((prev) => prev.map((r) => (r.id === nextRecord.id ? inserted : r)))
+        let absenceEmailSent = true
         if (status === "absent" && member?.email) {
-          await sendAbsenceEmail({ to: member.email, memberName: getMemberDisplayName(member), sessionTitle: String(booking.session_id ?? "session") })
+          const session = schedule.find((entry) => String(entry.id) === String(booking.session_id))
+          absenceEmailSent = await sendConfiguredEmail("absence", member.email, {
+            memberName: getMemberDisplayName(member),
+            sessionTitle: session?.title || String(booking.session_id ?? "session"),
+            sessionDate: session?.date || "TBD",
+            sessionTime: session?.time || "TBD",
+          })
         }
-        showToast("Attendance recorded")
+        showToast(absenceEmailSent ? "Attendance recorded" : "Attendance recorded, but the absence email could not be sent")
       } else {
         setAttendanceRecords((prev) => prev.filter((r) => r.id !== nextRecord.id))
         showToast(`Failed to save attendance: ${result.error ?? "unknown error"}`)
@@ -1232,7 +1266,19 @@ export function StaffDashboard({
                 console.error("Full Error Details:", error)
                 return
               }
-              if (data && data[0]) setSchedule((prev) => sortSessions([...prev, data[0] as ScheduleSession]))
+              if (data && data[0]) {
+                const createdSession = data[0] as ScheduleSession
+                setSchedule((prev) => sortSessions([...prev, createdSession]))
+                await Promise.all(
+                  members
+                    .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
+                    .map((member) => sendConfiguredEmail("session_alert", member.email!, {
+                      sessionTitle: createdSession.title || "New session",
+                      sessionDate: createdSession.date || "TBD",
+                      sessionTime: createdSession.time || "TBD",
+                    }))
+                )
+              }
             }}
           />
           <div className="mt-6 flex flex-col gap-3">
@@ -1889,7 +1935,7 @@ export function StaffDashboard({
                       await Promise.all(
                         members
                           .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
-                          .map((member) => sendAnnouncementEmail({ to: member.email!, title: "Website Feature Update", content: websiteFeatureText.trim() }))
+                          .map((member) => sendConfiguredEmail("announcement", member.email!, { title: "Website Feature Update", content: websiteFeatureText.trim() }))
                       )
                       showToast("✓ Website feature update posted")
                     }
@@ -1942,7 +1988,7 @@ export function StaffDashboard({
                 await Promise.all(
                   members
                     .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
-                    .map((member) => sendAnnouncementEmail({ to: member.email!, title: title, content }))
+                    .map((member) => sendConfiguredEmail("announcement", member.email!, { title, content }))
                 )
               }
             }}
@@ -2013,7 +2059,7 @@ export function StaffDashboard({
                 await Promise.all(
                   members
                     .filter((member) => member.email && member.marketing_emails !== false)
-                    .map((member) => sendShopUpdateEmail({ to: member.email!, itemName: data[0].name || "a new shop item" }))
+                    .map((member) => sendConfiguredEmail("shop_update", member.email!, { itemName: data[0].name || "a new shop item" }))
                 )
               }
             }}
@@ -2139,8 +2185,7 @@ export function StaffDashboard({
                 setMembers((prev) => prev.map((m) => (m.id === userId ? { ...m, level } : m)))
                 const targetMember = members.find((member) => member.id === userId)
                 if (targetMember?.email) {
-                  await sendAssessmentEmail({
-                    to: targetMember.email,
+                  await sendConfiguredEmail("assessment", targetMember.email, {
                     memberName: getMemberDisplayName(targetMember),
                     level,
                   })
@@ -3318,7 +3363,7 @@ function EmailTemplatesEditor({
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-foreground">Automatic email content</h3>
-            <p className="text-xs text-muted-foreground">Use placeholders like {'{memberName}'}, {'{sessionTitle}'}, {'{title}'}, {'{content}'}, {'{level}'}, {'{itemName}'}</p>
+            <p className="text-xs text-muted-foreground">Use placeholders like {'{memberName}'}, {'{sessionTitle}'}, {'{sessionDate}'}, {'{sessionTime}'}, {'{title}'}, {'{content}'}, {'{level}'}, {'{itemName}'}</p>
           </div>
           <Button type="button" onClick={onSaveClick} disabled={saving} className="bg-[#40938c] text-black font-bold">
             {saving ? "Saving..." : "Save all templates"}

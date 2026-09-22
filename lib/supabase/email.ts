@@ -1,9 +1,23 @@
 import { Resend } from "resend"
-import { applyTemplateText, getEmailTemplateConfig } from "@/lib/email-templates"
+import { applyTemplateText, getEmailTemplateConfig, type EmailTemplate } from "@/lib/email-templates"
 
 const resendApiKey = process.env.RESEND_API_KEY?.trim()
 const emailFrom = process.env.EMAIL_FROM?.trim()
 const resend = resendApiKey ? new Resend(resendApiKey) : null
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>'"]/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "'": "&#39;",
+    '"': "&quot;",
+  })[character] ?? character)
+}
+
+function textToHtml(text: string) {
+  return escapeHtml(text).replace(/\n/g, "<br />")
+}
 
 function getEmailConfigError() {
   if (!resendApiKey) {
@@ -32,7 +46,7 @@ export async function sendSupportEmail({
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
         <h2 style="margin-bottom: 12px;">New club message</h2>
-        <p>${message.replace(/\n/g, "<br />")}</p>
+        <p>${textToHtml(message)}</p>
       </div>
     `,
     text: message,
@@ -98,16 +112,18 @@ export async function sendSessionBookingReminderEmail({
   sessionTitle,
   sessionDate,
   sessionTime,
+  template,
 }: {
   to: string
   memberName: string
   sessionTitle: string
   sessionDate: string
   sessionTime: string
+  template?: EmailTemplate
 }) {
-  const template = getEmailTemplateConfig().booking_reminder
-  const subject = applyTemplateText(template.subject, { memberName, sessionTitle, sessionDate, sessionTime })
-  const text = applyTemplateText(template.body, { memberName, sessionTitle, sessionDate, sessionTime })
+  const selectedTemplate = template ?? getEmailTemplateConfig().booking_reminder
+  const subject = applyTemplateText(selectedTemplate.subject, { memberName, sessionTitle, sessionDate, sessionTime })
+  const text = applyTemplateText(selectedTemplate.body, { memberName, sessionTitle, sessionDate, sessionTime })
 
   return sendEmail({
     to,
@@ -115,7 +131,7 @@ export async function sendSessionBookingReminderEmail({
     html: `
       <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
         <h2>Session reminder</h2>
-        <p>${text.replace(/\n/g, "<br />")}</p>
+        <p>${textToHtml(text)}</p>
       </div>
     `,
     text,
@@ -128,16 +144,18 @@ export async function sendSessionBookingConfirmationEmail({
   sessionTitle,
   sessionDate,
   sessionTime,
+  template,
 }: {
   to: string
   memberName: string
   sessionTitle: string
   sessionDate: string
   sessionTime: string
+  template?: EmailTemplate
 }) {
-  const template = getEmailTemplateConfig().booking_confirmation
-  const subject = applyTemplateText(template.subject, { memberName, sessionTitle, sessionDate, sessionTime })
-  const text = applyTemplateText(template.body, { memberName, sessionTitle, sessionDate, sessionTime })
+  const selectedTemplate = template ?? getEmailTemplateConfig().booking_confirmation
+  const subject = applyTemplateText(selectedTemplate.subject, { memberName, sessionTitle, sessionDate, sessionTime })
+  const text = applyTemplateText(selectedTemplate.body, { memberName, sessionTitle, sessionDate, sessionTime })
 
   return sendEmail({
     to,
@@ -145,7 +163,7 @@ export async function sendSessionBookingConfirmationEmail({
     html: `
       <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
         <h2>Booking confirmed</h2>
-        <p>${text.replace(/\n/g, "<br />")}</p>
+        <p>${textToHtml(text)}</p>
       </div>
     `,
     text,
@@ -156,22 +174,24 @@ export async function sendAnnouncementEmail({
   to,
   title,
   content,
+  template,
 }: {
   to: string
   title: string
   content: string
+  template?: EmailTemplate
 }) {
-  const template = getEmailTemplateConfig().announcement
-  const subject = applyTemplateText(template.subject, { title, content })
-  const text = applyTemplateText(template.body, { title, content })
+  const selectedTemplate = template ?? getEmailTemplateConfig().announcement
+  const subject = applyTemplateText(selectedTemplate.subject, { title, content })
+  const text = applyTemplateText(selectedTemplate.body, { title, content })
 
   return sendEmail({
     to,
     subject,
     html: `
       <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
-        <h2>${title}</h2>
-        <p>${text.replace(/\n/g, "<br />")}</p>
+        <h2>${escapeHtml(title)}</h2>
+        <p>${textToHtml(text)}</p>
       </div>
     `,
     text,
@@ -183,15 +203,18 @@ export async function sendSessionAlertEmail({
   title,
   date,
   time,
+  template,
 }: {
   to: string
   title: string
   date: string
   time: string
+  template?: EmailTemplate
 }) {
-  const template = getEmailTemplateConfig().session_alert
-  const subject = applyTemplateText(template.subject, { title, date, time })
-  const text = applyTemplateText(template.body, { title, date, time })
+  const selectedTemplate = template ?? getEmailTemplateConfig().session_alert
+  const replacements = { title, sessionTitle: title, date, time, sessionDate: date, sessionTime: time }
+  const subject = applyTemplateText(selectedTemplate.subject, replacements)
+  const text = applyTemplateText(selectedTemplate.body, replacements)
 
   return sendEmail({
     to,
@@ -199,7 +222,7 @@ export async function sendSessionAlertEmail({
     html: `
       <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
         <h2>New session available</h2>
-        <p>${text.replace(/\n/g, "<br />")}</p>
+        <p>${textToHtml(text)}</p>
       </div>
     `,
     text,
@@ -210,14 +233,16 @@ export async function sendAssessmentEmail({
   to,
   memberName,
   level,
+  template,
 }: {
   to: string
   memberName: string
   level: string
+  template?: EmailTemplate
 }) {
-  const template = getEmailTemplateConfig().assessment
-  const subject = applyTemplateText(template.subject, { memberName, level })
-  const text = applyTemplateText(template.body, { memberName, level })
+  const selectedTemplate = template ?? getEmailTemplateConfig().assessment
+  const subject = applyTemplateText(selectedTemplate.subject, { memberName, level })
+  const text = applyTemplateText(selectedTemplate.body, { memberName, level })
 
   return sendEmail({
     to,
@@ -225,7 +250,7 @@ export async function sendAssessmentEmail({
     html: `
       <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
         <h2>Assessment update</h2>
-        <p>${text.replace(/\n/g, "<br />")}</p>
+        <p>${textToHtml(text)}</p>
       </div>
     `,
     text,
@@ -236,14 +261,20 @@ export async function sendAbsenceEmail({
   to,
   memberName,
   sessionTitle,
+  sessionDate,
+  sessionTime,
+  template,
 }: {
   to: string
   memberName: string
   sessionTitle: string
+  sessionDate?: string
+  sessionTime?: string
+  template?: EmailTemplate
 }) {
-  const template = getEmailTemplateConfig().absence
-  const subject = applyTemplateText(template.subject, { memberName, sessionTitle })
-  const text = applyTemplateText(template.body, { memberName, sessionTitle })
+  const selectedTemplate = template ?? getEmailTemplateConfig().absence
+  const subject = applyTemplateText(selectedTemplate.subject, { memberName, sessionTitle, sessionDate, sessionTime })
+  const text = applyTemplateText(selectedTemplate.body, { memberName, sessionTitle, sessionDate, sessionTime })
 
   return sendEmail({
     to,
@@ -251,7 +282,7 @@ export async function sendAbsenceEmail({
     html: `
       <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
         <h2>Attendance recorded</h2>
-        <p>${text.replace(/\n/g, "<br />")}</p>
+        <p>${textToHtml(text)}</p>
       </div>
     `,
     text,
@@ -261,13 +292,15 @@ export async function sendAbsenceEmail({
 export async function sendShopUpdateEmail({
   to,
   itemName,
+  template,
 }: {
   to: string
   itemName: string
+  template?: EmailTemplate
 }) {
-  const template = getEmailTemplateConfig().shop_update
-  const subject = applyTemplateText(template.subject, { itemName })
-  const text = applyTemplateText(template.body, { itemName })
+  const selectedTemplate = template ?? getEmailTemplateConfig().shop_update
+  const subject = applyTemplateText(selectedTemplate.subject, { itemName })
+  const text = applyTemplateText(selectedTemplate.body, { itemName })
 
   return sendEmail({
     to,
@@ -275,7 +308,7 @@ export async function sendShopUpdateEmail({
     html: `
       <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
         <h2>New item in the shop</h2>
-        <p>${text.replace(/\n/g, "<br />")}</p>
+        <p>${textToHtml(text)}</p>
       </div>
     `,
     text,
