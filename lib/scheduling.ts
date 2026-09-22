@@ -45,6 +45,37 @@ export function parseSessionStart(dateValue: string | null | undefined, timeValu
   return Number.isNaN(start.getTime()) ? null : start
 }
 
+export function parseSessionEnd(dateValue: string | null | undefined, timeValue: string | null | undefined): Date | null {
+  const sessionDate = parseSessionDate(dateValue)
+  if (!sessionDate || !timeValue) return null
+
+  const timeString = String(timeValue)
+  const rangeMatch = timeString.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?\s*-\s*(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
+  if (!rangeMatch) return null
+
+  const [, , , startPeriod, endHourValue, endMinuteValue, endPeriodValue] = rangeMatch
+  const period = endPeriodValue || startPeriod
+  const endHour = Number(endHourValue)
+  const endMinute = Number(endMinuteValue)
+  const normalizedHour = (() => {
+    if (/pm/i.test(period ?? "") && endHour !== 12) return endHour + 12
+    if (/am/i.test(period ?? "") && endHour === 12) return 0
+    return endHour
+  })()
+
+  const end = new Date(sessionDate)
+  end.setHours(normalizedHour, endMinute, 0, 0)
+  return Number.isNaN(end.getTime()) ? null : end
+}
+
+export function isSessionEnded(
+  session: { date?: string | null; time?: string | null } | null | undefined,
+  now = new Date(),
+) {
+  const end = parseSessionEnd(session?.date, session?.time)
+  return Boolean(end && now >= end)
+}
+
 export function getSessionBookingRules(
   session: { date?: string | null; time?: string | null; max_capacity?: number | string | null; notes?: string | null },
   currentCount = 0,
@@ -54,11 +85,12 @@ export function getSessionBookingRules(
   const parsedLimit = typeof rawLimit === "string" ? Number(rawLimit) : typeof rawLimit === "number" ? rawLimit : null
   const limit = Number.isFinite(parsedLimit) && parsedLimit !== null && parsedLimit > 0 ? parsedLimit : null
   const start = parseSessionStart(session.date, session.time)
+  const ended = isSessionEnded(session, now)
   const isFull = limit !== null && currentCount >= limit
   const bookingCutoff = start ? new Date(start.getTime() - 6 * 60 * 60 * 1000) : null
   const cancellationCutoff = start ? new Date(start.getTime() - 24 * 60 * 60 * 1000) : null
 
-  const bookingBlocked = !!start && !!bookingCutoff && now >= bookingCutoff
+  const bookingBlocked = ended || (!!start && !!bookingCutoff && now >= bookingCutoff)
   const cancellationBlocked = !!start && !!cancellationCutoff && now >= cancellationCutoff
 
   const sessionNotes = [
@@ -73,7 +105,9 @@ export function getSessionBookingRules(
     isBookingBlocked: bookingBlocked || isFull,
     bookingBlockReason: isFull
       ? "This session is full. Please wait for a cancellation before trying again."
-      : bookingBlocked
+      : ended
+        ? "This session has ended and is no longer available for booking."
+        : bookingBlocked
         ? "Booking is no longer available within 6 hours of the session start. Please talk to the club leaders if you need help."
         : null,
     isCancellationBlocked: cancellationBlocked,

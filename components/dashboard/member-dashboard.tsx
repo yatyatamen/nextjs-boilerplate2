@@ -17,7 +17,7 @@
                                                   Resource,
                                                 } from "@/lib/types"
 import { LEVELS } from "@/lib/types"
-import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling"
+import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "@/lib/scheduling"
                                                 import {
                                                   LayoutDashboard,
                                                   CalendarDays,
@@ -337,42 +337,15 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                     return map
                                                   }, [schedule])
 
-                                                  // Determine if a session has already ended (date + end time)
-                                                  function isSessionExpired(session: ScheduleSession | undefined): boolean {
-                                                    if (!session || !session.date || !session.time) return false
-
-                                                    const dateMatch = session.date.match(/^(\d{4})-(\d{2})-(\d{2})/)
-                                                    if (!dateMatch) return false
-                                                    const [, year, month, day] = dateMatch
-                                                    const sessionDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-
-                                                    const timeMatch = session.time.match(/(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
-                                                    if (!timeMatch) return false
-
-                                                    const [, , , endHour, endMin, period] = timeMatch
-                                                    let hour = parseInt(endHour)
-                                                    const min = parseInt(endMin)
-                                                    if (period?.toUpperCase() === "PM" && hour !== 12) {
-                                                      hour += 12
-                                                    } else if (period?.toUpperCase() === "AM" && hour === 12) {
-                                                      hour = 0
-                                                    }
-
-                                                    const sessionEndTime = new Date(sessionDate)
-                                                    sessionEndTime.setHours(hour, min, 0, 0)
-
-                                                    return new Date() > sessionEndTime
-                                                  }
-
                                                   useEffect(() => {
                                                     setShopItemsState(shopItems)
                                                   }, [shopItems])
 
-                                                  const visibleSchedule = useMemo(() => schedule.filter((s) => !isSessionExpired(s)), [schedule])
+                                                  const visibleSchedule = useMemo(() => schedule.filter((s) => !isSessionEnded(s)), [schedule])
 
                                                   const visibleBookings = useMemo(() => bookings.filter((b) => {
                                                     const session = b.session_id ? scheduleById.get(String(b.session_id)) : undefined
-                                                    return !isSessionExpired(session)
+                                                    return !isSessionEnded(session)
                                                   }), [bookings, scheduleById])
 
                                                   const supportNotifications = useMemo(() => {
@@ -1251,7 +1224,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                     const session = sessionIdStr ? scheduleById.get(sessionIdStr) : undefined
                                                     
                                                     // If the session doesn't exist at all, or if it's expired, mark it for cleanup
-                                                    if (!session || isSessionExpired(session)) {
+                                                    if (!session || isSessionEnded(session)) {
                                                       expiredBookingIds.push(booking.id)
                                                     }
                                                   })
@@ -2233,7 +2206,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                           </div>
                                                                           <div className="rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-3">
                                                                             <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
-                                                                            <p className={`mt-2 text-sm ${theme.textSecondary} leading-relaxed`}>{item.description || "No description provided."}</p>
+                                                                            <p className={`mt-2 text-sm ${theme.textSecondary} leading-relaxed whitespace-pre-wrap break-words`}>{item.description || "No description provided."}</p>
                                                                           </div>
                                                                           <div className="flex flex-wrap items-center gap-2 pt-1">
                                                                             <Button
@@ -2288,7 +2261,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                             </div>
                                                                             <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
                                                                               <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
-                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed`}>{item.description || "No description provided."}</p>
+                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed whitespace-pre-wrap break-words`}>{item.description || "No description provided."}</p>
                                                                             </div>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary}`}>Stock: {item.stock ?? 0} {unit}</p>
                                                                           </div>
@@ -2344,7 +2317,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                             </div>
                                                                             <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
                                                                               <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
-                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed`}>{item.description || "No description provided."}</p>
+                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed whitespace-pre-wrap break-words`}>{item.description || "No description provided."}</p>
                                                                             </div>
                                                                           </div>
                                                                         </div>
@@ -2360,7 +2333,6 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                               title: item.name || "Shop item",
                                                                               category: item.category || "Shop item",
                                                                               description: item.description || "No description available.",
-                                                                              specs: item.description || "No description provided.",
                                                                               price: item.price,
                                                                               stock: item.stock,
                                                                               unit,
@@ -2611,7 +2583,7 @@ import { getSessionBookingRules, getSessionBookingNotes } from "@/lib/scheduling
                                                                 {selectedProduct.description && (
                                                                   <div>
                                                                     <p className="text-xs font-bold uppercase tracking-[0.24em] text-zinc-400">Overview</p>
-                                                                    <p className="mt-2 text-sm leading-7 text-zinc-200">{selectedProduct.description}</p>
+                                                                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-zinc-200">{selectedProduct.description}</p>
                                                                   </div>
                                                                 )}
 

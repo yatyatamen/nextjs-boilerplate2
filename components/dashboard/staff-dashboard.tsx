@@ -26,6 +26,7 @@ import type {
   Resource,
 } from "@/lib/types"
 import { ALL_ROLE_AND_TIER_OPTIONS, LEVELS, ROLES } from "@/lib/types"
+import { isSessionEnded } from "@/lib/scheduling"
 import {
   getEmailTemplateConfig,
   saveEmailTemplateConfig,
@@ -1317,7 +1318,9 @@ export function StaffDashboard({
               </Card>
             ) : (
               (() => {
-                const sortedSessions = [...schedule].sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
+                const sortedSessions = schedule
+                  .filter((session) => !isSessionEnded(session))
+                  .sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
                 return sortedSessions.map((session) => {
                   const sessionBookings = bookings
                     .filter((b) => b.session_id === session.id)
@@ -1550,7 +1553,7 @@ export function StaffDashboard({
                   <p className="text-muted-foreground">No sessions available to mark attendance.</p>
                 </Card>
               ) : (
-                schedule.map((session) => {
+                schedule.filter((session) => !isSessionEnded(session)).map((session) => {
                   const sessionBookings = bookings.filter((b) => b.session_id === session.id)
                   const uniqueBookings = Array.from(
                     new Map(
