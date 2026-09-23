@@ -1,9 +1,24 @@
-import { Resend } from "resend"
+import nodemailer from "nodemailer"
 import { applyTemplateText, getEmailTemplateConfig, type EmailTemplate } from "@/lib/email-templates"
 
-const resendApiKey = process.env.RESEND_API_KEY?.trim()
-const emailFrom = process.env.EMAIL_FROM?.trim()
-const resend = resendApiKey ? new Resend(resendApiKey) : null
+const gmailUser = process.env.GMAIL_USER?.trim() || process.env.EMAIL_USER?.trim()
+const gmailAppPassword = (process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD)?.trim().replace(/\s+/g, "")
+const emailFrom = process.env.EMAIL_FROM?.trim() || gmailUser || ""
+const smtpHost = (process.env.EMAIL_HOST || process.env.SMTP_HOST || "smtp.gmail.com").trim()
+const smtpPortValue = Number(process.env.EMAIL_PORT ?? process.env.SMTP_PORT ?? "587")
+const smtpPort = Number.isFinite(smtpPortValue) ? smtpPortValue : 587
+const smtpSecure = (process.env.EMAIL_SECURE || process.env.SMTP_SECURE || "false").trim().toLowerCase() === "true"
+const transporter = gmailUser && gmailAppPassword
+  ? nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: {
+        user: gmailUser,
+        pass: gmailAppPassword,
+      },
+    })
+  : null
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>'"]/g, (character) => ({
@@ -20,12 +35,12 @@ function textToHtml(text: string) {
 }
 
 function getEmailConfigError() {
-  if (!resendApiKey) {
-    return "RESEND_API_KEY is not configured. Add it to .env.local and restart the app."
+  if (!gmailUser) {
+    return "No Gmail sender is configured. Add GMAIL_USER or EMAIL_USER in .env.local."
   }
 
-  if (!emailFrom) {
-    return "EMAIL_FROM is not configured. Set a verified Resend sender address in .env.local."
+  if (!gmailAppPassword) {
+    return "No Gmail app password is configured. Add GMAIL_APP_PASSWORD or EMAIL_PASSWORD in .env.local."
   }
 
   return null
@@ -70,11 +85,10 @@ export async function sendEmail({
     return { ok: false, error: configError }
   }
 
-  if (!resend || !emailFrom) {
-    return { ok: false, error: "Email sender is not configured." }
+  if (!transporter || !emailFrom) {
+    return { ok: false, error: "Gmail sender is not configured." }
   }
 
-  const from = emailFrom
   const recipients = Array.isArray(to) ? to.filter(Boolean) : [to]
 
   if (recipients.length === 0) {
@@ -82,20 +96,20 @@ export async function sendEmail({
   }
 
   try {
-    const result = await resend.emails.send({
-      from,
+    const result = await transporter.sendMail({
+      from: emailFrom,
       to: recipients,
       subject,
       html,
       text: text ?? html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
     })
 
-    if (result.error) {
-      console.error("[email] Resend rejected the message:", result.error)
-      return { ok: false, error: result.error.message }
+    if (result.rejected && result.rejected.length > 0) {
+      console.error("[email] Gmail rejected the message:", result.rejected)
+      return { ok: false, error: `Gmail rejected recipients: ${result.rejected.join(", ")}` }
     }
 
-    return { ok: true, id: result.data?.id }
+    return { ok: true, id: result.messageId }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to send email"
     console.error("[email] send failed:", message)

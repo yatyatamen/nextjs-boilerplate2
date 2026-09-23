@@ -72,6 +72,13 @@ import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "
                                                   return (value ?? "").toString().trim().toLowerCase()
                                                 }
 
+                                                function formatProductText(value: string | null | undefined) {
+                                                  return (value ?? "")
+                                                    .replace(/\\r\\n/g, "\n")
+                                                    .replace(/\\n/g, "\n")
+                                                    .replace(/<br\s*\/?>/gi, "\n")
+                                                }
+
                                                 function parseImageList(value: string | string[] | null | undefined) {
                                                   if (!value) return []
                                                   if (Array.isArray(value)) {
@@ -2576,14 +2583,14 @@ import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "
                                                                 {selectedProduct.specs && (
                                                                   <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
                                                                     <p className="text-xs font-bold uppercase tracking-[0.24em] text-zinc-400">Specs</p>
-                                                                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-200">{selectedProduct.specs}</p>
+                                                                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-200">{formatProductText(selectedProduct.specs)}</p>
                                                                   </div>
                                                                 )}
 
                                                                 {selectedProduct.description && (
                                                                   <div>
                                                                     <p className="text-xs font-bold uppercase tracking-[0.24em] text-zinc-400">Overview</p>
-                                                                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-zinc-200">{selectedProduct.description}</p>
+                                                                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-zinc-200">{formatProductText(selectedProduct.description)}</p>
                                                                   </div>
                                                                 )}
 
