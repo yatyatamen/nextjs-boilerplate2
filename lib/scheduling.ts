@@ -24,9 +24,15 @@ export function parseSessionDate(dateValue: string | null | undefined): Date | n
 
 export function parseSessionStart(dateValue: string | null | undefined, timeValue: string | null | undefined): Date | null {
   const sessionDate = parseSessionDate(dateValue)
-  if (!sessionDate || !timeValue) return null
+  if (!sessionDate) return null
 
-  const timeString = String(timeValue)
+  const timeString = String(timeValue ?? "").trim()
+  if (!timeString) {
+    const start = new Date(sessionDate)
+    start.setHours(0, 0, 0, 0)
+    return start
+  }
+
   const firstTimeMatch = timeString.match(/(\d{1,2}):(\d{2})/)
   if (!firstTimeMatch) return null
 
@@ -47,25 +53,51 @@ export function parseSessionStart(dateValue: string | null | undefined, timeValu
 
 export function parseSessionEnd(dateValue: string | null | undefined, timeValue: string | null | undefined): Date | null {
   const sessionDate = parseSessionDate(dateValue)
-  if (!sessionDate || !timeValue) return null
+  if (!sessionDate) return null
 
-  const timeString = String(timeValue)
+  const timeString = String(timeValue ?? "").trim()
+  if (!timeString) {
+    const end = new Date(sessionDate)
+    end.setHours(23, 59, 59, 999)
+    return end
+  }
+
   const rangeMatch = timeString.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?\s*-\s*(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
-  if (!rangeMatch) return null
+  if (rangeMatch) {
+    const [, , , startPeriod, endHourValue, endMinuteValue, endPeriodValue] = rangeMatch
+    const period = endPeriodValue || startPeriod
+    const endHour = Number(endHourValue)
+    const endMinute = Number(endMinuteValue)
+    const normalizedHour = (() => {
+      if (/pm/i.test(period ?? "") && endHour !== 12) return endHour + 12
+      if (/am/i.test(period ?? "") && endHour === 12) return 0
+      return endHour
+    })()
 
-  const [, , , startPeriod, endHourValue, endMinuteValue, endPeriodValue] = rangeMatch
-  const period = endPeriodValue || startPeriod
-  const endHour = Number(endHourValue)
-  const endMinute = Number(endMinuteValue)
-  const normalizedHour = (() => {
-    if (/pm/i.test(period ?? "") && endHour !== 12) return endHour + 12
-    if (/am/i.test(period ?? "") && endHour === 12) return 0
-    return endHour
-  })()
+    const end = new Date(sessionDate)
+    end.setHours(normalizedHour, endMinute, 0, 0)
+    return Number.isNaN(end.getTime()) ? null : end
+  }
+
+  const singleTimeMatch = timeString.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
+  if (singleTimeMatch) {
+    const [, hourValue, minuteValue, meridiem] = singleTimeMatch
+    const hour = Number(hourValue)
+    const minute = Number(minuteValue)
+    const normalizedHour = (() => {
+      if (/pm/i.test(meridiem ?? "") && hour !== 12) return hour + 12
+      if (/am/i.test(meridiem ?? "") && hour === 12) return 0
+      return hour
+    })()
+
+    const end = new Date(sessionDate)
+    end.setHours(normalizedHour, minute + 90, 0, 0)
+    return Number.isNaN(end.getTime()) ? null : end
+  }
 
   const end = new Date(sessionDate)
-  end.setHours(normalizedHour, endMinute, 0, 0)
-  return Number.isNaN(end.getTime()) ? null : end
+  end.setHours(23, 59, 59, 999)
+  return end
 }
 
 export function isSessionEnded(

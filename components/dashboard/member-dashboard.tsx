@@ -72,10 +72,16 @@ import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "
                                                   return (value ?? "").toString().trim().toLowerCase()
                                                 }
 
+                                                function normalizeMultilineText(value: string | null | undefined) {
+                                                  return String(value ?? "")
+                                                    .replace(/\r\n/g, "\n")
+                                                    .replace(/\r/g, "\n")
+                                                    .replace(/\n{3,}/g, "\n\n")
+                                                    .trim()
+                                                }
+
                                                 function formatProductText(value: string | null | undefined) {
-                                                  return (value ?? "")
-                                                    .replace(/\\r\\n/g, "\n")
-                                                    .replace(/\\n/g, "\n")
+                                                  return normalizeMultilineText(value)
                                                     .replace(/<br\s*\/?>/gi, "\n")
                                                 }
 

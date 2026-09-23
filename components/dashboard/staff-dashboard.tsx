@@ -26,7 +26,7 @@ import type {
   Resource,
 } from "@/lib/types"
 import { ALL_ROLE_AND_TIER_OPTIONS, LEVELS, ROLES } from "@/lib/types"
-import { isSessionEnded } from "@/lib/scheduling"
+import { isSessionEnded, parseSessionStart } from "@/lib/scheduling"
 import {
   getEmailTemplateConfig,
   saveEmailTemplateConfig,
@@ -63,6 +63,14 @@ function formatDate(date: string | null) {
   }
   if (Number.isNaN(d.getTime())) return date
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+}
+
+function normalizeMultilineText(value: string | null | undefined) {
+  return String(value ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
 }
 
 function isFeatureAnnouncement(title: string | null | undefined) {
@@ -109,18 +117,40 @@ function sortSessions(sessions: ScheduleSession[]) {
   const upcoming: ScheduleSession[] = []
   const past: ScheduleSession[] = []
   sessions.forEach((s) => {
-    const d = s?.date ? new Date(s.date) : null
-    if (!d) {
+    const start = parseSessionStart(s.date, s.time)
+    if (!start) {
       upcoming.push(s)
-    } else if (d >= startOfToday) {
+      return
+    }
+
+    if (start >= startOfToday) {
       upcoming.push(s)
     } else {
       past.push(s)
     }
   })
-  upcoming.sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
-  past.sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
+
+  upcoming.sort((a, b) => {
+    const aStart = parseSessionStart(a.date, a.time) ?? new Date(a.date ?? 0)
+    const bStart = parseSessionStart(b.date, b.time) ?? new Date(b.date ?? 0)
+    return aStart.getTime() - bStart.getTime()
+  })
+
+  past.sort((a, b) => {
+    const aStart = parseSessionStart(a.date, a.time) ?? new Date(a.date ?? 0)
+    const bStart = parseSessionStart(b.date, b.time) ?? new Date(b.date ?? 0)
+    return aStart.getTime() - bStart.getTime()
+  })
+
   return [...upcoming, ...past]
+}
+
+function getActiveSessions(sessions: ScheduleSession[]) {
+  return sessions.filter((session) => !isSessionEnded(session))
+}
+
+function getArchivedSessions(sessions: ScheduleSession[]) {
+  return sessions.filter((session) => isSessionEnded(session))
 }
 
 function getMemberDisplayName(member: Profile | null | undefined) {
@@ -413,9 +443,14 @@ export function StaffDashboard({
   }
 
   async function updateExistingShopItem(id: string, payload: Partial<ShopItem>) {
+    const normalizedPayload = {
+      ...payload,
+      ...(payload.description !== undefined ? { description: normalizeMultilineText(payload.description) } : {}),
+    }
+
     const { data, error } = await supabase
       .from("shop_items")
-      .update(payload)
+      .update(normalizedPayload)
       .eq("id", id)
       .select()
       .single()
@@ -428,9 +463,15 @@ export function StaffDashboard({
   }
 
   async function updateExistingGearGuide(id: string, payload: Partial<EquipmentRecommendation>) {
+    const normalizedPayload = {
+      ...payload,
+      ...(payload.description !== undefined ? { description: normalizeMultilineText(payload.description) } : {}),
+      ...(payload.specs !== undefined ? { specs: normalizeMultilineText(payload.specs) } : {}),
+    }
+
     const { data, error } = await supabase
       .from("equipment_recommendations")
-      .update(payload)
+      .update(normalizedPayload)
       .eq("id", id)
       .select()
       .maybeSingle()
@@ -1283,27 +1324,61 @@ export function StaffDashboard({
             }}
           />
           <div className="mt-6 flex flex-col gap-3">
-            {schedule.map((s) => (
-              <Card key={s.id} className="flex items-start justify-between gap-3 p-4">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <CalendarDays className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <h4 className="font-semibold text-foreground">{s.title ?? "Untitled Session"}</h4>
-                    <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                      {formatDate(s.date)} · <span>{s.time ?? "TBD"}</span>
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <EditScheduleButton session={s} onSave={(updates) => updateScheduleItem(s.id, updates)} />
-                  <Button size="sm" variant="outline" onClick={() => confirmDelete("schedule item", async () => { await deleteScheduleItem(s.id) })} className="text-xs">
-                    Delete
-                  </Button>
-                </div>
-              </Card>
-            ))}
+            {(() => {
+              const activeSessions = getActiveSessions(schedule)
+              const archivedSessions = getArchivedSessions(schedule)
+
+              return (
+                <>
+                  {activeSessions.length === 0 ? (
+                    <Card className="p-6 text-center">
+                      <p className="text-muted-foreground">No active sessions right now. Past sessions are moved below to keep the schedule clean.</p>
+                    </Card>
+                  ) : (
+                    activeSessions.map((s) => (
+                      <Card key={s.id} className="flex items-start justify-between gap-3 p-4">
+                        <div className="flex items-start gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <CalendarDays className="h-5 w-5" />
+                          </span>
+                          <div>
+                            <h4 className="font-semibold text-foreground">{s.title ?? "Untitled Session"}</h4>
+                            <p className="text-sm font-medium text-muted-foreground mt-0.5">
+                              {formatDate(s.date)} · <span>{s.time ?? "TBD"}</span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <EditScheduleButton session={s} onSave={(updates) => updateScheduleItem(s.id, updates)} />
+                          <Button size="sm" variant="outline" onClick={() => confirmDelete("schedule item", async () => { await deleteScheduleItem(s.id) })} className="text-xs">
+                            Delete
+                          </Button>
+                        </div>
+                      </Card>
+                    ))
+                  )}
+
+                  {archivedSessions.length > 0 && (
+                    <div className="pt-2">
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Archived Sessions</p>
+                      <div className="flex flex-col gap-2">
+                        {archivedSessions.map((s) => (
+                          <Card key={s.id} className="flex items-center justify-between gap-3 p-3 opacity-75">
+                            <div>
+                              <p className="font-medium text-foreground">{s.title ?? "Untitled Session"}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatDate(s.date)} · {s.time ?? "TBD"}
+                              </p>
+                            </div>
+                            <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Ended</span>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </div>
         </div>
       )}
@@ -1318,8 +1393,7 @@ export function StaffDashboard({
               </Card>
             ) : (
               (() => {
-                const sortedSessions = schedule
-                  .filter((session) => !isSessionEnded(session))
+                const sortedSessions = getActiveSessions(schedule)
                   .sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
                 return sortedSessions.map((session) => {
                   const sessionBookings = bookings
@@ -1553,7 +1627,7 @@ export function StaffDashboard({
                   <p className="text-muted-foreground">No sessions available to mark attendance.</p>
                 </Card>
               ) : (
-                schedule.filter((session) => !isSessionEnded(session)).map((session) => {
+                getActiveSessions(schedule).map((session) => {
                   const sessionBookings = bookings.filter((b) => b.session_id === session.id)
                   const uniqueBookings = Array.from(
                     new Map(
@@ -2672,7 +2746,7 @@ function TitleContentForm({
   )
 }
 
-function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; category: string; price: number; description: string; specs?: string; pic_url: string; stock: number; unit: string }) => Promise<void> }) {
+function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; category: string; price: number; description: string; pic_url: string; stock: number; unit: string }) => Promise<void> }) {
   const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
@@ -2680,7 +2754,6 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
   const [name, setName] = useState("")
   const [category, setCategory] = useState("Rackets")
   const [price, setPrice] = useState("")
-  const [specs, setSpecs] = useState("")
   const [description, setDescription] = useState("")
   const [picUrl, setPicUrl] = useState("")
   const [stock, setStock] = useState(0)
@@ -2700,15 +2773,13 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
             name,
             category,
             price: Number(price) || 0,
-            description,
-            specs,
+            description: normalizeMultilineText(description),
             pic_url: imageUrls.join(", "),
             stock: Number(stock) || 0,
             unit,
           })
           setName("")
           setPrice("")
-          setSpecs("")
           setDescription("")
           setPicUrl("")
           setStock(0)
@@ -2744,7 +2815,6 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
           <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Product Image URLs</Label><Textarea value={picUrl} onChange={(e) => setPicUrl(e.target.value)} placeholder="Add multiple image URLs, separated by commas or new lines" required /></div>
           <div className="flex flex-col gap-1.5"><Label>Stock Quantity</Label><Input type="number" min={0} value={stock} onChange={(e) => setStock(Number(e.target.value))} /></div>
           <div className="flex flex-col gap-1.5"><Label>Unit Label</Label><Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="units, set, pack, box" /></div>
-          <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Specs</Label><Textarea value={specs} onChange={(e) => setSpecs(e.target.value)} /></div>
           <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Overview</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></div>
           <Button type="submit" disabled={loading} className="sm:col-span-2 bg-[#40938c] text-black font-bold">List Product Stock</Button>
         </form>
@@ -2793,7 +2863,7 @@ function EditShopItemButton({
         name: trimmedName,
         category,
         price: Number(price) || 0,
-        description,
+        description: normalizeMultilineText(description),
         pic_url: picUrl,
         stock: Number(stock) || 0,
         unit,
@@ -2964,8 +3034,8 @@ function EditGearGuideButton({
       await onSave({
         title: trimmedTitle,
         category,
-        specs,
-        description,
+        specs: normalizeMultilineText(specs),
+        description: normalizeMultilineText(description),
         recommended_for_tier: recommendedForTier,
         link,
         image_url: imageUrl,
@@ -3038,9 +3108,16 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
       async () => {
         setConfirmLoading(true)
         try {
-          const formattedSpecs = [specs.trim(), priceEstimate ? `Estimated price: $${Number(priceEstimate).toFixed(2)}` : ""].filter(Boolean).join("\n")
+          const formattedSpecs = [normalizeMultilineText(specs), priceEstimate ? `Estimated price: $${Number(priceEstimate).toFixed(2)}` : ""].filter(Boolean).join("\n")
           const recommended_for_tier = recommendedTiers.join(", ")
-          await onCreate({ title, category, description, image_url: joinedUrls, recommended_for_tier, specs: formattedSpecs })
+          await onCreate({
+            title,
+            category,
+            description: normalizeMultilineText(description),
+            image_url: joinedUrls,
+            recommended_for_tier,
+            specs: formattedSpecs,
+          })
           setTitle("")
           setSpecs("")
           setDescription("")
