@@ -49,6 +49,7 @@ export type ScheduleSession = {
   title: string | null
   date: string | null
   time: string | null
+  max_capacity: number | null
   max_level: string | null
   coach: string | null
   notes: string | null
