@@ -370,6 +370,19 @@ export function StaffDashboard({
 
   const selectedMessage = messages.find((m) => String(m.id) === selectedMessageId) ?? messages[0] ?? null
 
+  async function updateStaffRecord(type: "schedule" | "shop_item" | "gear_guide", id: string, payload: Record<string, unknown>) {
+    const response = await fetch("/api/staff/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, id, payload }),
+    })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok || !result.data) {
+      throw new Error(result.error || "Unable to save changes")
+    }
+    return result.data
+  }
+
   async function deleteScheduleItem(id: string) {
     const { error } = await supabase.from("schedule").delete().eq("id", id)
     if (error) {
@@ -380,16 +393,7 @@ export function StaffDashboard({
   }
 
   async function updateScheduleItem(id: string, payload: Partial<ScheduleSession>) {
-    const { data, error } = await supabase
-      .from("schedule")
-      .update(payload)
-      .eq("id", id)
-      .select()
-      .single()
-
-    if (error) {
-      throw new Error(error.message || "Unable to update schedule item")
-    }
+    const data = await updateStaffRecord("schedule", id, payload as Record<string, unknown>)
 
     setSchedule((prev) => sortSessions(prev.map((item) => (item.id === id ? { ...item, ...(data as ScheduleSession) } : item))))
   }
@@ -430,16 +434,7 @@ export function StaffDashboard({
   }
 
   async function updateShopStock(id: string, stock: number, unit: string) {
-    const { data, error } = await supabase
-      .from("shop_items")
-      .update({ stock, unit })
-      .eq("id", id)
-      .select()
-      .single()
-
-    if (error) {
-      throw new Error(`Shop stock update failed: ${error.message}`)
-    }
+    const data = await updateStaffRecord("shop_item", id, { stock, unit })
 
     setShopItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...(data as ShopItem) } : item)))
   }
@@ -451,16 +446,7 @@ export function StaffDashboard({
       ...(payload.specs !== undefined ? { specs: normalizeMultilineText(payload.specs) } : {}),
     }
 
-    const { data, error } = await supabase
-      .from("shop_items")
-      .update(normalizedPayload)
-      .eq("id", id)
-      .select()
-      .single()
-
-    if (error) {
-      throw new Error(error.message || "Unable to update shop item")
-    }
+    const data = await updateStaffRecord("shop_item", id, normalizedPayload as Record<string, unknown>)
 
     setShopItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...(data as ShopItem) } : item)))
   }
@@ -472,16 +458,7 @@ export function StaffDashboard({
       ...(payload.specs !== undefined ? { specs: normalizeMultilineText(payload.specs) } : {}),
     }
 
-    const { data, error } = await supabase
-      .from("equipment_recommendations")
-      .update(normalizedPayload)
-      .eq("id", id)
-      .select()
-      .maybeSingle()
-
-    if (error) {
-      throw new Error(error.message || "Unable to update gear guide")
-    }
+    const data = await updateStaffRecord("gear_guide", id, normalizedPayload as Record<string, unknown>)
 
     setGearGuides((prev) => prev.map((guide) => (guide.id === id ? { ...guide, ...(data as EquipmentRecommendation) } : guide)))
   }
@@ -1347,7 +1324,7 @@ export function StaffDashboard({
                           <div>
                             <h4 className="font-semibold text-foreground">{s.title ?? "Untitled Session"}</h4>
                             <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                              {formatDate(s.date)} · <span>{s.time ?? "TBD"}</span>
+                              {formatDate(s.date)} · <span>{s.time ?? "TBD"}</span> · {s.max_capacity ? `${s.max_capacity} members max` : "No member limit"}
                             </p>
                           </div>
                         </div>
@@ -1370,7 +1347,7 @@ export function StaffDashboard({
                             <div>
                               <p className="font-medium text-foreground">{s.title ?? "Untitled Session"}</p>
                               <p className="text-xs text-muted-foreground">
-                                {formatDate(s.date)} · {s.time ?? "TBD"}
+                                {formatDate(s.date)} · {s.time ?? "TBD"} · {s.max_capacity ? `${s.max_capacity} members max` : "No member limit"}
                               </p>
                             </div>
                             <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Ended</span>
@@ -2493,7 +2470,7 @@ function EditScheduleButton({
                     <option key={slot} value={slot}>{slot}</option>
                   ))}
                 </Select></label>
-                <label className="flex flex-col gap-1 text-xs font-medium"><span>People limit</span><Input type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="No limit" /></label>
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Member limit</span><Input type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="No limit" /></label>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <label className="flex flex-col gap-1 text-xs font-medium"><span>Coach</span><Input value={coach} onChange={(e) => setCoach(e.target.value)} /></label>
@@ -2622,7 +2599,7 @@ function ScheduleForm({
             </Select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="s-capacity">People Limit</Label>
+            <Label htmlFor="s-capacity">Member Limit</Label>
             <Input id="s-capacity" type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="No limit" />
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2 border border-zinc-800 p-3 rounded bg-zinc-950/40">
