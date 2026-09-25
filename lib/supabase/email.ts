@@ -10,6 +10,7 @@ const smtpPort = Number.isFinite(smtpPortValue) ? smtpPortValue : 587
 const smtpSecure = (process.env.EMAIL_SECURE || process.env.SMTP_SECURE || "false").trim().toLowerCase() === "true"
 const transporter = gmailUser && gmailAppPassword
   ? nodemailer.createTransport({
+  service: "gmail",
       host: smtpHost,
       port: smtpPort,
       secure: smtpSecure,
@@ -86,6 +87,13 @@ export async function sendEmail({
   }
 
   if (!transporter || !emailFrom) {
+    console.error("[email] Gmail transport is unavailable", {
+      hasUser: Boolean(gmailUser),
+      hasAppPassword: Boolean(gmailAppPassword),
+      hasFrom: Boolean(emailFrom),
+      host: smtpHost,
+      port: smtpPort,
+    })
     return { ok: false, error: "Gmail sender is not configured." }
   }
 

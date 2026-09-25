@@ -354,6 +354,87 @@ import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "
                                                     setShopItemsState(shopItems)
                                                   }, [shopItems])
 
+                                                  useEffect(() => {
+                                                    setSchedule(initialSchedule)
+                                                  }, [initialSchedule])
+
+                                                  useEffect(() => {
+                                                    setGearGuides(initialGearGuides)
+                                                  }, [initialGearGuides])
+
+                                                  useEffect(() => {
+                                                    const channel = supabase
+                                                      .channel(`member-dashboard-content:${profile.id}`)
+                                                      .on(
+                                                        "postgres_changes",
+                                                        { event: "*", schema: "public", table: "schedule" },
+                                                        (payload: any) => {
+                                                          const changedSession = (payload.new ?? payload.record) as ScheduleSession | undefined
+                                                          const removedId = String(payload.old?.id ?? payload.record?.id ?? "")
+
+                                                          if (payload.eventType === "DELETE" || payload.event === "DELETE") {
+                                                            if (removedId) setSchedule((prev) => prev.filter((session) => String(session.id) !== removedId))
+                                                            return
+                                                          }
+
+                                                          if (!changedSession?.id) return
+                                                          setSchedule((prev) => {
+                                                            const exists = prev.some((session) => String(session.id) === String(changedSession.id))
+                                                            return exists
+                                                              ? prev.map((session) => String(session.id) === String(changedSession.id) ? changedSession : session)
+                                                              : [changedSession, ...prev]
+                                                          })
+                                                        },
+                                                      )
+                                                      .on(
+                                                        "postgres_changes",
+                                                        { event: "*", schema: "public", table: "shop_items" },
+                                                        (payload: any) => {
+                                                          const changedItem = payload.new ?? payload.record
+                                                          const removedId = String(payload.old?.id ?? payload.record?.id ?? "")
+
+                                                          if (payload.eventType === "DELETE" || payload.event === "DELETE") {
+                                                            if (removedId) setShopItemsState((prev) => prev.filter((item) => String(item.id) !== removedId))
+                                                            return
+                                                          }
+
+                                                          if (!changedItem?.id) return
+                                                          setShopItemsState((prev) => {
+                                                            const exists = prev.some((item) => String(item.id) === String(changedItem.id))
+                                                            return exists
+                                                              ? prev.map((item) => String(item.id) === String(changedItem.id) ? changedItem : item)
+                                                              : [changedItem, ...prev]
+                                                          })
+                                                        },
+                                                      )
+                                                      .on(
+                                                        "postgres_changes",
+                                                        { event: "*", schema: "public", table: "equipment_recommendations" },
+                                                        (payload: any) => {
+                                                          const changedGuide = (payload.new ?? payload.record) as EquipmentRecommendation | undefined
+                                                          const removedId = String(payload.old?.id ?? payload.record?.id ?? "")
+
+                                                          if (payload.eventType === "DELETE" || payload.event === "DELETE") {
+                                                            if (removedId) setGearGuides((prev) => prev.filter((guide) => String(guide.id) !== removedId))
+                                                            return
+                                                          }
+
+                                                          if (!changedGuide?.id) return
+                                                          setGearGuides((prev) => {
+                                                            const exists = prev.some((guide) => String(guide.id) === String(changedGuide.id))
+                                                            return exists
+                                                              ? prev.map((guide) => String(guide.id) === String(changedGuide.id) ? changedGuide : guide)
+                                                              : [changedGuide, ...prev]
+                                                          })
+                                                        },
+                                                      )
+                                                      .subscribe()
+
+                                                    return () => {
+                                                      void supabase.removeChannel(channel)
+                                                    }
+                                                  }, [initialGearGuides, initialSchedule, profile.id, supabase])
+
                                                   const visibleSchedule = useMemo(() => schedule.filter((s) => !isSessionEnded(s)), [schedule])
 
                                                   const visibleBookings = useMemo(() => bookings.filter((b) => {

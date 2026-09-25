@@ -282,12 +282,14 @@ export function StaffDashboard({
       if (!response.ok) {
         const result = await response.json().catch(() => ({}))
         console.error(`Failed to send ${event} email:`, result.error)
+        showToast(`Email failed: ${result.error || "Unable to send email"}`)
         return false
       }
 
       return true
     } catch (error) {
       console.error(`Failed to send ${event} email:`, error)
+      showToast(`Email failed: ${error instanceof Error ? error.message : "Unable to send email"}`)
       return false
     }
   }
@@ -2435,6 +2437,7 @@ function EditScheduleButton({
   const [title, setTitle] = useState(session.title ?? "")
   const [date, setDate] = useState(session.date ?? "")
   const [time, setTime] = useState(session.time ?? "")
+  const [maxCapacity, setMaxCapacity] = useState(String(session.max_capacity ?? ""))
   const [coach, setCoach] = useState(session.coach ?? "")
   const [notes, setNotes] = useState(session.notes ?? "")
   const [confirmLoading, setConfirmLoading] = useState(false)
@@ -2453,6 +2456,7 @@ function EditScheduleButton({
         title: trimmedTitle,
         date,
         time,
+        max_capacity: maxCapacity ? Number(maxCapacity) : null,
         coach,
         notes,
       })
@@ -2489,6 +2493,7 @@ function EditScheduleButton({
                     <option key={slot} value={slot}>{slot}</option>
                   ))}
                 </Select></label>
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>People limit</span><Input type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="No limit" /></label>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <label className="flex flex-col gap-1 text-xs font-medium"><span>Coach</span><Input value={coach} onChange={(e) => setCoach(e.target.value)} /></label>
@@ -2518,6 +2523,7 @@ function ScheduleForm({
     title: string
     date: string
     time: string
+    max_capacity: number | null
     visibility_tiers: string[]
     coach: string
     notes: string
@@ -2530,6 +2536,7 @@ function ScheduleForm({
   const [title, setTitle] = useState("")
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
+  const [maxCapacity, setMaxCapacity] = useState("")
   const [selectedTiers, setSelectedTiers] = useState<string[]>([...ALL_TIERS])
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>([])
   const [notes, setNotes] = useState("")
@@ -2560,6 +2567,7 @@ function ScheduleForm({
             title,
             date,
             time,
+            max_capacity: maxCapacity ? Number(maxCapacity) : null,
             visibility_tiers: selectedTiers,
             coach: teachers
               .filter((teacher) => selectedTeacherIds.includes(teacher.id))
@@ -2570,6 +2578,7 @@ function ScheduleForm({
           setTitle("")
           setDate("")
           setTime("")
+          setMaxCapacity("")
           setSelectedTeacherIds([])
           setNotes("")
           closeConfirmation()
@@ -2611,6 +2620,10 @@ function ScheduleForm({
                 <option key={slot} value={slot}>{slot}</option>
               ))}
             </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="s-capacity">People Limit</Label>
+            <Input id="s-capacity" type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="No limit" />
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2 border border-zinc-800 p-3 rounded bg-zinc-950/40">
             <Label className="text-[#40938c] font-bold">Select Visible Ranks</Label>
