@@ -1191,7 +1191,23 @@ import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "
                                                         const nextBooking = { ...inserted, notes: inserted.notes ?? note ?? null } as Booking
                                                         setBookings((prev) => [...prev, nextBooking])
                                                         setBookingNoteDraft("")
-                                                        alert("✓ You've successfully joined the session!")
+                                                        const confirmation = result.email?.confirmation
+                                                        const emailMessage = confirmation?.status === "failed"
+                                                          ? ` The confirmation email was not accepted: ${confirmation.error || "mail delivery failed"}`
+                                                          : confirmation?.status === "skipped"
+                                                            ? " No confirmation email was sent because no email address is set on the account."
+                                                            : " A confirmation email was accepted by the mail server."
+                                                        const reminder = result.email?.reminder
+                                                        const reminderMessage = reminder?.status === "failed"
+                                                          ? ` The reminder email failed: ${reminder.error || "mail delivery failed"}`
+                                                          : reminder?.status === "accepted"
+                                                            ? " The reminder email was also accepted by the mail server."
+                                                            : reminder?.status === "disabled"
+                                                              ? " Reminder emails are disabled in your preferences."
+                                                              : reminder?.status === "not_due"
+                                                                ? " No reminder was due yet; reminders are only sent when booking within 24 hours of the session."
+                                                                : " The reminder email was skipped."
+                                                        alert(`✓ You've successfully joined the session!${emailMessage}${reminderMessage}`)
                                                         return
                                                       }
 

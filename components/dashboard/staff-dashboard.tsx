@@ -272,7 +272,7 @@ export function StaffDashboard({
     to: string,
     payload: Record<string, string>,
     showFailureToast = true,
-  ) {
+  ): Promise<{ ok: boolean; error?: string }> {
     try {
       const response = await fetch("/api/email", {
         method: "POST",
@@ -284,14 +284,15 @@ export function StaffDashboard({
         const result = await response.json().catch(() => ({}))
         console.error(`Failed to send ${event} email:`, result.error)
         if (showFailureToast) showToast(`Email failed: ${result.error || "Unable to send email"}`)
-        return false
+        return { ok: false, error: result.error || "Unable to send email" }
       }
 
-      return true
+      return { ok: true }
     } catch (error) {
       console.error(`Failed to send ${event} email:`, error)
-      if (showFailureToast) showToast(`Email failed: ${error instanceof Error ? error.message : "Unable to send email"}`)
-      return false
+      const message = error instanceof Error ? error.message : "Unable to send email"
+      if (showFailureToast) showToast(`Email failed: ${message}`)
+      return { ok: false, error: message }
     }
   }
 
@@ -300,15 +301,20 @@ export function StaffDashboard({
     deliveries: Array<{ to: string; payload: Record<string, string> }>,
   ) {
     let sent = 0
+    let firstError: string | undefined
     for (const delivery of deliveries) {
-      if (await sendConfiguredEmail(event, delivery.to, delivery.payload, false)) sent += 1
+      const result = await sendConfiguredEmail(event, delivery.to, delivery.payload, false)
+      if (result.ok) sent += 1
+      else firstError ||= result.error
     }
-    return { sent, failed: deliveries.length - sent }
+    return { sent, failed: deliveries.length - sent, attempted: deliveries.length, error: firstError }
   }
 
-  function showEmailBatchResult(action: string, result: { sent: number; failed: number }) {
+  function showEmailBatchResult(action: string, result: { sent: number; failed: number; attempted: number; error?: string }) {
     const failureSummary = result.failed > 0 ? `; ${result.failed} failed` : ""
-    showToast(`${action}: ${result.sent} email${result.sent === 1 ? "" : "s"} sent${failureSummary}`)
+    const recipientSummary = result.attempted === 0 ? "; no eligible recipients" : ` (${result.sent}/${result.attempted} accepted)`
+    const errorSummary = result.error ? `; ${result.error.slice(0, 140)}` : ""
+    showToast(`${action}: ${result.sent} email${result.sent === 1 ? "" : "s"} accepted by mail server${recipientSummary}${failureSummary}${errorSummary}`)
   }
 
   // initialize attendanceSelection defaults when bookings or attendanceRecords change
@@ -964,7 +970,7 @@ export function StaffDashboard({
     )
   }
 
-  async function markAttendance(booking: Booking, status: "present" | "absent" | "late"): Promise<{ saved: boolean; emailSent: boolean }> {
+  async function markAttendance(booking: Booking, status: "present" | "absent" | "late"): Promise<{ saved: boolean; emailSent: boolean; error?: string }> {
     const member = members.find((m) => m.id === booking.user_id)
     const existingRecord = attendanceRecords.find(
       (record) => String(record.session_id) === String(booking.session_id) && String(record.user_id) === String(booking.user_id),
@@ -1008,7 +1014,7 @@ export function StaffDashboard({
         if (!response.ok) {
           setAttendanceRecords((prev) => prev.map((record) => (record.id === existingRecord.id ? existingRecord : record)))
           console.error("Failed to update attendance:", result.error ?? "unknown error")
-          return { saved: false, emailSent: true }
+          return { saved: false, emailSent: true, error: result.error || `HTTP ${response.status}` }
         } else {
           if (result.data) {
             setAttendanceRecords((prev) => prev.map((record) => record.id === existingRecord.id ? result.data as AttendanceRecord : record))
@@ -1016,19 +1022,19 @@ export function StaffDashboard({
           let emailSent = true
           const session = schedule.find((entry) => String(entry.id) === String(booking.session_id))
           if (status === "absent" && existingRecord.status !== "absent" && member?.email) {
-            emailSent = await sendConfiguredEmail("absence", member.email, {
+            emailSent = (await sendConfiguredEmail("absence", member.email, {
               memberName: getMemberDisplayName(member),
               sessionTitle: session?.title || String(booking.session_id ?? "session"),
               sessionDate: session?.date || "TBD",
               sessionTime: session?.time || "TBD",
-            })
+            })).ok
           }
           return { saved: true, emailSent }
         }
       } catch (_err) {
         setAttendanceRecords((prev) => prev.map((record) => (record.id === existingRecord.id ? existingRecord : record)))
         console.error("Network error updating attendance:", _err)
-        return { saved: false, emailSent: true }
+        return { saved: false, emailSent: true, error: _err instanceof Error ? _err.message : "Network error updating attendance" }
       } finally {
         setPendingAttendance((p) => ({ ...p, [bookingKey]: false }))
       }
@@ -1059,23 +1065,23 @@ export function StaffDashboard({
         let emailSent = true
         if (status === "absent" && member?.email) {
           const session = schedule.find((entry) => String(entry.id) === String(booking.session_id))
-          emailSent = await sendConfiguredEmail("absence", member.email, {
+          emailSent = (await sendConfiguredEmail("absence", member.email, {
             memberName: getMemberDisplayName(member),
             sessionTitle: session?.title || String(booking.session_id ?? "session"),
             sessionDate: session?.date || "TBD",
             sessionTime: session?.time || "TBD",
-          })
+          })).ok
         }
         return { saved: true, emailSent }
       } else {
         setAttendanceRecords((prev) => prev.filter((r) => r.id !== nextRecord.id))
         console.error("Failed to save attendance:", result.error ?? "unknown error")
-        return { saved: false, emailSent: true }
+        return { saved: false, emailSent: true, error: result.error || `HTTP ${response.status}` }
       }
     } catch (_err) {
       setAttendanceRecords((prev) => prev.filter((r) => r.id !== nextRecord.id))
       console.error("Network error saving attendance:", _err)
-      return { saved: false, emailSent: true }
+      return { saved: false, emailSent: true, error: _err instanceof Error ? _err.message : "Network error saving attendance" }
     } finally {
       setPendingAttendance((p) => ({ ...p, [bookingKey]: false }))
     }
@@ -1701,16 +1707,18 @@ export function StaffDashboard({
                                 closeConfirmation()
                                 let savedCount = 0
                                 let failedEmailCount = 0
+                                let firstSaveError = ""
                                 for (const row of toSave) {
                                   const booking = row.booking
                                   const desired = attendanceSelection[booking.id] ?? "present"
                                   const result = await markAttendance(booking, desired)
                                   if (result.saved) savedCount += 1
+                                  else firstSaveError ||= result.error || "Attendance save failed"
                                   if (result.saved && !result.emailSent) failedEmailCount += 1
                                 }
                                 const failedCount = toSave.length - savedCount
                                 if (failedCount > 0) {
-                                  showToast(`${savedCount} attendance saved; ${failedCount} failed`)
+                                  showToast(`${savedCount} attendance saved; ${failedCount} failed: ${firstSaveError}`)
                                 } else {
                                   const emailWarning = failedEmailCount > 0 ? `; ${failedEmailCount} absence email${failedEmailCount === 1 ? "" : "s"} failed` : ""
                                   showToast(`${savedCount} attendance record${savedCount === 1 ? "" : "s"} saved${emailWarning}`)

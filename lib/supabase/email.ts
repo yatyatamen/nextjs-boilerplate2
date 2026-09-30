@@ -7,10 +7,10 @@ const emailFrom = process.env.EMAIL_FROM?.trim() || gmailUser || ""
 const smtpHost = (process.env.EMAIL_HOST || process.env.SMTP_HOST || "smtp.gmail.com").trim()
 const smtpPortValue = Number(process.env.EMAIL_PORT ?? process.env.SMTP_PORT ?? "587")
 const smtpPort = Number.isFinite(smtpPortValue) ? smtpPortValue : 587
-const smtpSecure = (process.env.EMAIL_SECURE || process.env.SMTP_SECURE || "false").trim().toLowerCase() === "true"
+const smtpSecureValue = (process.env.EMAIL_SECURE || process.env.SMTP_SECURE || "").trim().toLowerCase()
+const smtpSecure = smtpSecureValue ? smtpSecureValue === "true" : smtpPort === 465
 const transporter = gmailUser && gmailAppPassword
   ? nodemailer.createTransport({
-  service: "gmail",
       host: smtpHost,
       port: smtpPort,
       secure: smtpSecure,
@@ -97,7 +97,7 @@ export async function sendEmail({
     return { ok: false, error: "Gmail sender is not configured." }
   }
 
-  const recipients = Array.isArray(to) ? to.filter(Boolean) : [to]
+  const recipients = (Array.isArray(to) ? to : [to]).map((recipient) => recipient.trim()).filter(Boolean)
 
   if (recipients.length === 0) {
     return { ok: false, error: "No recipients" }
@@ -116,6 +116,15 @@ export async function sendEmail({
       console.error("[email] Gmail rejected the message:", result.rejected)
       return { ok: false, error: `Gmail rejected recipients: ${result.rejected.join(", ")}` }
     }
+
+    const acceptedRecipients = new Set((result.accepted ?? []).map((recipient) => String(recipient).trim().toLowerCase()))
+    const notAccepted = recipients.filter((recipient) => !acceptedRecipients.has(recipient.toLowerCase()))
+    if (notAccepted.length > 0) {
+      console.error("[email] Gmail did not accept recipients:", notAccepted)
+      return { ok: false, error: `Gmail did not accept recipients: ${notAccepted.join(", ")}` }
+    }
+
+    console.info("[email] Gmail accepted message:", { id: result.messageId, recipientCount: acceptedRecipients.size })
 
     return { ok: true, id: result.messageId }
   } catch (error) {

@@ -6,7 +6,9 @@ const ATTENDANCE_ROLES = new Set(["staff", "admin", "teacher"])
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
-    const attendanceId = typeof body?.attendance_id === "string" ? body.attendance_id : ""
+    const attendanceId = typeof body?.attendance_id === "string" || typeof body?.attendance_id === "number"
+      ? String(body.attendance_id)
+      : ""
     const sessionId = typeof body?.session_id === "string" || typeof body?.session_id === "number"
       ? String(body.session_id)
       : ""

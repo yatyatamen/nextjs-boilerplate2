@@ -38,8 +38,16 @@ export async function PATCH(request: NextRequest) {
       .select("role")
       .eq("id", userData.user.id)
       .maybeSingle()
-    if (actorProfileError || !actorProfile || !["staff", "admin"].includes(actorProfile.role)) {
-      return NextResponse.json({ error: "Only staff can update member profiles" }, { status: 403 })
+    if (actorProfileError || !actorProfile) {
+      return NextResponse.json({ error: "Unable to verify account permissions" }, { status: 403 })
+    }
+    const isStaff = ["staff", "admin"].includes(actorProfile.role)
+    const isSelf = memberId === userData.user.id
+    if (!isStaff && !isSelf) {
+      return NextResponse.json({ error: "You can only update your own email preferences" }, { status: 403 })
+    }
+    if (!isStaff && (fullName || level || role || memberLevel)) {
+      return NextResponse.json({ error: "Members can only update their own email preferences" }, { status: 403 })
     }
 
     try {
@@ -51,10 +59,10 @@ export async function PATCH(request: NextRequest) {
       }
 
       const updateData: Record<string, string | boolean | undefined> = {}
-      if (fullName) updateData.full_name = fullName
-      if (level) updateData.level = level
-      if (role) updateData.role = role
-      if (!level && memberLevel) updateData.member_level = memberLevel
+      if (isStaff && fullName) updateData.full_name = fullName
+      if (isStaff && level) updateData.level = level
+      if (isStaff && role) updateData.role = role
+      if (isStaff && !level && memberLevel) updateData.member_level = memberLevel
       if (marketingEmails !== undefined) updateData.marketing_emails = marketingEmails
       if (sessionReminderEmails !== undefined) updateData.session_reminder_emails = sessionReminderEmails
       if (sessionAlertEmails !== undefined) updateData.session_alert_emails = sessionAlertEmails

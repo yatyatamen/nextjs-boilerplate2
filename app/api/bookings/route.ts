@@ -83,34 +83,57 @@ export async function POST(request: NextRequest) {
       .eq("id", userData.user.id)
       .maybeSingle()
 
-    if (profile?.email) {
-      const memberName = `${profile.full_name || "Member"}`
-      await sendSessionBookingConfirmationEmail({
-        to: profile.email,
+    const recipient = profile?.email?.trim() || userData.user.email?.trim() || ""
+    const memberName = profile?.full_name || "Member"
+    let confirmationStatus: "accepted" | "failed" | "skipped" = "skipped"
+    let confirmationError: string | undefined
+    let reminderStatus: "accepted" | "failed" | "disabled" | "not_due" | "skipped" = "skipped"
+    let reminderError: string | undefined
+
+    if (recipient) {
+      const confirmation = await sendSessionBookingConfirmationEmail({
+        to: recipient,
         memberName,
         sessionTitle: session.title || "session",
         sessionDate: session.date || "TBD",
         sessionTime: session.time || "TBD",
       })
+      confirmationStatus = confirmation.ok ? "accepted" : "failed"
+      if (!confirmation.ok) confirmationError = confirmation.error
 
-      const shouldSendReminder = profile.session_reminder_emails !== false
-      if (shouldSendReminder) {
+      if (profile?.session_reminder_emails === false) {
+        reminderStatus = "disabled"
+      } else {
         const start = parseSessionStart(session.date, session.time)
         const timeUntilStart = start ? start.getTime() - Date.now() : null
         const withinOneDay = timeUntilStart !== null && timeUntilStart <= 24 * 60 * 60 * 1000 && timeUntilStart > 0
         if (withinOneDay) {
-          await sendSessionBookingReminderEmail({
-            to: profile.email,
+          const reminder = await sendSessionBookingReminderEmail({
+            to: recipient,
             memberName,
             sessionTitle: session.title || "session",
             sessionDate: session.date || "TBD",
             sessionTime: session.time || "TBD",
           })
+          reminderStatus = reminder.ok ? "accepted" : "failed"
+          if (!reminder.ok) reminderError = reminder.error
+        } else {
+          reminderStatus = "not_due"
         }
       }
+    } else {
+      confirmationError = "No email address is available on the account or profile."
+      reminderError = confirmationError
     }
 
-    return NextResponse.json({ data })
+    return NextResponse.json({
+      data,
+      email: {
+        recipient: recipient || null,
+        confirmation: { status: confirmationStatus, error: confirmationError },
+        reminder: { status: reminderStatus, error: reminderError },
+      },
+    })
   } catch (error) {
     console.error("Booking route POST error:", error)
     return NextResponse.json({ error: "Unable to create booking" }, { status: 500 })
