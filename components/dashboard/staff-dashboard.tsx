@@ -240,6 +240,7 @@ export function StaffDashboard({
   const [selectedAttendanceMemberId, setSelectedAttendanceMemberId] = useState<string | null>(null)
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string | null>(null)
   const [pendingAttendance, setPendingAttendance] = useState<Record<string, boolean>>({})
+  const [attendanceSaveError, setAttendanceSaveError] = useState<string | null>(null)
   const [resources, setResources] = useState<Resource[]>([])
   const [newResourceTitle, setNewResourceTitle] = useState("")
   const [newResourceUrl, setNewResourceUrl] = useState("")
@@ -1518,6 +1519,11 @@ export function StaffDashboard({
       {active === "attendance" && (
         <div>
           <SectionHeader title="Attendance" desc="Mark attendance and review session sign-ups for each booking." />
+          {attendanceSaveError && (
+            <Card role="alert" className="mb-4 border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-300">
+              {attendanceSaveError}
+            </Card>
+          )}
           
           {/* View Mode Toggle */}
           <div className="mb-6 flex gap-2">
@@ -1705,6 +1711,7 @@ export function StaffDashboard({
                               `Save ${toSave.length} attendance change${toSave.length > 1 ? "s" : ""} for this session?`,
                               async () => {
                                 closeConfirmation()
+                                setAttendanceSaveError(null)
                                 let savedCount = 0
                                 let failedEmailCount = 0
                                 let firstSaveError = ""
@@ -1718,7 +1725,9 @@ export function StaffDashboard({
                                 }
                                 const failedCount = toSave.length - savedCount
                                 if (failedCount > 0) {
-                                  showToast(`${savedCount} attendance saved; ${failedCount} failed: ${firstSaveError}`)
+                                  const errorMessage = `${savedCount} attendance saved; ${failedCount} failed: ${firstSaveError}`
+                                  setAttendanceSaveError(errorMessage)
+                                  showToast(errorMessage)
                                 } else {
                                   const emailWarning = failedEmailCount > 0 ? `; ${failedEmailCount} absence email${failedEmailCount === 1 ? "" : "s"} failed` : ""
                                   showToast(`${savedCount} attendance record${savedCount === 1 ? "" : "s"} saved${emailWarning}`)
@@ -1978,6 +1987,15 @@ export function StaffDashboard({
               saveEmailTemplateConfig(nextConfig)
               setEmailTemplates(nextConfig)
               showToast("Auto email templates saved")
+            }}
+            onTest={async () => {
+              const response = await fetch("/api/email", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ event: "test" }),
+              })
+              const result = await response.json().catch(() => ({}))
+              if (!response.ok) throw new Error(result.error || "Test email failed")
             }}
           />
         </div>
@@ -3456,14 +3474,29 @@ function EmailTemplatesEditor({
   value,
   onChange,
   onSave,
+  onTest,
 }: {
   value: EmailTemplateConfig
   onChange: (next: EmailTemplateConfig) => void
   onSave: (next: EmailTemplateConfig) => void
+  onTest: () => Promise<void>
 }) {
   const { showConfirmation, closeConfirmation, confirmState } = useConfirmation()
   const { toast, showToast } = useToast()
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+
+  const sendTestEmail = async () => {
+    setTesting(true)
+    try {
+      await onTest()
+      showToast("Test email accepted by SMTP; check your inbox and spam folder.")
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Test email failed")
+    } finally {
+      setTesting(false)
+    }
+  }
 
   const onSaveClick = () => {
     showConfirmation(
@@ -3501,9 +3534,14 @@ function EmailTemplatesEditor({
             <h3 className="text-base font-semibold text-foreground">Automatic email content</h3>
             <p className="text-xs text-muted-foreground">Use placeholders like {'{memberName}'}, {'{sessionTitle}'}, {'{sessionDate}'}, {'{sessionTime}'}, {'{title}'}, {'{content}'}, {'{level}'}, {'{itemName}'}</p>
           </div>
-          <Button type="button" onClick={onSaveClick} disabled={saving} className="bg-[#40938c] text-black font-bold">
-            {saving ? "Saving..." : "Save all templates"}
-          </Button>
+          <div className="flex shrink-0 gap-2">
+            <Button type="button" variant="outline" onClick={() => void sendTestEmail()} disabled={saving || testing}>
+              {testing ? "Testing..." : "Send test email"}
+            </Button>
+            <Button type="button" onClick={onSaveClick} disabled={saving || testing} className="bg-[#40938c] text-black font-bold">
+              {saving ? "Saving..." : "Save all templates"}
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-5">

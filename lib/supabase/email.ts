@@ -1,22 +1,22 @@
 import nodemailer from "nodemailer"
 import { applyTemplateText, getEmailTemplateConfig, type EmailTemplate } from "@/lib/email-templates"
 
-const gmailUser = process.env.GMAIL_USER?.trim() || process.env.EMAIL_USER?.trim()
-const gmailAppPassword = (process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD)?.trim().replace(/\s+/g, "")
-const emailFrom = process.env.EMAIL_FROM?.trim() || gmailUser || ""
+const smtpUser = process.env.SMTP_USER?.trim() || process.env.GMAIL_USER?.trim() || process.env.EMAIL_USER?.trim()
+const smtpPassword = process.env.SMTP_PASSWORD?.trim() || (process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD)?.trim().replace(/\s+/g, "")
+const emailFrom = process.env.EMAIL_FROM?.trim() || smtpUser || ""
 const smtpHost = (process.env.EMAIL_HOST || process.env.SMTP_HOST || "smtp.gmail.com").trim()
 const smtpPortValue = Number(process.env.EMAIL_PORT ?? process.env.SMTP_PORT ?? "587")
 const smtpPort = Number.isFinite(smtpPortValue) ? smtpPortValue : 587
 const smtpSecureValue = (process.env.EMAIL_SECURE || process.env.SMTP_SECURE || "").trim().toLowerCase()
 const smtpSecure = smtpSecureValue ? smtpSecureValue === "true" : smtpPort === 465
-const transporter = gmailUser && gmailAppPassword
+const transporter = smtpUser && smtpPassword
   ? nodemailer.createTransport({
       host: smtpHost,
       port: smtpPort,
       secure: smtpSecure,
       auth: {
-        user: gmailUser,
-        pass: gmailAppPassword,
+        user: smtpUser,
+        pass: smtpPassword,
       },
     })
   : null
@@ -36,12 +36,12 @@ function textToHtml(text: string) {
 }
 
 function getEmailConfigError() {
-  if (!gmailUser) {
-    return "No Gmail sender is configured. Add GMAIL_USER or EMAIL_USER in .env.local."
+  if (!smtpUser) {
+    return "No SMTP sender is configured. Add SMTP_USER, GMAIL_USER, or EMAIL_USER to the server environment."
   }
 
-  if (!gmailAppPassword) {
-    return "No Gmail app password is configured. Add GMAIL_APP_PASSWORD or EMAIL_PASSWORD in .env.local."
+  if (!smtpPassword) {
+    return "No SMTP password is configured. Add SMTP_PASSWORD, GMAIL_APP_PASSWORD, or EMAIL_PASSWORD to the server environment."
   }
 
   return null
@@ -87,9 +87,9 @@ export async function sendEmail({
   }
 
   if (!transporter || !emailFrom) {
-    console.error("[email] Gmail transport is unavailable", {
-      hasUser: Boolean(gmailUser),
-      hasAppPassword: Boolean(gmailAppPassword),
+    console.error("[email] SMTP transport is unavailable", {
+      hasUser: Boolean(smtpUser),
+      hasPassword: Boolean(smtpPassword),
       hasFrom: Boolean(emailFrom),
       host: smtpHost,
       port: smtpPort,
@@ -113,18 +113,18 @@ export async function sendEmail({
     })
 
     if (result.rejected && result.rejected.length > 0) {
-      console.error("[email] Gmail rejected the message:", result.rejected)
-      return { ok: false, error: `Gmail rejected recipients: ${result.rejected.join(", ")}` }
+      console.error("[email] SMTP rejected the message:", result.rejected)
+      return { ok: false, error: `SMTP rejected recipients: ${result.rejected.join(", ")}` }
     }
 
     const acceptedRecipients = new Set((result.accepted ?? []).map((recipient) => String(recipient).trim().toLowerCase()))
     const notAccepted = recipients.filter((recipient) => !acceptedRecipients.has(recipient.toLowerCase()))
     if (notAccepted.length > 0) {
-      console.error("[email] Gmail did not accept recipients:", notAccepted)
-      return { ok: false, error: `Gmail did not accept recipients: ${notAccepted.join(", ")}` }
+      console.error("[email] SMTP did not accept recipients:", notAccepted)
+      return { ok: false, error: `SMTP did not accept recipients: ${notAccepted.join(", ")}` }
     }
 
-    console.info("[email] Gmail accepted message:", { id: result.messageId, recipientCount: acceptedRecipients.size })
+    console.info("[email] SMTP accepted message:", { id: result.messageId, recipientCount: acceptedRecipients.size })
 
     return { ok: true, id: result.messageId }
   } catch (error) {
