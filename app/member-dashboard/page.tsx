@@ -40,7 +40,6 @@ export default async function MemberDashboardPage() {
     created_at: profile?.created_at || new Date().toISOString()
   }
 
-  // ... your existing code ...
   const [
     schedule, 
     bookings, 

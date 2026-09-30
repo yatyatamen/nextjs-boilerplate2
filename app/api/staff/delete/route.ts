@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       .eq("id", user.id)
       .single()
 
-    if (profileError || profile?.role !== "staff") {
+    if (profileError || !["staff", "admin"].includes(profile?.role)) {
       return NextResponse.json({ error: "Only staff can delete published items" }, { status: 403 })
     }
 

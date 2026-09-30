@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createServiceClient } from "@/lib/supabase/server"
+import { createClient, createServiceClient } from "@/lib/supabase/server"
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -27,8 +27,28 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "At least one valid profile detail or email preference is required" }, { status: 400 })
     }
 
+    const userClient = await createClient()
+    const { data: userData, error: userError } = await userClient.auth.getUser()
+    if (userError || !userData.user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+    }
+
+    const { data: actorProfile, error: actorProfileError } = await userClient
+      .from("profiles")
+      .select("role")
+      .eq("id", userData.user.id)
+      .maybeSingle()
+    if (actorProfileError || !actorProfile || !["staff", "admin"].includes(actorProfile.role)) {
+      return NextResponse.json({ error: "Only staff can update member profiles" }, { status: 403 })
+    }
+
     try {
-      const supabase = await createServiceClient()
+      let supabase = userClient
+      try {
+        supabase = await createServiceClient()
+      } catch {
+        // Use the authenticated client when the service role is unavailable.
+      }
 
       const updateData: Record<string, string | boolean | undefined> = {}
       if (fullName) updateData.full_name = fullName

@@ -21,7 +21,7 @@ export async function GET() {
 
     if (error) {
       console.error("Supabase fetch error:", error)
-      return NextResponse.json({ data: listResources() })
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ data: data || [] })
@@ -48,6 +48,20 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await createClient()
+    const { data: userData, error: userError } = await supabase.auth.getUser()
+    if (userError || !userData.user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", userData.user.id)
+      .maybeSingle()
+    if (profileError || !profile || !["staff", "admin"].includes(profile.role)) {
+      return NextResponse.json({ error: "Only staff can save resources" }, { status: 403 })
+    }
+
     const { data, error } = await supabase
       .from("resources")
       .insert({ title, url })
@@ -55,13 +69,17 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error("Supabase insert error:", error)
-      return NextResponse.json({ data: createResource({ title, url }) })
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ data: data?.[0] })
+    if (!data?.[0]) {
+      return NextResponse.json({ error: "Resource save returned no record" }, { status: 500 })
+    }
+
+    return NextResponse.json({ data: data[0] })
   } catch (err) {
     console.error("POST /api/support/resources error:", err)
-    return NextResponse.json({ data: createResource({ title: "Resource", url: "" }) })
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Unable to save resource" }, { status: 500 })
   }
 }
 
@@ -83,19 +101,33 @@ export async function DELETE(request: NextRequest) {
     }
 
     const supabase = await createClient()
+    const { data: userData, error: userError } = await supabase.auth.getUser()
+    if (userError || !userData.user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", userData.user.id)
+      .maybeSingle()
+    if (profileError || !profile || !["staff", "admin"].includes(profile.role)) {
+      return NextResponse.json({ error: "Only staff can delete resources" }, { status: 403 })
+    }
+
     const { error } = await supabase
       .from("resources")
       .delete()
       .eq("id", id)
 
     if (error) {
-      deleteResource(id)
-      return NextResponse.json({ success: true })
+      console.error("Supabase delete error:", error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("DELETE /api/support/resources error:", err)
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Unable to delete resource" }, { status: 500 })
   }
 }

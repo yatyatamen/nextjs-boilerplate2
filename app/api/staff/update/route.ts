@@ -55,7 +55,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No editable fields were provided" }, { status: 400 })
     }
 
-    const database = await createServiceClient()
+    let database = userClient
+    try {
+      database = await createServiceClient()
+    } catch {
+      // Use the authenticated client when the service role is unavailable.
+    }
+
     const { data, error } = await database
       .from(table)
       .update(updates)

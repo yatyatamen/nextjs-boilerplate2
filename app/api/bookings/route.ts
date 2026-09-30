@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
-import { getSessionBookingRules } from "@/lib/scheduling"
+import { getSessionBookingRules, parseSessionStart } from "@/lib/scheduling"
 import { sendSessionBookingConfirmationEmail, sendSessionBookingReminderEmail } from "@/lib/supabase/email"
 
 export async function POST(request: NextRequest) {
@@ -95,8 +95,9 @@ export async function POST(request: NextRequest) {
 
       const shouldSendReminder = profile.session_reminder_emails !== false
       if (shouldSendReminder) {
-        const start = new Date(`${session.date}T${(session.time || "3:20").match(/\d{1,2}:\d{2}/)?.[0] || "3:20"}:00`)
-        const withinOneDay = start.getTime() - Date.now() <= 24 * 60 * 60 * 1000 && start.getTime() - Date.now() > 0
+        const start = parseSessionStart(session.date, session.time)
+        const timeUntilStart = start ? start.getTime() - Date.now() : null
+        const withinOneDay = timeUntilStart !== null && timeUntilStart <= 24 * 60 * 60 * 1000 && timeUntilStart > 0
         if (withinOneDay) {
           await sendSessionBookingReminderEmail({
             to: profile.email,

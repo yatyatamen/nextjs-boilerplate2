@@ -271,6 +271,7 @@ export function StaffDashboard({
     event: "announcement" | "session_alert" | "assessment" | "absence" | "shop_update",
     to: string,
     payload: Record<string, string>,
+    showFailureToast = true,
   ) {
     try {
       const response = await fetch("/api/email", {
@@ -282,23 +283,39 @@ export function StaffDashboard({
       if (!response.ok) {
         const result = await response.json().catch(() => ({}))
         console.error(`Failed to send ${event} email:`, result.error)
-        showToast(`Email failed: ${result.error || "Unable to send email"}`)
+        if (showFailureToast) showToast(`Email failed: ${result.error || "Unable to send email"}`)
         return false
       }
 
       return true
     } catch (error) {
       console.error(`Failed to send ${event} email:`, error)
-      showToast(`Email failed: ${error instanceof Error ? error.message : "Unable to send email"}`)
+      if (showFailureToast) showToast(`Email failed: ${error instanceof Error ? error.message : "Unable to send email"}`)
       return false
     }
+  }
+
+  async function sendConfiguredEmails(
+    event: "announcement" | "session_alert" | "assessment" | "absence" | "shop_update",
+    deliveries: Array<{ to: string; payload: Record<string, string> }>,
+  ) {
+    let sent = 0
+    for (const delivery of deliveries) {
+      if (await sendConfiguredEmail(event, delivery.to, delivery.payload, false)) sent += 1
+    }
+    return { sent, failed: deliveries.length - sent }
+  }
+
+  function showEmailBatchResult(action: string, result: { sent: number; failed: number }) {
+    const failureSummary = result.failed > 0 ? `; ${result.failed} failed` : ""
+    showToast(`${action}: ${result.sent} email${result.sent === 1 ? "" : "s"} sent${failureSummary}`)
   }
 
   // initialize attendanceSelection defaults when bookings or attendanceRecords change
   useEffect(() => {
     const next: Record<string, "present" | "late" | "absent"> = {}
     bookings.forEach((booking) => {
-      const record = attendanceRecords.find((r) => r.session_id === booking.session_id && r.user_id === booking.user_id)
+      const record = attendanceRecords.find((r) => String(r.session_id) === String(booking.session_id) && String(r.user_id) === String(booking.user_id))
       next[booking.id] = (record?.status as any) ?? attendanceSelection[booking.id] ?? "present"
     })
 
@@ -821,7 +838,10 @@ export function StaffDashboard({
       }
     }
 
-    if (!finalMessage.trim()) return
+    if (!finalMessage.trim()) {
+      if (uploadError) showToast("Attachment upload failed.")
+      return
+    }
 
     try {
       const res = await fetch(`/api/support/reply`, {
@@ -833,20 +853,16 @@ export function StaffDashboard({
       if (res.ok && json.data) {
         const replyText = json.data.message
         addStaffReply(selectedMessageId, replyText)
+        setReplyDraft("")
+        setStaffFile(null)
+        if (uploadError) showToast("Reply sent, but attachment upload failed.")
       } else {
         console.error("Reply save failed:", json.error)
-        addStaffReply(selectedMessageId, finalMessage)
+        showToast(json.error || "Failed to send reply")
       }
-    } catch (_err) {
-      console.error("Failed to send reply:")
-      addStaffReply(selectedMessageId, finalMessage)
-    } finally {
-      setReplyDraft("")
-      setStaffFile(null)
-    }
-
-    if (uploadError) {
-      showToast("Reply sent, but attachment upload failed.")
+    } catch (error) {
+      console.error("Failed to send reply:", error)
+      showToast(error instanceof Error ? error.message : "Failed to send reply")
     }
   }
 
@@ -948,10 +964,10 @@ export function StaffDashboard({
     )
   }
 
-  async function markAttendance(booking: Booking, status: "present" | "absent" | "late") {
+  async function markAttendance(booking: Booking, status: "present" | "absent" | "late"): Promise<{ saved: boolean; emailSent: boolean }> {
     const member = members.find((m) => m.id === booking.user_id)
     const existingRecord = attendanceRecords.find(
-      (record) => record.session_id === booking.session_id && record.user_id === booking.user_id,
+      (record) => String(record.session_id) === String(booking.session_id) && String(record.user_id) === String(booking.user_id),
     )
 
     const bookingKey = booking.id
@@ -979,33 +995,44 @@ export function StaffDashboard({
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ attendance_id: existingRecord.id, status }),
+          body: JSON.stringify({
+            attendance_id: existingRecord.id,
+            user_name: nextRecord.user_name,
+            user_level: nextRecord.user_level,
+            status,
+            notes: nextRecord.notes,
+          }),
         })
         const result = await response.json().catch(() => ({}))
 
         if (!response.ok) {
           setAttendanceRecords((prev) => prev.map((record) => (record.id === existingRecord.id ? existingRecord : record)))
-          showToast(`Failed to update attendance: ${result.error ?? "unknown error"}`)
+          console.error("Failed to update attendance:", result.error ?? "unknown error")
+          return { saved: false, emailSent: true }
         } else {
-          let absenceEmailSent = true
+          if (result.data) {
+            setAttendanceRecords((prev) => prev.map((record) => record.id === existingRecord.id ? result.data as AttendanceRecord : record))
+          }
+          let emailSent = true
           const session = schedule.find((entry) => String(entry.id) === String(booking.session_id))
           if (status === "absent" && existingRecord.status !== "absent" && member?.email) {
-            absenceEmailSent = await sendConfiguredEmail("absence", member.email, {
+            emailSent = await sendConfiguredEmail("absence", member.email, {
               memberName: getMemberDisplayName(member),
               sessionTitle: session?.title || String(booking.session_id ?? "session"),
               sessionDate: session?.date || "TBD",
               sessionTime: session?.time || "TBD",
             })
           }
-          showToast(absenceEmailSent ? "Attendance updated" : "Attendance updated, but the absence email could not be sent")
+          return { saved: true, emailSent }
         }
       } catch (_err) {
         setAttendanceRecords((prev) => prev.map((record) => (record.id === existingRecord.id ? existingRecord : record)))
-        showToast("Network error updating attendance")
+        console.error("Network error updating attendance:", _err)
+        return { saved: false, emailSent: true }
       } finally {
         setPendingAttendance((p) => ({ ...p, [bookingKey]: false }))
       }
-      return
+      return { saved: false, emailSent: true }
     }
 
     setAttendanceRecords((prev) => [...prev, nextRecord])
@@ -1029,24 +1056,26 @@ export function StaffDashboard({
       if (response.ok && result.data) {
         const inserted = result.data as AttendanceRecord
         setAttendanceRecords((prev) => prev.map((r) => (r.id === nextRecord.id ? inserted : r)))
-        let absenceEmailSent = true
+        let emailSent = true
         if (status === "absent" && member?.email) {
           const session = schedule.find((entry) => String(entry.id) === String(booking.session_id))
-          absenceEmailSent = await sendConfiguredEmail("absence", member.email, {
+          emailSent = await sendConfiguredEmail("absence", member.email, {
             memberName: getMemberDisplayName(member),
             sessionTitle: session?.title || String(booking.session_id ?? "session"),
             sessionDate: session?.date || "TBD",
             sessionTime: session?.time || "TBD",
           })
         }
-        showToast(absenceEmailSent ? "Attendance recorded" : "Attendance recorded, but the absence email could not be sent")
+        return { saved: true, emailSent }
       } else {
         setAttendanceRecords((prev) => prev.filter((r) => r.id !== nextRecord.id))
-        showToast(`Failed to save attendance: ${result.error ?? "unknown error"}`)
+        console.error("Failed to save attendance:", result.error ?? "unknown error")
+        return { saved: false, emailSent: true }
       }
     } catch (_err) {
       setAttendanceRecords((prev) => prev.filter((r) => r.id !== nextRecord.id))
-      showToast("Network error saving attendance")
+      console.error("Network error saving attendance:", _err)
+      return { saved: false, emailSent: true }
     } finally {
       setPendingAttendance((p) => ({ ...p, [bookingKey]: false }))
     }
@@ -1284,23 +1313,23 @@ export function StaffDashboard({
                 .insert(payload)
                 .select()
               if (error) {
-                alert(`Schedule DB Error: ${error.message} (${error.code})\nDetail: ${error.details}`)
                 console.error("Full Error Details:", error)
-                return
+                throw new Error(`Schedule DB Error: ${error.message} (${error.code})`)
               }
-              if (data && data[0]) {
-                const createdSession = data[0] as ScheduleSession
-                setSchedule((prev) => sortSessions([...prev, createdSession]))
-                await Promise.all(
-                  members
-                    .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
-                    .map((member) => sendConfiguredEmail("session_alert", member.email!, {
-                      sessionTitle: createdSession.title || "New session",
-                      sessionDate: createdSession.date || "TBD",
-                      sessionTime: createdSession.time || "TBD",
-                    }))
-                )
-              }
+              if (!data?.[0]) throw new Error("Schedule save returned no record")
+              const createdSession = data[0] as ScheduleSession
+              setSchedule((prev) => sortSessions([...prev, createdSession]))
+              const emailResult = await sendConfiguredEmails(
+                "session_alert",
+                members
+                  .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
+                  .map((member) => ({ to: member.email!, payload: {
+                    sessionTitle: createdSession.title || "New session",
+                    sessionDate: createdSession.date || "TBD",
+                    sessionTime: createdSession.time || "TBD",
+                  } })),
+              )
+              showEmailBatchResult("Session posted", emailResult)
             }}
           />
           <div className="mt-6 flex flex-col gap-3">
@@ -1625,14 +1654,14 @@ export function StaffDashboard({
                     .map((booking) => {
                       const member = members.find((m) => m.id === booking.user_id)
                       const attendance = attendanceRecords.find(
-                        (record) => record.session_id === booking.session_id && record.user_id === booking.user_id,
+                        (record) => String(record.session_id) === String(booking.session_id) && String(record.user_id) === String(booking.user_id),
                       )
                       const status = attendance?.status ?? "not marked"
                       return { booking, member, attendance, status }
                     })
                     .filter((row) => {
                       const matchesStatus = attendanceFilter === "all" || row.status === attendanceFilter
-                      const matchesMember = selectedMemberFilter === null || row.booking.user_id === selectedMemberFilter
+                      const matchesMember = selectedMemberFilter === null || String(row.booking.user_id) === String(selectedMemberFilter)
                       const matchesDay = attendanceDayFilter === "all" || getWeekdayLabel(session.date) === attendanceDayFilter
                       const matchesMonth = attendanceMonthFilter === "all" || getMonthLabel(session.date) === attendanceMonthFilter
                       const matchesTier = attendanceTierFilter === "all" || row.member?.level === attendanceTierFilter
@@ -1670,12 +1699,22 @@ export function StaffDashboard({
                               `Save ${toSave.length} attendance change${toSave.length > 1 ? "s" : ""} for this session?`,
                               async () => {
                                 closeConfirmation()
+                                let savedCount = 0
+                                let failedEmailCount = 0
                                 for (const row of toSave) {
                                   const booking = row.booking
                                   const desired = attendanceSelection[booking.id] ?? "present"
-                                  await markAttendance(booking, desired)
+                                  const result = await markAttendance(booking, desired)
+                                  if (result.saved) savedCount += 1
+                                  if (result.saved && !result.emailSent) failedEmailCount += 1
                                 }
-                                showToast("Attendance saved")
+                                const failedCount = toSave.length - savedCount
+                                if (failedCount > 0) {
+                                  showToast(`${savedCount} attendance saved; ${failedCount} failed`)
+                                } else {
+                                  const emailWarning = failedEmailCount > 0 ? `; ${failedEmailCount} absence email${failedEmailCount === 1 ? "" : "s"} failed` : ""
+                                  showToast(`${savedCount} attendance record${savedCount === 1 ? "" : "s"} saved${emailWarning}`)
+                                }
                               },
                             )
                           }}
@@ -1694,6 +1733,7 @@ export function StaffDashboard({
                                 <th className="px-4 py-3">Tier</th>
                                 <th className="px-4 py-3">Session</th>
                                 <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3">Notes</th>
                                 <th className="px-4 py-3">Marked At</th>
                                 <th className="px-4 py-3">Actions</th>
                               </tr>
@@ -1719,6 +1759,7 @@ export function StaffDashboard({
                                     <div className="text-zinc-400">{formatDate(session.date)}</div>
                                   </td>
                                   <td className="px-4 py-3 align-top text-xs text-zinc-200 uppercase tracking-[0.08em]">{status}</td>
+                                  <td className="px-4 py-3 align-top text-xs text-zinc-400 whitespace-pre-wrap">{attendance?.notes?.trim() || booking.notes?.trim() || "—"}</td>
                                   <td className="px-4 py-3 align-top text-xs text-zinc-400">
                                     {attendance?.marked_at ? new Date(attendance.marked_at).toLocaleString() : "—"}
                                   </td>
@@ -1795,10 +1836,10 @@ export function StaffDashboard({
                     <tbody className="divide-y divide-zinc-800">
                       {attendanceRecords
                         .filter((r) => {
-                          const session = schedule.find((s) => s.id === r.session_id)
-                          const member = members.find((m) => m.id === r.user_id)
+                          const session = schedule.find((s) => String(s.id) === String(r.session_id))
+                          const member = members.find((m) => String(m.id) === String(r.user_id))
                           const matchesStatus = attendanceFilter === "all" || r.status === attendanceFilter
-                          const matchesMember = selectedMemberFilter === null || r.user_id === selectedMemberFilter
+                          const matchesMember = selectedMemberFilter === null || String(r.user_id) === String(selectedMemberFilter)
                           const matchesDay = attendanceDayFilter === "all" || getWeekdayLabel(session?.date) === attendanceDayFilter
                           const matchesMonth = attendanceMonthFilter === "all" || getMonthLabel(session?.date) === attendanceMonthFilter
                           const matchesTier = attendanceTierFilter === "all" || member?.level === attendanceTierFilter
@@ -1807,7 +1848,8 @@ export function StaffDashboard({
                         })
                         .sort((a, b) => new Date(b.marked_at).getTime() - new Date(a.marked_at).getTime())
                         .map((record) => {
-                          const session = schedule.find(s => s.id === record.session_id)
+                          const session = schedule.find(s => String(s.id) === String(record.session_id))
+                          const bookingNote = bookings.find((booking) => String(booking.session_id) === String(record.session_id) && String(booking.user_id) === String(record.user_id))?.notes
                           return (
                             <tr key={record.id} className="hover:bg-zinc-900">
                               <td className="px-4 py-3">
@@ -1829,7 +1871,7 @@ export function StaffDashboard({
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-xs text-zinc-400">
-                                {record.notes?.trim() || "—"}
+                                {record.notes?.trim() || bookingNote?.trim() || "—"}
                               </td>
                               <td className="px-4 py-3 text-xs text-zinc-400">{new Date(record.marked_at).toLocaleString()}</td>
                             </tr>
@@ -1989,12 +2031,13 @@ export function StaffDashboard({
                       setAnnouncements((prev) => [data[0] as Announcement, ...prev])
                       setShowNoFeatureAnnouncement(false)
                       setWebsiteFeatureText("")
-                      await Promise.all(
+                      const emailResult = await sendConfiguredEmails(
+                        "announcement",
                         members
                           .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
-                          .map((member) => sendConfiguredEmail("announcement", member.email!, { title: "Website Feature Update", content: websiteFeatureText.trim() }))
+                          .map((member) => ({ to: member.email!, payload: { title: "Website Feature Update", content: websiteFeatureText.trim() } })),
                       )
-                      showToast("✓ Website feature update posted")
+                      showEmailBatchResult("Website feature update posted", emailResult)
                     }
                   }}
                   className="bg-[#40938c] text-black font-bold"
@@ -2035,19 +2078,19 @@ export function StaffDashboard({
                 .insert({ title, content })
                 .select()
               if (error) {
-                alert(`Announcement DB Error: ${error.message} (${error.code})`)
                 console.error("Full Error Details:", error)
-                return
+                throw new Error(`Announcement DB Error: ${error.message} (${error.code})`)
               }
-              if (data && data[0]) {
-                setAnnouncements((prev) => [data[0] as Announcement, ...prev])
-                setShowNoAnnouncement(false)
-                await Promise.all(
-                  members
-                    .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
-                    .map((member) => sendConfiguredEmail("announcement", member.email!, { title, content }))
-                )
-              }
+              if (!data?.[0]) throw new Error("Announcement save returned no record")
+              setAnnouncements((prev) => [data[0] as Announcement, ...prev])
+              setShowNoAnnouncement(false)
+              const emailResult = await sendConfiguredEmails(
+                "announcement",
+                members
+                  .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
+                  .map((member) => ({ to: member.email!, payload: { title, content } })),
+              )
+              showEmailBatchResult("Announcement posted", emailResult)
             }}
           />
 
@@ -2110,15 +2153,16 @@ export function StaffDashboard({
           <ShopPostingForm
             onCreate={async (payload) => {
               const { data, error } = await supabase.from("shop_items").insert(payload).select()
-              if (error) alert(`Shop DB Error: ${error.message}`)
-              if (data && data[0]) {
-                setShopItems((prev) => [data[0] as ShopItem, ...prev])
-                await Promise.all(
-                  members
-                    .filter((member) => member.email && member.marketing_emails !== false)
-                    .map((member) => sendConfiguredEmail("shop_update", member.email!, { itemName: data[0].name || "a new shop item" }))
-                )
-              }
+              if (error) throw new Error(`Shop DB Error: ${error.message}`)
+              if (!data?.[0]) throw new Error("Shop item save returned no record")
+              setShopItems((prev) => [data[0] as ShopItem, ...prev])
+              const emailResult = await sendConfiguredEmails(
+                "shop_update",
+                members
+                  .filter((member) => member.email && member.marketing_emails !== false)
+                  .map((member) => ({ to: member.email!, payload: { itemName: data[0].name || "a new shop item" } })),
+              )
+              showEmailBatchResult("Shop item posted", emailResult)
             }}
           />
           <div className="mt-6">
@@ -2171,13 +2215,9 @@ export function StaffDashboard({
           <EquipmentGuideForm
             onCreate={async (payload) => {
               const { data, error } = await supabase.from("equipment_recommendations").insert(payload).select()
-              if (error) {
-                alert(`Guides DB Error: ${error.message}`)
-                return
-              }
-              if (data && data[0]) {
-                setGearGuides((prev) => [data[0] as EquipmentRecommendation, ...prev])
-              }
+              if (error) throw new Error(`Guides DB Error: ${error.message}`)
+              if (!data?.[0]) throw new Error("Equipment guide save returned no record")
+              setGearGuides((prev) => [data[0] as EquipmentRecommendation, ...prev])
             }}
           />
           <div>
@@ -2233,20 +2273,22 @@ export function StaffDashboard({
                 .insert({ user_id: userId, level, feedback, score, date, pdf_url })
                 .select()
               if (error) {
-                alert(`Assessment DB Error: ${error.message}`)
-                return
+                throw new Error(`Assessment DB Error: ${error.message}`)
               }
-              if (data && data[0]) {
-                setAssessments((prev) => [data[0] as Assessment, ...prev])
-                await supabase.from("profiles").update({ level }).eq("id", userId)
+              if (!data?.[0]) throw new Error("Assessment save returned no record")
+              setAssessments((prev) => [data[0] as Assessment, ...prev])
+              const { error: profileUpdateError } = await supabase.from("profiles").update({ level }).eq("id", userId)
+              if (profileUpdateError) {
+                console.error("Assessment saved but profile level update failed:", profileUpdateError)
+              } else {
                 setMembers((prev) => prev.map((m) => (m.id === userId ? { ...m, level } : m)))
-                const targetMember = members.find((member) => member.id === userId)
-                if (targetMember?.email) {
-                  await sendConfiguredEmail("assessment", targetMember.email, {
-                    memberName: getMemberDisplayName(targetMember),
-                    level,
-                  })
-                }
+              }
+              const targetMember = members.find((member) => member.id === userId)
+              if (targetMember?.email) {
+                await sendConfiguredEmail("assessment", targetMember.email, {
+                  memberName: getMemberDisplayName(targetMember),
+                  level,
+                })
               }
             }}
           />
@@ -2398,11 +2440,6 @@ function StatCard({ icon: Icon, label, value }: { icon: typeof Users; label: str
   )
 }
 
-function useSubmitting() {
-  const [loading, setLoading] = useState(false)
-  return { loading, setLoading }
-}
-
 function EditScheduleButton({
   session,
   onSave,
@@ -2506,7 +2543,6 @@ function ScheduleForm({
     notes: string
   }) => Promise<void>
 }) {
-  const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
@@ -2560,6 +2596,9 @@ function ScheduleForm({
           setNotes("")
           closeConfirmation()
           showToast("✓ Session posted successfully!")
+        } catch (error) {
+          closeConfirmation()
+          showToast(error instanceof Error ? error.message : "Unable to save session")
         } finally {
           setConfirmLoading(false)
         }
@@ -2643,7 +2682,7 @@ function ScheduleForm({
           <Textarea id="s-notes" placeholder="Constraints description..." value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         <div className="sm:col-span-2">
-          <Button type="submit" disabled={loading} className="bg-[#40938c] text-black font-bold">
+          <Button type="submit" disabled={confirmLoading} className="bg-[#40938c] text-black font-bold">
             Inject Active Session Slot
           </Button>
         </div>
@@ -2673,7 +2712,6 @@ function TitleContentForm({
   submitLabel: string
   onCreate: (title: string, content: string) => Promise<void>
 }) {
-  const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
@@ -2695,6 +2733,9 @@ function TitleContentForm({
           setContent("")
           closeConfirmation()
           showToast("✓ Content posted successfully!")
+        } catch (error) {
+          closeConfirmation()
+          showToast(error instanceof Error ? error.message : "Unable to post content")
         } finally {
           setConfirmLoading(false)
         }
@@ -2718,7 +2759,7 @@ function TitleContentForm({
             <Textarea value={content} onChange={(e) => setContent(e.target.value)} className="min-h-28" required />
           </div>
           <div>
-            <Button type="submit" disabled={loading} className="bg-[#40938c] text-black font-bold">
+            <Button type="submit" disabled={confirmLoading} className="bg-[#40938c] text-black font-bold">
               {submitLabel}
             </Button>
           </div>
@@ -2738,7 +2779,6 @@ function TitleContentForm({
 }
 
 function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; category: string; price: number; description: string; specs: string; pic_url: string; stock: number; unit: string }) => Promise<void> }) {
-  const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
@@ -2780,6 +2820,9 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
           setUnit("units")
           closeConfirmation()
           showToast(`✓ ${name} added to shop!`)
+        } catch (error) {
+          closeConfirmation()
+          showToast(error instanceof Error ? error.message : "Unable to add shop item")
         } finally {
           setConfirmLoading(false)
         }
@@ -2811,7 +2854,7 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
           <div className="flex flex-col gap-1.5"><Label>Unit Label</Label><Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="units, set, pack, box" /></div>
           <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Specs</Label><Textarea value={specs} onChange={(e) => setSpecs(e.target.value)} /></div>
           <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Overview</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></div>
-          <Button type="submit" disabled={loading} className="sm:col-span-2 bg-[#40938c] text-black font-bold">List Product Stock</Button>
+          <Button type="submit" disabled={confirmLoading} className="sm:col-span-2 bg-[#40938c] text-black font-bold">List Product Stock</Button>
         </form>
         <ConfirmationDialog
           isOpen={confirmState.isOpen}
@@ -3084,7 +3127,6 @@ function EditGearGuideButton({
 }
 
 function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string; category: string; description: string; image_url: string; recommended_for_tier: string; specs: string }) => Promise<void> }) {
-  const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
@@ -3124,6 +3166,9 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
           setPriceEstimate("")
           closeConfirmation()
           showToast(`✓ ${title} guide published!`)
+        } catch (error) {
+          closeConfirmation()
+          showToast(error instanceof Error ? error.message : "Unable to publish equipment guide")
         } finally {
           setConfirmLoading(false)
         }
@@ -3176,7 +3221,7 @@ function EquipmentGuideForm({ onCreate }: { onCreate: (payload: { title: string;
           </div>
           <div className="flex flex-col gap-1.5"><Label>Specs</Label><Textarea value={specs} onChange={(e) => setSpecs(e.target.value)} /></div>
           <div className="flex flex-col gap-1.5"><Label>Overview</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required /></div>
-          <Button type="submit" disabled={loading} className="bg-[#40938c] text-black font-bold">Publish Review Guide</Button>
+          <Button type="submit" disabled={confirmLoading} className="bg-[#40938c] text-black font-bold">Publish Review Guide</Button>
         </form>
         <ConfirmationDialog
           isOpen={confirmState.isOpen}
@@ -3199,7 +3244,6 @@ function AssessmentForm({
   members: Profile[]
   onCreate: (payload: { userId: string; level: string; feedback: string; date: string; score: number; pdf_url?: string | null }) => Promise<void>
 }) {
-  const { loading } = useSubmitting()
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
@@ -3272,6 +3316,9 @@ function AssessmentForm({
           setTimeout(() => setSuccess(false), 5000)
           closeConfirmation()
           showToast(`✓ Assessment saved for ${memberName}!`)
+        } catch (error) {
+          closeConfirmation()
+          showToast(error instanceof Error ? error.message : "Unable to save assessment")
         } finally {
           setConfirmLoading(false)
         }
@@ -3372,8 +3419,8 @@ function AssessmentForm({
             {pdfFile && <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">Selected: {pdfFile.name}</p>}
           </div>
           <div className="sm:col-span-2 flex items-center gap-3">
-            <Button type="submit" disabled={loading} className="bg-[#40938c] text-black font-bold">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trophy className="h-4 w-4" />}
+            <Button type="submit" disabled={confirmLoading} className="bg-[#40938c] text-black font-bold">
+              {confirmLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trophy className="h-4 w-4" />}
               Save Assessment Record
             </Button>
             {success && (
@@ -3407,6 +3454,7 @@ function EmailTemplatesEditor({
   onSave: (next: EmailTemplateConfig) => void
 }) {
   const { showConfirmation, closeConfirmation, confirmState } = useConfirmation()
+  const { toast, showToast } = useToast()
   const [saving, setSaving] = useState(false)
 
   const onSaveClick = () => {
@@ -3418,6 +3466,8 @@ function EmailTemplatesEditor({
         setSaving(true)
         try {
           onSave(value)
+        } catch (error) {
+          showToast(error instanceof Error ? error.message : "Unable to save email templates")
         } finally {
           setSaving(false)
         }
@@ -3490,6 +3540,7 @@ function EmailTemplatesEditor({
         onConfirm={() => confirmState.onConfirm()}
         onCancel={closeConfirmation}
       />
+      <Toast isOpen={toast.isOpen} message={toast.message} />
     </>
   )
 }

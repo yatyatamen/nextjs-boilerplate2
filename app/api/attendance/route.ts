@@ -43,10 +43,41 @@ export async function POST(request: NextRequest) {
     const markedAt = new Date().toISOString()
 
     if (attendanceId) {
+      const updates: Record<string, unknown> = { status, marked_at: markedAt }
+      if (typeof body?.user_name === "string") updates.user_name = body.user_name
+      if (typeof body?.user_level === "string") updates.user_level = body.user_level
+      if (typeof body?.notes === "string" || body?.notes === null) updates.notes = body.notes
+
       const { data, error } = await database
         .from("attendance")
-        .update({ status, marked_at: markedAt })
+        .update(updates)
         .eq("id", attendanceId)
+        .select()
+        .single()
+      if (error) throw error
+      return NextResponse.json({ data })
+    }
+
+    const { data: existing, error: existingError } = await database
+      .from("attendance")
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle()
+    if (existingError) throw existingError
+
+    if (existing) {
+      const { data, error } = await database
+        .from("attendance")
+        .update({
+          user_name: typeof body?.user_name === "string" ? body.user_name : "Unknown",
+          user_level: typeof body?.user_level === "string" ? body.user_level : "Unknown",
+          status,
+          marked_at: markedAt,
+          notes: typeof body?.notes === "string" ? body.notes : null,
+        })
+        .eq("id", existing.id)
         .select()
         .single()
       if (error) throw error
