@@ -9,6 +9,8 @@ import {
   sendShopUpdateEmail,
 } from "@/lib/supabase/email"
 
+export const runtime = "nodejs"
+
 type EmailEvent = "announcement" | "session_alert" | "assessment" | "absence" | "shop_update"
 
 function isTemplate(value: unknown): value is EmailTemplate {
