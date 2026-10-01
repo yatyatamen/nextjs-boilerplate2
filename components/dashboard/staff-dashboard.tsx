@@ -1349,7 +1349,7 @@ export function StaffDashboard({
               const emailResult = await sendConfiguredEmails(
                 "session_alert",
                 members
-                  .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
+                  .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher")
                   .map((member) => ({ to: member.email!, payload: {
                     sessionTitle: createdSession.title || "New session",
                     sessionDate: createdSession.date || "TBD",
@@ -2008,15 +2008,6 @@ export function StaffDashboard({
               setEmailTemplates(nextConfig)
               showToast("Auto email templates saved")
             }}
-            onTest={async () => {
-              const response = await fetch("/api/email", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ event: "test" }),
-              })
-              const result = await response.json().catch(() => ({}))
-              if (!response.ok) throw new Error(result.error || "Test email failed")
-            }}
           />
         </div>
       )}
@@ -2080,7 +2071,7 @@ export function StaffDashboard({
                       const emailResult = await sendConfiguredEmails(
                         "announcement",
                         members
-                          .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
+                          .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher")
                           .map((member) => ({ to: member.email!, payload: { title: "Website Feature Update", content: websiteFeatureText.trim() } })),
                       )
                       showEmailBatchResult("Website feature update posted", emailResult)
@@ -2133,7 +2124,7 @@ export function StaffDashboard({
               const emailResult = await sendConfiguredEmails(
                 "announcement",
                 members
-                  .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher" && member.session_alert_emails !== false)
+                  .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher")
                   .map((member) => ({ to: member.email!, payload: { title, content } })),
               )
               showEmailBatchResult("Announcement posted", emailResult)
@@ -3487,29 +3478,14 @@ function EmailTemplatesEditor({
   value,
   onChange,
   onSave,
-  onTest,
 }: {
   value: EmailTemplateConfig
   onChange: (next: EmailTemplateConfig) => void
   onSave: (next: EmailTemplateConfig) => void
-  onTest: () => Promise<void>
 }) {
   const { showConfirmation, closeConfirmation, confirmState } = useConfirmation()
   const { toast, showToast } = useToast()
   const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
-
-  const sendTestEmail = async () => {
-    setTesting(true)
-    try {
-      await onTest()
-      showToast("Test email accepted by SMTP; check your inbox and spam folder.")
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Test email failed")
-    } finally {
-      setTesting(false)
-    }
-  }
 
   const onSaveClick = () => {
     showConfirmation(
@@ -3549,10 +3525,7 @@ function EmailTemplatesEditor({
             <p className="text-xs text-muted-foreground">Use placeholders like {'{memberName}'}, {'{sessionTitle}'}, {'{sessionDate}'}, {'{sessionTime}'}, {'{title}'}, {'{content}'}, {'{level}'}, {'{itemName}'}</p>
           </div>
           <div className="flex shrink-0 gap-2">
-            <Button type="button" variant="outline" onClick={() => void sendTestEmail()} disabled={saving || testing}>
-              {testing ? "Testing..." : "Send test email"}
-            </Button>
-            <Button type="button" onClick={onSaveClick} disabled={saving || testing} className="bg-[#40938c] text-black font-bold">
+            <Button type="button" onClick={onSaveClick} disabled={saving} className="bg-[#40938c] text-black font-bold">
               {saving ? "Saving..." : "Save all templates"}
             </Button>
           </div>

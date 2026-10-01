@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("email, full_name, session_reminder_emails")
+      .select("email, full_name")
       .eq("id", userData.user.id)
       .maybeSingle()
 
@@ -145,25 +145,21 @@ export async function POST(request: NextRequest) {
       confirmationStatus = confirmation.ok ? "accepted" : "failed"
       if (!confirmation.ok) confirmationError = confirmation.error
 
-      if (profile?.session_reminder_emails === false) {
-        reminderStatus = "disabled"
+      const start = parseSessionStart(session.date, session.time)
+      const timeUntilStart = start ? start.getTime() - Date.now() : null
+      const withinOneDay = timeUntilStart !== null && timeUntilStart <= 24 * 60 * 60 * 1000 && timeUntilStart > 0
+      if (withinOneDay) {
+        const reminder = await sendSessionBookingReminderEmail({
+          to: recipient,
+          memberName,
+          sessionTitle: session.title || "session",
+          sessionDate: session.date || "TBD",
+          sessionTime: session.time || "TBD",
+        })
+        reminderStatus = reminder.ok ? "accepted" : "failed"
+        if (!reminder.ok) reminderError = reminder.error
       } else {
-        const start = parseSessionStart(session.date, session.time)
-        const timeUntilStart = start ? start.getTime() - Date.now() : null
-        const withinOneDay = timeUntilStart !== null && timeUntilStart <= 24 * 60 * 60 * 1000 && timeUntilStart > 0
-        if (withinOneDay) {
-          const reminder = await sendSessionBookingReminderEmail({
-            to: recipient,
-            memberName,
-            sessionTitle: session.title || "session",
-            sessionDate: session.date || "TBD",
-            sessionTime: session.time || "TBD",
-          })
-          reminderStatus = reminder.ok ? "accepted" : "failed"
-          if (!reminder.ok) reminderError = reminder.error
-        } else {
-          reminderStatus = "not_due"
-        }
+        reminderStatus = "not_due"
       }
     } else {
       confirmationError = "No email address is available on the account or profile."

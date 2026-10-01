@@ -5,14 +5,13 @@ import {
   sendAbsenceEmail,
   sendAnnouncementEmail,
   sendAssessmentEmail,
-  sendEmail,
   sendSessionAlertEmail,
   sendShopUpdateEmail,
 } from "@/lib/supabase/email"
 
 export const runtime = "nodejs"
 
-type EmailEvent = "announcement" | "session_alert" | "assessment" | "absence" | "shop_update" | "test"
+type EmailEvent = "announcement" | "session_alert" | "assessment" | "absence" | "shop_update"
 
 function isTemplate(value: unknown): value is EmailTemplate {
   return Boolean(
@@ -52,24 +51,6 @@ export async function POST(request: Request) {
     const event = body?.event as EmailEvent
     const to = requiredString(body?.to).trim()
     const template = isTemplate(body?.template) ? body.template : undefined
-
-    if (event === "test") {
-      const recipient = user.email?.trim()
-      if (!recipient) {
-        return NextResponse.json({ error: "Your account does not have an email address." }, { status: 400 })
-      }
-
-      const result = await sendEmail({
-        to: recipient,
-        subject: "Email configuration test",
-        text: "Your club email configuration accepted this test message.",
-        html: "<p>Your club email configuration accepted this test message.</p>",
-      })
-      if (!result.ok) {
-        return NextResponse.json({ error: result.error || "Unable to send test email" }, { status: 502 })
-      }
-      return NextResponse.json({ data: { id: result.id, recipient } })
-    }
 
     if (!to || !["announcement", "session_alert", "assessment", "absence", "shop_update"].includes(event)) {
       return NextResponse.json({ error: "A valid email event and recipient are required" }, { status: 400 })

@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer"
+import { randomUUID } from "node:crypto"
 import { applyTemplateText, getEmailTemplateConfig, type EmailTemplate } from "@/lib/email-templates"
 
 const smtpUser = process.env.SMTP_USER?.trim() || process.env.GMAIL_USER?.trim() || process.env.EMAIL_USER?.trim()
@@ -104,12 +105,16 @@ export async function sendEmail({
   }
 
   try {
+    const timestamp = new Date().toISOString()
     const result = await transporter.sendMail({
       from: emailFrom,
       to: recipients,
-      subject,
+      subject: `${subject} [${timestamp}]`,
       html,
       text: text ?? html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
+      headers: {
+        "X-Entity-Ref-ID": randomUUID(),
+      },
     })
 
     if (result.rejected && result.rejected.length > 0) {

@@ -10,8 +10,6 @@ export async function PATCH(request: NextRequest) {
     const rawRole = typeof body?.role === "string" ? body.role.trim() : undefined
     const memberLevel = typeof body?.member_level === "string" ? body.member_level.trim() : undefined
     const marketingEmails = typeof body?.marketing_emails === "boolean" ? body.marketing_emails : undefined
-    const sessionReminderEmails = typeof body?.session_reminder_emails === "boolean" ? body.session_reminder_emails : undefined
-    const sessionAlertEmails = typeof body?.session_alert_emails === "boolean" ? body.session_alert_emails : undefined
 
     const validRoles = new Set(["staff", "teacher", "admin", "coach", "for fun", "member"])
     const normalizedRole = rawRole && validRoles.has(rawRole.toLowerCase()) ? rawRole.toLowerCase() : undefined
@@ -23,7 +21,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "memberId is required" }, { status: 400 })
     }
 
-    if (!fullName && !level && !role && !memberLevel && marketingEmails === undefined && sessionReminderEmails === undefined && sessionAlertEmails === undefined) {
+    if (!fullName && !level && !role && !memberLevel && marketingEmails === undefined) {
       return NextResponse.json({ error: "At least one valid profile detail or email preference is required" }, { status: 400 })
     }
 
@@ -64,8 +62,6 @@ export async function PATCH(request: NextRequest) {
       if (isStaff && role) updateData.role = role
       if (isStaff && !level && memberLevel) updateData.member_level = memberLevel
       if (marketingEmails !== undefined) updateData.marketing_emails = marketingEmails
-      if (sessionReminderEmails !== undefined) updateData.session_reminder_emails = sessionReminderEmails
-      if (sessionAlertEmails !== undefined) updateData.session_alert_emails = sessionAlertEmails
 
       const updateProfile = async (payload: Record<string, string | boolean | undefined>) =>
         await supabase

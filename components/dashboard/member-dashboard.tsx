@@ -254,8 +254,6 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   const [customName, setCustomName] = useState(profile.full_name || "")
                                                   const [isSavingName, setIsSavingName] = useState(false)
                                                   const [marketingEmails, setMarketingEmails] = useState(Boolean(profile.marketing_emails ?? true))
-                                                  const [sessionReminderEmails, setSessionReminderEmails] = useState(Boolean(profile.session_reminder_emails ?? true))
-                                                  const [sessionAlertEmails, setSessionAlertEmails] = useState(Boolean(profile.session_alert_emails ?? true))
                                                   const [isSavingEmailPrefs, setIsSavingEmailPrefs] = useState(false)
                                                   const [selectedProduct, setSelectedProduct] = useState<{
                                                     kind: "gear" | "shop"
@@ -606,8 +604,6 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                         body: JSON.stringify({
                                                           memberId: profile.id,
                                                           marketing_emails: marketingEmails,
-                                                          session_reminder_emails: sessionReminderEmails,
-                                                          session_alert_emails: sessionAlertEmails,
                                                         }),
                                                       })
                                                       const result = await response.json().catch(() => ({ error: "Unable to update email settings." }))
@@ -1161,7 +1157,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                         setSupportCategory(category)
                                                         setSupportMessage("")
                                                         setMessagesList((prev) => [annotatedTicket, ...prev])
-                                                        setSupportStatus("Message has been sent to club staff. Thanks for your feedback!")
+                                                        setSupportStatus("Success! System routing confirmation generated.")
                                                         setSelectedConvoId(conversationId)
                                                         setSelectedMessageId(String(annotatedTicket.id))
                                                         setActive(overrides?.nextView ?? "support")
@@ -1282,7 +1278,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                             const emailStatus = apiResult.result?.email
                                                             showToast(emailStatus?.status === "failed"
                                                               ? `Booking retracted; cancellation email failed: ${emailStatus.error || "email delivery error"}`
-                                                              : "✓ Booking cancelled successfully")
+                                                              : "✓ Booking retracted successfully")
                                                             return
                                                           }
 
@@ -1722,7 +1718,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                       <Card key={b.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
                                                                         <div>
                                                                           <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>{s ? formatDate(s.date) : "Training Interval"} {s?.time && `· ${s.time}`}</p>
-                                                                          {s?.title && <p className={`text-xs font-mono ${theme.textSecondary} mt-0.5`}>Session: {s.title}</p>}
+                                                                          {s?.title && <p className={`text-xs font-mono ${theme.textSecondary} mt-0.5`}>Focus: {s.title}</p>}
                                                                         </div>
                                                                         <Button type="button" size="sm" onClick={() => cancel(b)} className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400 font-mono rounded-sm">Retract Spot</Button>
                                                                       </Card>
@@ -2578,14 +2574,6 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                   <label className="flex items-center justify-between gap-3 text-sm">
                                                                     <span>Shop updates</span>
                                                                     <input type="checkbox" checked={marketingEmails} onChange={(e) => setMarketingEmails(e.target.checked)} className="h-4 w-4 accent-[#40938c]" />
-                                                                  </label>
-                                                                  <label className="flex items-center justify-between gap-3 text-sm">
-                                                                    <span>Session reminder emails</span>
-                                                                    <input type="checkbox" checked={sessionReminderEmails} onChange={(e) => setSessionReminderEmails(e.target.checked)} className="h-4 w-4 accent-[#40938c]" />
-                                                                  </label>
-                                                                  <label className="flex items-center justify-between gap-3 text-sm">
-                                                                    <span>Announcements and new session alerts</span>
-                                                                    <input type="checkbox" checked={sessionAlertEmails} onChange={(e) => setSessionAlertEmails(e.target.checked)} className="h-4 w-4 accent-[#40938c]" />
                                                                   </label>
                                                                 </div>
                                                                 <Button size="sm" onClick={saveEmailPreferences} disabled={isSavingEmailPrefs} className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-2 px-4 rounded-sm border-none self-start">

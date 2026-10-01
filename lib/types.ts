@@ -39,8 +39,6 @@ export type Profile = {
   level: string | null
   avatar_url?: string | null
   marketing_emails?: boolean | null
-  session_reminder_emails?: boolean | null
-  session_alert_emails?: boolean | null
   created_at: string
 }
 
