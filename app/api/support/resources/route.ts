@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       .select("role")
       .eq("id", userData.user.id)
       .maybeSingle()
-    if (profileError || !profile || !["staff", "admin"].includes(profile.role)) {
+    if (profileError || !profile || !["staff"].includes(profile.role)) {
       return NextResponse.json({ error: "Only staff can save resources" }, { status: 403 })
     }
 
@@ -111,7 +111,7 @@ export async function DELETE(request: NextRequest) {
       .select("role")
       .eq("id", userData.user.id)
       .maybeSingle()
-    if (profileError || !profile || !["staff", "admin"].includes(profile.role)) {
+    if (profileError || !profile || !["staff"].includes(profile.role)) {
       return NextResponse.json({ error: "Only staff can delete resources" }, { status: 403 })
     }
 

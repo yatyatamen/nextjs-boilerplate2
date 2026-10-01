@@ -13,7 +13,7 @@ type Mode = "login" | "register"
 const DOMAIN_ERROR = `Only YRDSB school email addresses (${ALLOWED_DOMAIN}) are allowed.`
 const AUTH_REDIRECT_URL = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
 const FALLBACK_AUTH_REDIRECT_URL = "https://wci-badminton-club-git-main-wcibadmintonclub.vercel.app"
-const MEMBER_LEVEL_ROLES = new Set(["For Fun", "silver", "gold", "diamond", "diamond2"])
+const MEMBER_LEVEL_ROLES = new Set(["bronze", "silver", "gold", "diamond", "member"])
 
 function isDuplicateEmailError(error: { message?: string; status?: number } | null | undefined) {
   const message = `${error?.message ?? ""}`.toLowerCase()
@@ -76,7 +76,7 @@ export function AuthForm() {
 
     const rawRole = String(existingProfile?.role ?? "member").trim().toLowerCase()
     const normalizedRole = MEMBER_LEVEL_ROLES.has(rawRole) ? "member" : rawRole || "member"
-    const normalizedLevel = String(existingProfile?.level ?? "for fun").trim() || "for fun"
+    const normalizedLevel = String(existingProfile?.level ?? "member").trim() || "member"
 
     const upsertPayload = {
       id: userId,

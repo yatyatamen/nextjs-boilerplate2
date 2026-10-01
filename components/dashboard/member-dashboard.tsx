@@ -17,7 +17,7 @@
                                                   Resource,
                                                 } from "@/lib/types"
 import { LEVELS } from "@/lib/types"
-import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "@/lib/scheduling"
+import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded, parseSessionStart } from "@/lib/scheduling"
 import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                 import {
                                                   LayoutDashboard,
@@ -559,6 +559,21 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   }, [shopItemsState, shopFilter, shopSearch, shopPriceMin, shopPriceMax])
 
                                                   const bookedSessionIds = useMemo(() => new Set(visibleBookings.map((b) => String(b.session_id))), [visibleBookings])
+                                                  const memberUpcomingSessions = useMemo(() => {
+                                                    const myBookedSessionIds = new Set(
+                                                      visibleBookings
+                                                        .filter((booking) => String(booking.user_id) === String(profile.id))
+                                                        .map((booking) => String(booking.session_id)),
+                                                    )
+
+                                                    return visibleSchedule
+                                                      .filter((session) => myBookedSessionIds.has(String(session.id)))
+                                                      .sort((a, b) => {
+                                                        const aDate = new Date(parseSessionStart(a.date, a.time)?.toISOString() ?? a.date ?? 0).getTime()
+                                                        const bDate = new Date(parseSessionStart(b.date, b.time)?.toISOString() ?? b.date ?? 0).getTime()
+                                                        return aDate - bDate
+                                                      })
+                                                  }, [visibleSchedule, visibleBookings, profile.id])
                                                   const sessionBookingCount = (sessionId: string | number | null | undefined) =>
                                                     bookingCounts[String(sessionId ?? "")] ?? bookings.filter((booking) => String(booking.session_id) === String(sessionId)).length
                                                   const upcomingSessionCounts = useMemo(() => {
@@ -1507,22 +1522,20 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                 <p className={`mb-3 text-xs ${theme.textMuted}`}>Total upcoming sessions: {upcomingSessionCounts.total}</p>
                                                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                                                                 <StatCard icon={Ticket} label="Booked Upcoming Sessions" value={upcomingSessionCounts.booked} theme={theme} />
-                                                                <StatCard icon={CalendarDays} label="Available to Book" value={upcomingSessionCounts.available} theme={theme} />
-                                                                <StatCard icon={Lock} label="Full Sessions" value={upcomingSessionCounts.full} theme={theme} />
-                                                                <StatCard icon={CalendarDays} label="Booking Closed" value={upcomingSessionCounts.bookingClosed} theme={theme} />
+                                                                <StatCard icon={CalendarDays} label="Sessions Available to Book" value={upcomingSessionCounts.available} theme={theme} />
                                                                 <Card className={`p-4 border ${theme.cardBorder} ${theme.cardBg} rounded-sm flex items-start gap-4`}>
                                                                   <div className="p-2.5 rounded-sm bg-[#40938c]/10 text-[#40938c]">
                                                                     <CalendarDays className="h-5 w-5" />
                                                                   </div>
                                                                   <div>
-                                                                    <p className={`text-[10px] font-mono uppercase tracking-wider ${theme.textMuted}`}>Next Session</p>
-                                                                    {visibleSchedule.length > 0 ? (
+                                                                    <p className={`text-[10px] font-mono uppercase tracking-wider ${theme.textMuted}`}>Your Next Upcoming Session</p>
+                                                                    {memberUpcomingSessions.length > 0 ? (
                                                                       <>
-                                                                        <p className={`text-sm font-semibold mt-1 ${theme.textPrimary}`}>{visibleSchedule[0].title || "Untitled Session"}</p>
-                                                                        <p className={`text-xs ${theme.textSecondary}`}>{formatDate(visibleSchedule[0].date)} · {visibleSchedule[0].time || "TBD"}</p>
+                                                                        <p className={`text-sm font-semibold mt-1 ${theme.textPrimary}`}>{memberUpcomingSessions[0].title || "Untitled Session"}</p>
+                                                                        <p className={`text-xs ${theme.textSecondary}`}>{formatDate(memberUpcomingSessions[0].date)} · {memberUpcomingSessions[0].time || "TBD"}</p>
                                                                       </>
                                                                     ) : (
-                                                                      <p className={`text-sm ${theme.textSecondary} mt-1`}>No upcoming sessions</p>
+                                                                      <p className={`text-sm ${theme.textSecondary} mt-1`}>No upcoming booked sessions</p>
                                                                     )}
                                                                   </div>
                                                                 </Card>

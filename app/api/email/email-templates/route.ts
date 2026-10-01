@@ -49,7 +49,7 @@ export async function PUT(request: Request) {
       .eq("id", auth.user.id)
       .maybeSingle()
 
-    if (profileError || !["staff", "admin"].includes(profile?.role ?? "")) {
+    if (profileError || !["staff"].includes(profile?.role ?? "")) {
       return NextResponse.json({ error: "Only staff can save email templates" }, { status: 403 })
     }
 

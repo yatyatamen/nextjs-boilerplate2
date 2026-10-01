@@ -210,7 +210,7 @@ export async function DELETE(request: NextRequest) {
       .select("role, email, full_name")
       .eq("id", userData.user.id)
       .maybeSingle()
-    const canCancelAnyBooking = profile?.role === "staff" || profile?.role === "admin"
+    const canCancelAnyBooking = profile?.role === "staff"
 
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 })

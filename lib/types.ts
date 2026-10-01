@@ -1,6 +1,9 @@
 export const ALLOWED_DOMAIN = "@gapps.yrdsb.ca"
 
-// Roles and levels share one set of selectable profile values.
+export const VALID_ROLES = ["staff", "teacher", "member"] as const
+export const VALID_LEVELS = ["Bronze", "Silver", "Gold", "Diamond", "member"] as const
+
+// Roles and levels share one set of selectable profile values, but role and level are intentionally separate.
 export const ROLE_AND_LEVEL_OPTIONS = [
   "staff",
   "teacher",
@@ -8,13 +11,12 @@ export const ROLE_AND_LEVEL_OPTIONS = [
   "Silver",
   "Gold",
   "Diamond",
-  "Diamond2",
+  "member",
 ] as const
 
-// Stored profiles may still contain legacy roles that are not selectable.
-export const ROLES = ["staff", "teacher", "admin", "coach", "for fun", "member"] as const
-export const ROLE_OPTIONS = ["staff", "teacher"] as const
-export const LEVELS = ["Bronze", "Silver", "Gold", "Diamond", "Diamond2"] as const
+export const ROLES = [...VALID_ROLES] as const
+export const ROLE_OPTIONS = [...VALID_ROLES] as const
+export const LEVELS = [...VALID_LEVELS] as const
 
 export const getRoleOptions = () => [...ROLE_OPTIONS]
 export type Role = (typeof ROLES)[number]

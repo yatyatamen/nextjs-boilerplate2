@@ -11,10 +11,11 @@ export async function PATCH(request: NextRequest) {
     const memberLevel = typeof body?.member_level === "string" ? body.member_level.trim() : undefined
     const marketingEmails = typeof body?.marketing_emails === "boolean" ? body.marketing_emails : undefined
 
-    const validRoles = new Set(["staff", "teacher", "admin", "coach", "for fun", "member"])
+    const validRoles = new Set(["staff", "teacher", "member"])
+    const validLevels = new Set(["bronze", "silver", "gold", "diamond", "member"])
     const normalizedRole = rawRole && validRoles.has(rawRole.toLowerCase()) ? rawRole.toLowerCase() : undefined
-    const normalizedLevel = rawLevel && !validRoles.has(rawLevel.toLowerCase()) ? rawLevel : undefined
-    const level = normalizedLevel ?? (memberLevel && !validRoles.has(memberLevel.toLowerCase()) ? memberLevel : undefined)
+    const normalizedLevel = rawLevel && (validLevels.has(rawLevel.toLowerCase()) || rawLevel.toLowerCase() === "member") ? rawLevel : undefined
+    const level = normalizedLevel ?? (memberLevel && (validLevels.has(memberLevel.toLowerCase()) || memberLevel.toLowerCase() === "member") ? memberLevel : undefined)
     const role = normalizedRole ?? (rawRole && validRoles.has(rawRole.toLowerCase()) ? rawRole.toLowerCase() : undefined)
 
     if (!memberId) {
@@ -39,7 +40,7 @@ export async function PATCH(request: NextRequest) {
     if (actorProfileError || !actorProfile) {
       return NextResponse.json({ error: "Unable to verify account permissions" }, { status: 403 })
     }
-    const isStaff = ["staff", "admin"].includes(actorProfile.role)
+    const isStaff = ["staff"].includes(actorProfile.role)
     const isSelf = memberId === userData.user.id
     if (!isStaff && !isSelf) {
       return NextResponse.json({ error: "You can only update your own email preferences" }, { status: 403 })
