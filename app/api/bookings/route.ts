@@ -106,6 +106,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "You have already booked this session." }, { status: 409 })
     }
 
+    const { data: memberBookings, error: memberBookingsError } = await supabase
+      .from("bookings")
+      .select("session_id")
+      .eq("user_id", userData.user.id)
+
+    if (memberBookingsError) {
+      console.error("Member booking lookup failed:", memberBookingsError)
+      return NextResponse.json({ error: memberBookingsError.message }, { status: 500 })
+    }
+
+    const bookedSessionIds = memberBookings
+      ?.map((booking) => booking.session_id)
+      .filter((value): value is string | number => value !== null && value !== undefined) ?? []
+
+    if (bookedSessionIds.length > 0) {
+      const { data: conflictingSessions, error: conflictingSessionsError } = await supabase
+        .from("schedule")
+        .select("id, date, time")
+        .in("id", bookedSessionIds.map((value) => String(value)))
+
+      if (conflictingSessionsError) {
+        console.error("Conflicting session lookup failed:", conflictingSessionsError)
+        return NextResponse.json({ error: conflictingSessionsError.message }, { status: 500 })
+      }
+
+      const targetStart = parseSessionStart(session.date, session.time)
+      const hasSameDateTimeConflict = conflictingSessions?.some((existingSession) => {
+        const existingStart = parseSessionStart(existingSession.date, existingSession.time)
+        return targetStart && existingStart && targetStart.getTime() === existingStart.getTime()
+      })
+
+      if (hasSameDateTimeConflict) {
+        return NextResponse.json({ error: "You already have a booking at the same date and time. Please choose another session." }, { status: 409 })
+      }
+    }
+
     const { data, error } = await supabase
       .from("bookings")
       .insert({

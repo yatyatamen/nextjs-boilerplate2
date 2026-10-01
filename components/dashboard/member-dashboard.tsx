@@ -88,6 +88,29 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                     .replace(/<br\s*\/?>/gi, "\n")
                                                 }
 
+                                                function getSessionDateTimeValue(session: { date?: string | null; time?: string | null } | null | undefined) {
+                                                  const start = parseSessionStart(session?.date, session?.time)
+                                                  return start ? start.getTime() : null
+                                                }
+
+                                                function hasMemberSessionTimeConflict(
+                                                  session: { id?: string | number | null; date?: string | null; time?: string | null } | null | undefined,
+                                                  memberBookings: Booking[],
+                                                  userId: string,
+                                                  scheduleById: Map<string, ScheduleSession>,
+                                                ) {
+                                                  const targetStart = getSessionDateTimeValue(session)
+                                                  if (targetStart === null || !session?.id) return false
+
+                                                  return memberBookings.some((booking) => {
+                                                    if (String(booking.user_id) !== String(userId) || !booking.session_id) return false
+                                                    if (String(booking.session_id) === String(session.id)) return false
+                                                    const bookedSession = scheduleById.get(String(booking.session_id))
+                                                    const bookedStart = getSessionDateTimeValue(bookedSession)
+                                                    return bookedStart !== null && bookedStart === targetStart
+                                                  })
+                                                }
+
                                                 function parseImageList(value: string | string[] | null | undefined) {
                                                   if (!value) return []
                                                   if (Array.isArray(value)) {
@@ -574,15 +597,27 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                         return aDate - bDate
                                                       })
                                                   }, [visibleSchedule, visibleBookings, profile.id])
+                                                  const memberBookedSessionIds = useMemo(
+                                                    () => new Set(
+                                                      visibleBookings
+                                                        .filter((booking) => String(booking.user_id) === String(profile.id))
+                                                        .map((booking) => String(booking.session_id)),
+                                                    ),
+                                                    [visibleBookings, profile.id],
+                                                  )
+                                                  const memberBookedSessionStartTimes = useMemo(() => {
+                                                    const starts = new Set<number>()
+                                                    for (const booking of visibleBookings) {
+                                                      if (String(booking.user_id) !== String(profile.id) || !booking.session_id) continue
+                                                      const bookedSession = scheduleById.get(String(booking.session_id))
+                                                      const startTime = getSessionDateTimeValue(bookedSession)
+                                                      if (startTime !== null) starts.add(startTime)
+                                                    }
+                                                    return starts
+                                                  }, [visibleBookings, profile.id, scheduleById])
                                                   const sessionBookingCount = (sessionId: string | number | null | undefined) =>
                                                     bookingCounts[String(sessionId ?? "")] ?? bookings.filter((booking) => String(booking.session_id) === String(sessionId)).length
                                                   const upcomingSessionCounts = useMemo(() => {
-                                                    const upcomingIds = new Set(visibleSchedule.map((session) => String(session.id)))
-                                                    const bookedIds = new Set(
-                                                      bookings
-                                                        .filter((booking) => booking.session_id !== null && upcomingIds.has(String(booking.session_id)))
-                                                        .map((booking) => String(booking.session_id)),
-                                                    )
                                                     let booked = 0
                                                     let available = 0
                                                     let full = 0
@@ -590,8 +625,15 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
 
                                                     for (const session of visibleSchedule) {
                                                       const sessionId = String(session.id)
-                                                      if (bookedIds.has(sessionId)) {
+                                                      if (memberBookedSessionIds.has(sessionId)) {
                                                         booked += 1
+                                                        continue
+                                                      }
+
+                                                      const sessionStart = getSessionDateTimeValue(session)
+                                                      const hasTimeConflict = sessionStart !== null && memberBookedSessionStartTimes.has(sessionStart)
+                                                      if (hasTimeConflict) {
+                                                        bookingClosed += 1
                                                         continue
                                                       }
 
@@ -609,7 +651,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                       bookingClosed,
                                                       total: booked + available + full + bookingClosed,
                                                     }
-                                                  }, [visibleSchedule, bookings, bookingCounts])
+                                                  }, [visibleSchedule, bookings, bookingCounts, memberBookedSessionIds, memberBookedSessionStartTimes])
 
                                                   // Computed filtration pipeline for attendance records
                                                   const filteredAttendance = useMemo(() => {
@@ -1245,8 +1287,13 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                     const note = bookingNoteDraft.trim()
                                                     const currentBookingCount = sessionBookingCount(session.id)
                                                     const ruleSet = getSessionBookingRules(session, currentBookingCount, new Date())
+                                                    const hasTimeConflict = hasMemberSessionTimeConflict(session, bookings, profile.id, scheduleById)
                                                     if (ruleSet.isFull || ruleSet.isBookingBlocked) {
                                                       alert(ruleSet.bookingBlockReason || "This session is full or booking is closed.")
+                                                      return
+                                                    }
+                                                    if (hasTimeConflict) {
+                                                      alert("You already have a booking at the same date and time. Please choose another session.")
                                                       return
                                                     }
 
@@ -1639,6 +1686,9 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                   <div className="flex flex-col gap-3">
                                                                     {visibleSchedule.map((s) => {
                                                   const booked = bookedSessionIds.has(String(s.id))
+                                                  const ruleSet = getSessionBookingRules(s, sessionBookingCount(s.id), new Date())
+                                                  const hasTimeConflict = hasMemberSessionTimeConflict(s, bookings, profile.id, scheduleById)
+                                                  const disabled = booked || pendingId === String(s.id) || ruleSet.isBookingBlocked || ruleSet.isFull || hasTimeConflict
                                                   return (
                                                     <Card key={s.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
                                                       <div>
@@ -1653,18 +1703,21 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                       <Button
                                                         size="sm"
                                                         type="button"
-                                                        disabled={booked || pendingId === String(s.id) || getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isBookingBlocked || getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isFull}
+                                                        disabled={disabled}
                                                         onClick={() => {
-                                                          const ruleSet = getSessionBookingRules(s, sessionBookingCount(s.id), new Date())
                                                           if (ruleSet.isFull || ruleSet.isBookingBlocked) {
                                                             alert(ruleSet.bookingBlockReason || "This session is full or booking is closed.")
                                                             return
                                                           }
+                                                          if (hasTimeConflict) {
+                                                            alert("You already have a booking at the same date and time. Please choose another session.")
+                                                            return
+                                                          }
                                                           setConfirmingSession(s)
                                                         }}
-                                                        className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${booked || getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isBookingBlocked || getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isFull ? "bg-zinc-700 text-white" : "bg-[#40938c] text-black font-bold"}`}
+                                                        className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${disabled ? "bg-zinc-700 text-white" : "bg-[#40938c] text-black font-bold"}`}
                                                       >
-                                                        {booked ? "Claimed" : getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isFull ? "Session Full" : getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isBookingBlocked ? "Booking Closed" : "Join Session"}
+                                                        {booked ? "Claimed" : hasTimeConflict ? "Time Clash" : ruleSet.isFull ? "Session Full" : ruleSet.isBookingBlocked ? "Booking Closed" : "Join Session"}
                                                       </Button>
                                                     </Card>
                                                   )
@@ -2485,11 +2538,26 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                           {/* ABOUT WOLVES INFO */}
                                                           {active === "club-info" && (
                                                             <div className="flex flex-col gap-6">
-                                                              <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                                                                <h3 className="text-2xl font-bold uppercase tracking-wide text-[#40938c]">About Wolves Badminton Club</h3>
-                                                                <p className={`text-base ${theme.textSecondary} leading-relaxed mt-3 font-mono`}>
-                                                                  Wolves Badminton Club is dedicated to developing student-athletes and competitive players through structured training, technical skill-building, and tournament prep. We focus on continuous athletic progression, on-court agility, and game strategy to help every member reach their full potential. Beyond competitive play, we foster a welcoming space for social sessions, friendly open-court matches, and fun recreational games. Whether you are aiming for team selection or simply looking to stay active, build lasting friendships, and enjoy the sport, our club offers a supportive community for players of all experience levels.
-                                                                </p>
+                                                              <Card className={`overflow-hidden p-0 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                <div className="grid gap-0 md:grid-cols-[1.2fr_0.8fr]">
+                                                                  <div className="p-6">
+                                                                    <h3 className="text-2xl font-bold uppercase tracking-wide text-[#40938c]">About Wolves Badminton Club</h3>
+                                                                    <p className={`text-base ${theme.textSecondary} leading-relaxed mt-3 font-mono`}>
+                                                                      Wolves Badminton Club is dedicated to developing student-athletes and competitive players through structured training, technical skill-building, and tournament prep. We focus on continuous athletic progression, on-court agility, and game strategy to help every member reach their full potential. Beyond competitive play, we foster a welcoming space for social sessions, friendly open-court matches, and fun recreational games. Whether you are aiming for team selection or simply looking to stay active, build lasting friendships, and enjoy the sport, our club offers a supportive community for players of all experience levels.
+                                                                    </p>
+                                                                  </div>
+
+                                                                  <div className="relative min-h-[280px] border-t border-zinc-800/70 md:border-l md:border-t-0">
+                                                                    <img
+                                                                      src="https://jmlhdtltucwhxrrunenl.supabase.co/storage/v1/object/public/pics/WhatsApp%20Image%202026-10-01%20at%202.18.55%20PM.jpeg"
+                                                                      alt="Wolves Badminton Club leaders"
+                                                                      className="h-full w-full object-cover"
+                                                                    />
+                                                                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent p-4">
+                                                                      <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-white/80">Leadership Team</p>
+                                                                    </div>
+                                                                  </div>
+                                                                </div>
                                                               </Card>
                                                             </div>
                                                           )}
