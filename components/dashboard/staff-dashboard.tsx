@@ -532,6 +532,10 @@ export function StaffDashboard({
   }
 
   async function deleteSupportTicketItem(id: string) {
+    const previousIndex = messages.findIndex((item) => String(item.id) === String(id))
+    const deletedMessage = previousIndex >= 0 ? messages[previousIndex] : undefined
+    setMessages((prev) => prev.filter((item) => String(item.id) !== String(id)))
+
     try {
       const response = await fetch("/api/support/delete", {
         method: "POST",
@@ -542,10 +546,17 @@ export function StaffDashboard({
         const payload = await response.json().catch(() => ({}))
         throw new Error(payload?.error || "Unable to delete comment")
       }
-      setMessages((prev) => prev.filter((item) => String(item.id) !== String(id)))
       if (selectedMessageId === String(id)) setSelectedMessageId(null)
       showToast("Comment deleted")
     } catch (error) {
+      if (deletedMessage) {
+        setMessages((prev) => {
+          if (prev.some((item) => String(item.id) === String(id))) return prev
+          const restored = [...prev]
+          restored.splice(Math.min(previousIndex, restored.length), 0, deletedMessage)
+          return restored
+        })
+      }
       console.error("Delete comment failed:", error)
       showToast(error instanceof Error ? error.message : "Failed to delete comment")
     }
@@ -563,7 +574,8 @@ export function StaffDashboard({
   }
 
   async function updateCommentStatusInDb(id: string, nextStatus: SupportTicket["status"]) {
-    const { error } = await supabase.from("support_tickets").update({ status: nextStatus }).eq("id", id)
+    const databaseStatus = nextStatus === "solved" ? "resolved" : "open"
+    const { error } = await supabase.from("support_tickets").update({ status: databaseStatus }).eq("id", id)
 
     if (error) {
       throw new Error(error.message || "Unable to update comment status")
@@ -2402,7 +2414,7 @@ export function StaffDashboard({
           </div>
 
           {filteredComments.length === 0 ? (
-            <Card className="p-6 text-center text-sm text-white">No comments in this filter.</Card>
+            <Card className="p-6 text-center text-sm text-black">No comments in this filter.</Card>
           ) : (
             <div className="grid gap-4">
               {filteredComments.map((message) => {
