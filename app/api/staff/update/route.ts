@@ -18,7 +18,9 @@ const ALLOWED_FIELDS: Record<UpdateType, string[]> = {
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}))
-    const id = typeof body?.id === "string" ? body.id : ""
+    const id = typeof body?.id === "string" || typeof body?.id === "number"
+      ? String(body.id)
+      : ""
     const type = body?.type as UpdateType
     const table = TABLES[type]
     const payload = body?.payload

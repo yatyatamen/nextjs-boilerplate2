@@ -3,6 +3,14 @@ import { createClient, createServiceClient } from "@/lib/supabase/server"
 
 const ATTENDANCE_ROLES = new Set(["staff", "admin", "teacher"])
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message
+  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+    return error.message
+  }
+  return "Unable to save attendance"
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
@@ -104,6 +112,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data })
   } catch (error) {
     console.error("Attendance save failed:", error)
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save attendance" }, { status: 500 })
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
   }
 }
