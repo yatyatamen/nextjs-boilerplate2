@@ -11,7 +11,7 @@ type UpdateType = keyof typeof TABLES
 
 const ALLOWED_FIELDS: Record<UpdateType, string[]> = {
   schedule: ["title", "date", "time", "max_capacity", "max_level", "coach", "notes", "visibility_tiers"],
-  shop_item: ["name", "category", "price", "description", "specs", "pic_url", "image_urls", "stock", "unit"],
+  shop_item: ["name", "category", "price", "description", "pic_url", "image_urls", "stock", "unit"],
   gear_guide: ["title", "category", "description", "specs", "recommended_for_tier", "link", "image_url", "pic_url", "image_urls"],
 }
 

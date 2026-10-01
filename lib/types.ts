@@ -78,7 +78,6 @@ export type ShopItem = {
   category: string | null
   price: number | null
   description: string | null
-  specs: string | null
   stock: number | null
   pic_url?: string | null
   image_urls?: string[] | null

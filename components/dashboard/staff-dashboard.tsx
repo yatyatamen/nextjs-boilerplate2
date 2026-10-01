@@ -467,7 +467,6 @@ export function StaffDashboard({
     const normalizedPayload = {
       ...payload,
       ...(payload.description !== undefined ? { description: normalizeMultilineText(payload.description) } : {}),
-      ...(payload.specs !== undefined ? { specs: normalizeMultilineText(payload.specs) } : {}),
     }
 
     const data = await updateStaffRecord("shop_item", id, normalizedPayload as Record<string, unknown>)
@@ -2804,14 +2803,13 @@ function TitleContentForm({
   )
 }
 
-function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; category: string; price: number; description: string; specs: string; pic_url: string; stock: number; unit: string }) => Promise<void> }) {
+function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; category: string; price: number; description: string; pic_url: string; stock: number; unit: string }) => Promise<void> }) {
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [name, setName] = useState("")
   const [category, setCategory] = useState("Rackets")
   const [price, setPrice] = useState("")
-  const [specs, setSpecs] = useState("")
   const [description, setDescription] = useState("")
   const [picUrl, setPicUrl] = useState("")
   const [stock, setStock] = useState(0)
@@ -2832,14 +2830,12 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
             category,
             price: Number(price) || 0,
             description: normalizeMultilineText(description),
-            specs: normalizeMultilineText(specs),
             pic_url: imageUrls.join(", "),
             stock: Number(stock) || 0,
             unit,
           })
           setName("")
           setPrice("")
-          setSpecs("")
           setDescription("")
           setPicUrl("")
           setStock(0)
@@ -2878,7 +2874,6 @@ function ShopPostingForm({ onCreate }: { onCreate: (payload: { name: string; cat
           <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Product Image URLs</Label><Textarea value={picUrl} onChange={(e) => setPicUrl(e.target.value)} placeholder="Add multiple image URLs, separated by commas or new lines" required /></div>
           <div className="flex flex-col gap-1.5"><Label>Stock Quantity</Label><Input type="number" min={0} value={stock} onChange={(e) => setStock(Number(e.target.value))} /></div>
           <div className="flex flex-col gap-1.5"><Label>Unit Label</Label><Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="units, set, pack, box" /></div>
-          <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Specs</Label><Textarea value={specs} onChange={(e) => setSpecs(e.target.value)} /></div>
           <div className="flex flex-col gap-1.5 sm:col-span-2"><Label>Overview</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></div>
           <Button type="submit" disabled={confirmLoading} className="sm:col-span-2 bg-[#40938c] text-black font-bold">List Product Stock</Button>
         </form>
@@ -2907,7 +2902,6 @@ function EditShopItemButton({
   const [name, setName] = useState(item.name ?? "")
   const category = item.category ?? "Rackets"
   const [price, setPrice] = useState(String(item.price ?? 0))
-  const [specs, setSpecs] = useState(item.specs ?? "")
   const [description, setDescription] = useState(item.description ?? "")
   const [picUrl, setPicUrl] = useState(item.pic_url ?? "")
   const [stock, setStock] = useState(String(item.stock ?? 0))
@@ -2928,7 +2922,6 @@ function EditShopItemButton({
         name: trimmedName,
         category,
         price: Number(price) || 0,
-        specs: normalizeMultilineText(specs),
         description: normalizeMultilineText(description),
         pic_url: picUrl,
         stock: Number(stock) || 0,
@@ -2967,7 +2960,6 @@ function EditShopItemButton({
                 <label className="flex flex-col gap-1 text-xs font-medium"><span>Stock</span><Input type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)} /></label>
                 <label className="flex flex-col gap-1 text-xs font-medium"><span>Unit</span><Input value={unit} onChange={(e) => setUnit(e.target.value)} /></label>
               </div>
-              <label className="flex flex-col gap-1 text-xs font-medium"><span>Specs</span><Textarea value={specs} onChange={(e) => setSpecs(e.target.value)} /></label>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Overview</span><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></label>
               <div className="mt-2 flex justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
