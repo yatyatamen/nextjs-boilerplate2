@@ -1327,7 +1327,6 @@ export function StaffDashboard({
         <div>
           <SectionHeader title="Schedule Management" desc="Create structured, multi-tier crossing sessions visible only to qualifying members." />
           <ScheduleForm
-            teachers={members.filter((member) => member.role === "teacher")}
             onCreate={async (payload) => {
               const { data, error } = await supabase
                 .from("schedule")
@@ -2483,7 +2482,6 @@ function EditScheduleButton({
   const [date, setDate] = useState(session.date ?? "")
   const [time, setTime] = useState(session.time ?? "")
   const [maxCapacity, setMaxCapacity] = useState(String(session.max_capacity ?? ""))
-  const [coach, setCoach] = useState(session.coach ?? "")
   const [notes, setNotes] = useState(session.notes ?? "")
   const [confirmLoading, setConfirmLoading] = useState(false)
   const { toast, showToast } = useToast()
@@ -2502,7 +2500,6 @@ function EditScheduleButton({
         date,
         time,
         max_capacity: maxCapacity ? Number(maxCapacity) : null,
-        coach,
         notes,
       })
       setIsOpen(false)
@@ -2540,9 +2537,6 @@ function EditScheduleButton({
                 </Select></label>
                 <label className="flex flex-col gap-1 text-xs font-medium"><span>Member limit</span><Input type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="No limit" /></label>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1 text-xs font-medium"><span>Coach</span><Input value={coach} onChange={(e) => setCoach(e.target.value)} /></label>
-              </div>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Notes</span><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
               <div className="mt-2 flex justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
@@ -2560,17 +2554,14 @@ function EditScheduleButton({
 }
 
 function ScheduleForm({
-  teachers,
   onCreate,
 }: {
-  teachers: Profile[]
   onCreate: (payload: {
     title: string
     date: string
     time: string
     max_capacity: number | null
     visibility_tiers: string[]
-    coach: string
     notes: string
   }) => Promise<void>
 }) {
@@ -2582,18 +2573,11 @@ function ScheduleForm({
   const [time, setTime] = useState("")
   const [maxCapacity, setMaxCapacity] = useState("")
   const [selectedTiers, setSelectedTiers] = useState<string[]>([...ALL_TIERS])
-  const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>([])
   const [notes, setNotes] = useState("")
 
   const toggleTier = (tier: string) => {
     setSelectedTiers((prev) =>
       prev.includes(tier) ? prev.filter((t) => t !== tier) : [...prev, tier]
-    )
-  }
-
-  const toggleTeacher = (teacherId: string) => {
-    setSelectedTeacherIds((prev) =>
-      prev.includes(teacherId) ? prev.filter((id) => id !== teacherId) : [...prev, teacherId],
     )
   }
 
@@ -2613,17 +2597,12 @@ function ScheduleForm({
             time,
             max_capacity: maxCapacity ? Number(maxCapacity) : null,
             visibility_tiers: selectedTiers,
-            coach: teachers
-              .filter((teacher) => selectedTeacherIds.includes(teacher.id))
-              .map((teacher) => getMemberDisplayName(teacher))
-              .join(", "),
             notes,
           })
           setTitle("")
           setDate("")
           setTime("")
           setMaxCapacity("")
-          setSelectedTeacherIds([])
           setNotes("")
           closeConfirmation()
           showToast("✓ Session posted successfully!")
@@ -2687,26 +2666,6 @@ function ScheduleForm({
               </label>
             ))}
           </div>
-        </div>
-        <div className="flex flex-col gap-2 sm:col-span-2">
-          <Label>Assign Teacher(s)</Label>
-          {teachers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No teacher profiles are available.</p>
-          ) : (
-            <div className="flex flex-wrap gap-3 rounded border border-zinc-800 bg-zinc-950/40 p-3">
-              {teachers.map((teacher) => (
-                <label key={teacher.id} className="flex items-center gap-2 text-sm text-zinc-200">
-                  <input
-                    type="checkbox"
-                    checked={selectedTeacherIds.includes(teacher.id)}
-                    onChange={() => toggleTeacher(teacher.id)}
-                    className="h-4 w-4 accent-[#40938c]"
-                  />
-                  {getMemberDisplayName(teacher)}
-                </label>
-              ))}
-            </div>
-          )}
         </div>
         <div className="flex flex-col gap-1.5 sm:col-span-2">
           <Label htmlFor="s-notes">Session Notes</Label>

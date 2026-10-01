@@ -127,7 +127,7 @@ export function getSessionBookingRules(
 
   const sessionNotes = [
     session.notes?.trim() || "Session details will be provided by staff.",
-    limit !== null ? `Spots left: ${Math.max(limit - currentCount, 0)} of ${limit}.` : "Spots left: no fixed member cap for this session.",
+    limit !== null ? `Spots left: ${Math.max(limit - currentCount, 0)} of ${limit}` : "Spots left: no fixed member cap for this session",
   ].join("\n\n")
 
   return {

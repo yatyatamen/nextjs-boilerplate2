@@ -22,6 +22,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                 import {
                                                   LayoutDashboard,
                                                   CalendarDays,
+                                                  Clock,
                                                   Ticket,
                                                   Megaphone,
                                                   ShoppingBag,
@@ -559,6 +560,40 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   const bookedSessionIds = useMemo(() => new Set(visibleBookings.map((b) => String(b.session_id))), [visibleBookings])
                                                   const sessionBookingCount = (sessionId: string | number | null | undefined) =>
                                                     bookingCounts[String(sessionId ?? "")] ?? bookings.filter((booking) => String(booking.session_id) === String(sessionId)).length
+                                                  const upcomingSessionCounts = useMemo(() => {
+                                                    const upcomingIds = new Set(visibleSchedule.map((session) => String(session.id)))
+                                                    const bookedIds = new Set(
+                                                      bookings
+                                                        .filter((booking) => booking.session_id !== null && upcomingIds.has(String(booking.session_id)))
+                                                        .map((booking) => String(booking.session_id)),
+                                                    )
+                                                    let booked = 0
+                                                    let available = 0
+                                                    let full = 0
+                                                    let bookingClosed = 0
+
+                                                    for (const session of visibleSchedule) {
+                                                      const sessionId = String(session.id)
+                                                      if (bookedIds.has(sessionId)) {
+                                                        booked += 1
+                                                        continue
+                                                      }
+
+                                                      const count = bookingCounts[sessionId] ?? bookings.filter((booking) => String(booking.session_id) === sessionId).length
+                                                      const rules = getSessionBookingRules(session, count, new Date())
+                                                      if (rules.isFull) full += 1
+                                                      else if (rules.isBookingBlocked) bookingClosed += 1
+                                                      else available += 1
+                                                    }
+
+                                                    return {
+                                                      booked,
+                                                      available,
+                                                      full,
+                                                      bookingClosed,
+                                                      total: booked + available + full + bookingClosed,
+                                                    }
+                                                  }, [visibleSchedule, bookings, bookingCounts])
 
                                                   // Computed filtration pipeline for attendance records
                                                   const filteredAttendance = useMemo(() => {
@@ -1467,9 +1502,13 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
 
 
 
-                                                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                                                                <StatCard icon={Ticket} label="Active Bookings" value={visibleBookings.length} theme={theme} />
-                                                                <StatCard icon={CalendarDays} label="Upcoming Sessions" value={visibleSchedule.length} theme={theme} />
+                                                              <div>
+                                                                <p className={`mb-3 text-xs ${theme.textMuted}`}>Total upcoming sessions: {upcomingSessionCounts.total}</p>
+                                                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                                                                <StatCard icon={Ticket} label="Booked Upcoming Sessions" value={upcomingSessionCounts.booked} theme={theme} />
+                                                                <StatCard icon={CalendarDays} label="Available to Book" value={upcomingSessionCounts.available} theme={theme} />
+                                                                <StatCard icon={Lock} label="Full Sessions" value={upcomingSessionCounts.full} theme={theme} />
+                                                                <StatCard icon={CalendarDays} label="Booking Closed" value={upcomingSessionCounts.bookingClosed} theme={theme} />
                                                                 <Card className={`p-4 border ${theme.cardBorder} ${theme.cardBg} rounded-sm flex items-start gap-4`}>
                                                                   <div className="p-2.5 rounded-sm bg-[#40938c]/10 text-[#40938c]">
                                                                     <CalendarDays className="h-5 w-5" />
@@ -1486,6 +1525,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                     )}
                                                                   </div>
                                                                 </Card>
+                                                                </div>
                                                               </div>
 
                                                               <div className="grid gap-4">
@@ -1590,12 +1630,9 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                     <Card key={s.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
                                                       <div>
                                                         <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>
-                                                          {formatDate(s.date)} · <span className="font-mono font-normal text-xs text-[#40938c]">{s.time}</span>
+                                                          {formatDate(s.date)} · <span className="font-mono text-sm font-bold text-white">{s.time}</span>
                                                         </p>
-                                                        <p className={`text-xs font-bold font-mono mt-0.5 ${theme.textSecondary}`}>[{s.title || "Standard Class Roster"}]</p>
-                                                        <p className={`text-xs ${theme.textMuted} mt-1 whitespace-pre-line`}>
-                                                          Coach: {s.coach || "Club Staff"}
-                                                        </p>
+                                                        <p className={`mt-1 text-[13px] font-semibold ${theme.textSecondary}`}>{s.title || "Standard Class Roster"}</p>
                                                         <p className={`text-xs ${theme.textMuted} mt-1 whitespace-pre-line`}>
                                                           {getSessionBookingNotes(s, sessionBookingCount(s.id))}
                                                         </p>
