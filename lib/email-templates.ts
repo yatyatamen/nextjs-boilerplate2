@@ -1,6 +1,7 @@
 export type EmailTemplateKey =
   | "booking_confirmation"
   | "booking_reminder"
+  | "booking_cancellation"
   | "announcement"
   | "session_alert"
   | "assessment"
@@ -22,6 +23,10 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateConfig = {
   booking_reminder: {
     subject: "Reminder: {sessionTitle} starts in 24 hours",
     body: `Hello {memberName},\n\nThis is a reminder that your booking for {sessionTitle} is coming up soon.\n\nDate: {sessionDate}\nTime: {sessionTime}\n\nPlease arrive on time and speak with club leaders if you need help before the session.`,
+  },
+  booking_cancellation: {
+    subject: "Booking cancelled: {sessionTitle}",
+    body: `Hello {memberName},\n\nYour booking for {sessionTitle} has been cancelled.\n\nDate: {sessionDate}\nTime: {sessionTime}\n\nIf you did not request this cancellation, please contact the club leaders.`,
   },
   announcement: {
     subject: "Announcement: {title}",
@@ -78,6 +83,10 @@ export function getEmailTemplateConfig(): EmailTemplateConfig {
     booking_reminder: {
       subject: stored.booking_reminder?.subject ?? DEFAULT_EMAIL_TEMPLATES.booking_reminder.subject,
       body: stored.booking_reminder?.body ?? DEFAULT_EMAIL_TEMPLATES.booking_reminder.body,
+    },
+    booking_cancellation: {
+      subject: stored.booking_cancellation?.subject ?? DEFAULT_EMAIL_TEMPLATES.booking_cancellation.subject,
+      body: stored.booking_cancellation?.body ?? DEFAULT_EMAIL_TEMPLATES.booking_cancellation.body,
     },
     announcement: {
       subject: stored.announcement?.subject ?? DEFAULT_EMAIL_TEMPLATES.announcement.subject,

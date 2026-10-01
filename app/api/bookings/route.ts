@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { getSessionBookingRules, parseSessionStart } from "@/lib/scheduling"
-import { sendSessionBookingConfirmationEmail, sendSessionBookingReminderEmail } from "@/lib/supabase/email"
+import { sendSessionBookingCancellationEmail, sendSessionBookingConfirmationEmail, sendSessionBookingReminderEmail } from "@/lib/supabase/email"
+import type { EmailTemplate } from "@/lib/email-templates"
+
+function isEmailTemplate(value: unknown): value is EmailTemplate {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      typeof (value as EmailTemplate).subject === "string" &&
+      typeof (value as EmailTemplate).body === "string",
+  )
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -143,7 +153,10 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
-    const bookingId = typeof body?.booking_id === "string" ? body.booking_id : ""
+    const bookingId = typeof body?.booking_id === "string" || typeof body?.booking_id === "number"
+      ? String(body.booking_id)
+      : ""
+    const cancellationTemplate = isEmailTemplate(body?.cancellation_template) ? body.cancellation_template : undefined
 
     if (!bookingId) {
       return NextResponse.json({ error: "booking_id required" }, { status: 400 })
@@ -163,7 +176,7 @@ export async function DELETE(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, email, full_name")
       .eq("id", userData.user.id)
       .maybeSingle()
     const canCancelAnyBooking = profile?.role === "staff" || profile?.role === "admin"
@@ -172,19 +185,23 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 })
     }
 
-    if (booking.session_id && !canCancelAnyBooking) {
-      const { data: session } = await supabase
+    if (!canCancelAnyBooking && booking.user_id !== userData.user.id) {
+      return NextResponse.json({ error: "You can only cancel your own bookings" }, { status: 403 })
+    }
+
+    const { data: session } = booking.session_id
+      ? await supabase
         .from("schedule")
-        .select("id, date, time")
+        .select("id, title, date, time")
         .eq("id", booking.session_id)
         .maybeSingle()
+      : { data: null }
 
-      if (session) {
-        const start = new Date(`${session.date}T${(session.time || "3:20").match(/\d{1,2}:\d{2}/)?.[0] || "3:20"}:00`)
-        const cutoff = new Date(start.getTime() - 24 * 60 * 60 * 1000)
-        if (new Date() >= cutoff) {
-          return NextResponse.json({ error: "Cancellation is disabled within 24 hours of the session start. Please talk to the club leaders if you need help." }, { status: 409 })
-        }
+    if (session && !canCancelAnyBooking) {
+      const start = parseSessionStart(session.date, session.time)
+      const cutoff = start ? new Date(start.getTime() - 24 * 60 * 60 * 1000) : null
+      if (cutoff && new Date() >= cutoff) {
+        return NextResponse.json({ error: "Cancellation is disabled within 24 hours of the session start. Please talk to the club leaders if you need help." }, { status: 409 })
       }
     }
 
@@ -203,7 +220,25 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true })
+    let email: { status: "accepted" | "failed" | "skipped"; error?: string } = { status: "skipped" }
+    if (!canCancelAnyBooking && session) {
+      const recipient = profile?.email?.trim() || userData.user.email?.trim() || ""
+      if (recipient) {
+        const result = await sendSessionBookingCancellationEmail({
+          to: recipient,
+          memberName: profile?.full_name?.trim() || "Member",
+          sessionTitle: session.title || "session",
+          sessionDate: session.date || "TBD",
+          sessionTime: session.time || "TBD",
+          template: cancellationTemplate,
+        })
+        email = result.ok ? { status: "accepted" } : { status: "failed", error: result.error }
+      } else {
+        email = { status: "failed", error: "No email address is available on the account or profile." }
+      }
+    }
+
+    return NextResponse.json({ success: true, email })
   } catch (error) {
     console.error("Booking route DELETE error:", error)
     return NextResponse.json({ error: "Unable to cancel booking" }, { status: 500 })

@@ -201,6 +201,39 @@ export async function sendSessionBookingConfirmationEmail({
   })
 }
 
+export async function sendSessionBookingCancellationEmail({
+  to,
+  memberName,
+  sessionTitle,
+  sessionDate,
+  sessionTime,
+  template,
+}: {
+  to: string
+  memberName: string
+  sessionTitle: string
+  sessionDate: string
+  sessionTime: string
+  template?: EmailTemplate
+}) {
+  const selectedTemplate = template ?? getEmailTemplateConfig().booking_cancellation
+  const replacements = { memberName, sessionTitle, sessionDate, sessionTime }
+  const subject = applyTemplateText(selectedTemplate.subject, replacements)
+  const text = applyTemplateText(selectedTemplate.body, replacements)
+
+  return sendEmail({
+    to,
+    subject,
+    html: `
+      <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
+        <h2>Booking cancelled</h2>
+        <p>${textToHtml(text)}</p>
+      </div>
+    `,
+    text,
+  })
+}
+
 export async function sendAnnouncementEmail({
   to,
   title,

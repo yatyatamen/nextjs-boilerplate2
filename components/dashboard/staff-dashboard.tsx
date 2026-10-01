@@ -223,6 +223,7 @@ export function StaffDashboard({
 
   const [members, setMembers] = useState<Profile[]>(initialMembers)
   const [schedule, setSchedule] = useState<ScheduleSession[]>(() => sortSessions(initialSchedule || []))
+  const [currentTime, setCurrentTime] = useState(() => new Date())
   const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
   const [websiteFeatureText, setWebsiteFeatureText] = useState("")
   const [assessments, setAssessments] = useState<Assessment[]>(initialAssessments)
@@ -267,6 +268,26 @@ export function StaffDashboard({
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
+
+  useEffect(() => {
+    const nextStart = schedule
+      .map((session) => parseSessionStart(session.date, session.time))
+      .filter((start): start is Date => Boolean(start && start > currentTime))
+      .sort((left, right) => left.getTime() - right.getTime())[0]
+
+    if (!nextStart) return
+
+    const timeout = window.setTimeout(
+      () => setCurrentTime(new Date()),
+      nextStart.getTime() - currentTime.getTime(),
+    )
+    return () => window.clearTimeout(timeout)
+  }, [schedule, currentTime])
+
+  const sessionsThisYear = schedule.filter((session) => {
+    const start = parseSessionStart(session.date, session.time)
+    return start && start.getFullYear() === currentTime.getFullYear() && start <= currentTime
+  }).length
 
   async function sendConfiguredEmail(
     event: "announcement" | "session_alert" | "assessment" | "absence" | "shop_update",
@@ -1135,7 +1156,7 @@ export function StaffDashboard({
           </Card>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
             <StatCard icon={Users} label="Members" value={members.filter((m) => m.role === "member").length} />
-            <StatCard icon={CalendarDays} label="Sessions" value={schedule.length} />
+            <StatCard icon={CalendarDays} label="Sessions" value={sessionsThisYear} />
             <StatCard icon={ClipboardList} label="Assessments" value={assessments.length} />
           </div>
           <div className="grid gap-6">
@@ -3511,6 +3532,7 @@ function EmailTemplatesEditor({
   const templateEntries = [
     { key: "booking_confirmation", label: "Booking confirmation" },
     { key: "booking_reminder", label: "Booking reminder" },
+    { key: "booking_cancellation", label: "Booking cancellation" },
     { key: "announcement", label: "Announcement" },
     { key: "session_alert", label: "New session alert" },
     { key: "assessment", label: "Assessment" },

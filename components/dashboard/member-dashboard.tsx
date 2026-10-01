@@ -18,6 +18,7 @@
                                                 } from "@/lib/types"
 import { LEVELS } from "@/lib/types"
 import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "@/lib/scheduling"
+import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                 import {
                                                   LayoutDashboard,
                                                   CalendarDays,
@@ -1191,23 +1192,7 @@ import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "
                                                         const nextBooking = { ...inserted, notes: inserted.notes ?? note ?? null } as Booking
                                                         setBookings((prev) => [...prev, nextBooking])
                                                         setBookingNoteDraft("")
-                                                        const confirmation = result.email?.confirmation
-                                                        const emailMessage = confirmation?.status === "failed"
-                                                          ? ` The confirmation email was not accepted: ${confirmation.error || "mail delivery failed"}`
-                                                          : confirmation?.status === "skipped"
-                                                            ? " No confirmation email was sent because no email address is set on the account."
-                                                            : " A confirmation email was accepted by the mail server."
-                                                        const reminder = result.email?.reminder
-                                                        const reminderMessage = reminder?.status === "failed"
-                                                          ? ` The reminder email failed: ${reminder.error || "mail delivery failed"}`
-                                                          : reminder?.status === "accepted"
-                                                            ? " The reminder email was also accepted by the mail server."
-                                                            : reminder?.status === "disabled"
-                                                              ? " Reminder emails are disabled in your preferences."
-                                                              : reminder?.status === "not_due"
-                                                                ? " No reminder was due yet; reminders are only sent when booking within 24 hours of the session."
-                                                                : " The reminder email was skipped."
-                                                        alert(`✓ You've successfully joined the session!${emailMessage}${reminderMessage}`)
+                                                        alert("✓ You've successfully joined the session!")
                                                         return
                                                       }
 
@@ -1225,6 +1210,7 @@ import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "
                                                       booking_id: booking.id,
                                                       session_id: booking.session_id,
                                                       user_id: profile.id,
+                                                      cancellation_template: getEmailTemplateConfig().booking_cancellation,
                                                     }
 
                                                     const response = await fetch("/api/bookings", {
@@ -1240,40 +1226,6 @@ import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "
                                                     }
 
                                                     return { ok: false as const, result, status: response.status }
-                                                  }
-
-                                                  async function deleteBookingDirectly(booking: Booking) {
-                                                    if (!booking.id && !booking.session_id) {
-                                                      return { ok: false as const, error: "Booking details unavailable" }
-                                                    }
-
-                                                    const attempts = [] as Array<() => Promise<{ data: unknown; error: unknown }>>
-
-                                                    if (booking.id) {
-                                                      attempts.push(async () => {
-                                                        const { data, error } = await supabase.from("bookings").delete().eq("id", booking.id).select()
-                                                        return { data, error }
-                                                      })
-                                                    }
-
-                                                    if (booking.session_id && profile.id) {
-                                                      attempts.push(async () => {
-                                                        const { data, error } = await supabase.from("bookings").delete().eq("session_id", booking.session_id).eq("user_id", profile.id).select()
-                                                        return { data, error }
-                                                      })
-                                                    }
-
-                                                    for (const attempt of attempts) {
-                                                      const { data, error } = await attempt()
-                                                      if (!error && Array.isArray(data) && data.length > 0) {
-                                                        return { ok: true as const, data }
-                                                      }
-                                                      if (error) {
-                                                        console.error("Direct booking delete failed:", error)
-                                                      }
-                                                    }
-
-                                                    return { ok: false as const, error: "Unable to retract booking from the database" }
                                                   }
 
                                                   async function cancel(booking: Booking) {
@@ -1295,20 +1247,15 @@ import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "
                                                           if (apiResult.ok) {
                                                             setBookings((prev) => prev.filter((b) => b.id !== booking.id))
                                                             closeConfirmation()
-                                                            showToast("✓ Booking retracted successfully")
-                                                            return
-                                                          }
-
-                                                          const directResult = await deleteBookingDirectly(booking)
-                                                          if (directResult.ok) {
-                                                            setBookings((prev) => prev.filter((b) => b.id !== booking.id))
-                                                            closeConfirmation()
-                                                            showToast("✓ Booking retracted successfully")
+                                                            const emailStatus = apiResult.result?.email
+                                                            showToast(emailStatus?.status === "failed"
+                                                              ? `Booking retracted; cancellation email failed: ${emailStatus.error || "email delivery error"}`
+                                                              : "✓ Booking retracted successfully")
                                                             return
                                                           }
 
                                                           console.error("❌ Cancel Booking Error:", apiResult.result)
-                                                          alert(`Error retracting booking: ${apiResult.result?.error || directResult.error || "Unknown error"}`)
+                                                          alert(`Error retracting booking: ${apiResult.result?.error || "Unknown error"}`)
                                                         } finally {
                                                           setConfirmLoading(false)
                                                         }
@@ -2617,7 +2564,7 @@ import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded } from "
                                                                     <input type="checkbox" checked={sessionReminderEmails} onChange={(e) => setSessionReminderEmails(e.target.checked)} className="h-4 w-4 accent-[#40938c]" />
                                                                   </label>
                                                                   <label className="flex items-center justify-between gap-3 text-sm">
-                                                                    <span>New session alerts</span>
+                                                                    <span>Announcements and new session alerts</span>
                                                                     <input type="checkbox" checked={sessionAlertEmails} onChange={(e) => setSessionAlertEmails(e.target.checked)} className="h-4 w-4 accent-[#40938c]" />
                                                                   </label>
                                                                 </div>
