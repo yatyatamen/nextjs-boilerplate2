@@ -1518,8 +1518,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
 
 
 
-                                                              <div>
-                                                                <p className={`mb-3 text-xs ${theme.textMuted}`}>Total upcoming sessions: {upcomingSessionCounts.total}</p>
+                                                              <div>                            
                                                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                                                                 <StatCard icon={Ticket} label="Booked Upcoming Sessions" value={upcomingSessionCounts.booked} theme={theme} />
                                                                 <StatCard icon={CalendarDays} label="Sessions Available to Book" value={upcomingSessionCounts.available} theme={theme} />
