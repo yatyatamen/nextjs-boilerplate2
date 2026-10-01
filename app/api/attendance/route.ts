@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
+import { sendAbsenceEmail } from "@/lib/supabase/email"
+import type { EmailTemplate } from "@/lib/email-templates"
 
 const ATTENDANCE_ROLES = new Set(["staff", "admin", "teacher"])
 
@@ -9,6 +11,53 @@ function getErrorMessage(error: unknown) {
     return error.message
   }
   return "Unable to save attendance"
+}
+
+function isEmailTemplate(value: unknown): value is EmailTemplate {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      typeof (value as EmailTemplate).subject === "string" &&
+      typeof (value as EmailTemplate).body === "string",
+  )
+}
+
+async function notifyAbsentMember(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  sessionId: string,
+  previousStatus: string | null | undefined,
+  nextStatus: unknown,
+  template?: EmailTemplate,
+) {
+  if (nextStatus !== "absent" || previousStatus === "absent") return { status: "not_needed" as const }
+
+  try {
+    const [{ data: member, error: memberError }, { data: session, error: sessionError }] = await Promise.all([
+      supabase.from("profiles").select("email, full_name").eq("id", userId).maybeSingle(),
+      supabase.from("schedule").select("title, date, time").eq("id", sessionId).maybeSingle(),
+    ])
+    if (memberError) throw memberError
+    if (sessionError) throw sessionError
+
+    const recipient = member?.email?.trim()
+    if (!recipient) return { status: "failed" as const, error: "Member email address is unavailable." }
+
+    const result = await sendAbsenceEmail({
+      to: recipient,
+      memberName: member?.full_name?.trim() || "Member",
+      sessionTitle: session?.title || "session",
+      sessionDate: session?.date || "TBD",
+      sessionTime: session?.time || "TBD",
+      template,
+    })
+    return result.ok
+      ? { status: "sent" as const }
+      : { status: "failed" as const, error: result.error || "Unable to send absence email" }
+  } catch (error) {
+    console.error("Absence notification failed:", error)
+    return { status: "failed" as const, error: getErrorMessage(error) }
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -24,6 +73,7 @@ export async function POST(request: NextRequest) {
       ? String(body.user_id)
       : ""
     const status = body?.status
+    const absenceTemplate = isEmailTemplate(body?.absence_template) ? body.absence_template : undefined
 
     if (!attendanceId && (!sessionId || !userId)) {
       return NextResponse.json({ error: "session_id and user_id required" }, { status: 400 })
@@ -53,6 +103,13 @@ export async function POST(request: NextRequest) {
     const markedAt = new Date().toISOString()
 
     if (attendanceId) {
+      const { data: previous, error: previousError } = await database
+        .from("attendance")
+        .select("status, user_id, session_id")
+        .eq("id", attendanceId)
+        .maybeSingle()
+      if (previousError) throw previousError
+
       const updates: Record<string, unknown> = { status, marked_at: markedAt }
       if (typeof body?.user_name === "string") updates.user_name = body.user_name
       if (typeof body?.user_level === "string") updates.user_level = body.user_level
@@ -64,12 +121,15 @@ export async function POST(request: NextRequest) {
         .select()
         .single()
       if (error) throw error
-      return NextResponse.json({ data })
+      const email = previous
+        ? await notifyAbsentMember(supabase, previous.user_id, String(previous.session_id), previous.status, status, absenceTemplate)
+        : { status: "not_needed" as const }
+      return NextResponse.json({ data, email })
     }
 
     const { data: existing, error: existingError } = await database
       .from("attendance")
-      .select("id")
+      .select("id, status")
       .eq("session_id", sessionId)
       .eq("user_id", userId)
       .limit(1)
@@ -89,7 +149,8 @@ export async function POST(request: NextRequest) {
         .select()
         .single()
       if (error) throw error
-      return NextResponse.json({ data })
+      const email = await notifyAbsentMember(supabase, userId, sessionId, existing.status, status, absenceTemplate)
+      return NextResponse.json({ data, email })
     }
 
     const { data, error } = await database
@@ -106,7 +167,8 @@ export async function POST(request: NextRequest) {
       .single()
     if (error) throw error
 
-    return NextResponse.json({ data })
+    const email = await notifyAbsentMember(supabase, userId, sessionId, undefined, status, absenceTemplate)
+    return NextResponse.json({ data, email })
   } catch (error) {
     console.error("Attendance save failed:", error)
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })

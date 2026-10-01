@@ -290,7 +290,7 @@ export function StaffDashboard({
   }).length
 
   async function sendConfiguredEmail(
-    event: "announcement" | "session_alert" | "assessment" | "absence" | "shop_update",
+    event: "announcement" | "session_alert" | "assessment" | "shop_update",
     to: string,
     payload: Record<string, string>,
     showFailureToast = true,
@@ -319,7 +319,7 @@ export function StaffDashboard({
   }
 
   async function sendConfiguredEmails(
-    event: "announcement" | "session_alert" | "assessment" | "absence" | "shop_update",
+    event: "announcement" | "session_alert" | "assessment" | "shop_update",
     deliveries: Array<{ to: string; payload: Record<string, string> }>,
   ) {
     let sent = 0
@@ -1028,6 +1028,7 @@ export function StaffDashboard({
             user_level: nextRecord.user_level,
             status,
             notes: nextRecord.notes,
+            absence_template: emailTemplates.absence,
           }),
         })
         const result = await response.json().catch(() => ({}))
@@ -1040,16 +1041,7 @@ export function StaffDashboard({
           if (result.data) {
             setAttendanceRecords((prev) => prev.map((record) => record.id === existingRecord.id ? result.data as AttendanceRecord : record))
           }
-          let emailSent = true
-          const session = schedule.find((entry) => String(entry.id) === String(booking.session_id))
-          if (status === "absent" && existingRecord.status !== "absent" && member?.email) {
-            emailSent = (await sendConfiguredEmail("absence", member.email, {
-              memberName: getMemberDisplayName(member),
-              sessionTitle: session?.title || String(booking.session_id ?? "session"),
-              sessionDate: session?.date || "TBD",
-              sessionTime: session?.time || "TBD",
-            })).ok
-          }
+          const emailSent = result.email?.status !== "failed"
           return { saved: true, emailSent }
         }
       } catch (_err) {
@@ -1076,6 +1068,7 @@ export function StaffDashboard({
           user_level: nextRecord.user_level,
           status,
           notes: nextRecord.notes,
+          absence_template: emailTemplates.absence,
         }),
       })
       const result = await response.json().catch(() => ({}))
@@ -1083,16 +1076,7 @@ export function StaffDashboard({
       if (response.ok && result.data) {
         const inserted = result.data as AttendanceRecord
         setAttendanceRecords((prev) => prev.map((r) => (r.id === nextRecord.id ? inserted : r)))
-        let emailSent = true
-        if (status === "absent" && member?.email) {
-          const session = schedule.find((entry) => String(entry.id) === String(booking.session_id))
-          emailSent = (await sendConfiguredEmail("absence", member.email, {
-            memberName: getMemberDisplayName(member),
-            sessionTitle: session?.title || String(booking.session_id ?? "session"),
-            sessionDate: session?.date || "TBD",
-            sessionTime: session?.time || "TBD",
-          })).ok
-        }
+        const emailSent = result.email?.status !== "failed"
         return { saved: true, emailSent }
       } else {
         setAttendanceRecords((prev) => prev.filter((r) => r.id !== nextRecord.id))
@@ -1108,6 +1092,13 @@ export function StaffDashboard({
     }
   }
 
+  const selectedAttendanceMember = members.find(
+    (member) => String(member.id) === String(selectedAttendanceMemberId),
+  )
+  const selectedMemberAttendanceRecords = attendanceRecords.filter(
+    (record) => String(record.user_id) === String(selectedAttendanceMemberId),
+  )
+
   return (
     <DashboardShell
       navItems={NAV}
@@ -1120,24 +1111,27 @@ export function StaffDashboard({
       {selectedAttendanceMemberId && (
         <div className="fixed inset-0 z-40 flex items-start justify-center pt-20">
           <div className="absolute inset-0 bg-black/60" onClick={() => setSelectedAttendanceMemberId(null)} />
-          <Card className="relative z-50 w-full max-w-2xl mx-4 p-5">
+          <Card className="relative z-50 mx-4 w-full max-w-2xl border border-zinc-200 bg-white p-5 text-zinc-900 shadow-2xl">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold">Member Attendance</h3>
-              <button type="button" onClick={() => setSelectedAttendanceMemberId(null)} className="text-sm text-zinc-400">Close</button>
+              <div>
+                <h3 className="text-lg font-semibold text-zinc-900">{getMemberDisplayName(selectedAttendanceMember)}</h3>
+                <p className="mt-1 text-sm text-zinc-600">{selectedAttendanceMember?.email || "Email unavailable"}</p>
+              </div>
+              <button type="button" onClick={() => setSelectedAttendanceMemberId(null)} className="text-sm font-medium text-zinc-700 hover:text-black">Close</button>
             </div>
             <div className="space-y-2">
-              {(attendanceRecords.filter(r => r.user_id === selectedAttendanceMemberId) || []).map((r) => (
-                <div key={r.id} className="flex items-center justify-between p-2 rounded bg-zinc-900">
+              {selectedMemberAttendanceRecords.map((r) => (
+                <div key={r.id} className="flex items-center justify-between gap-4 rounded border border-zinc-200 bg-zinc-50 p-3">
                   <div>
-                    <div className="text-sm font-medium">{r.user_name}</div>
-                    <div className="text-xs text-muted-foreground">{r.user_level} · {r.status}</div>
-                    {r.notes && <div className="mt-1 text-xs text-amber-300">Note: {r.notes}</div>}
+                    <div className="text-sm font-medium text-zinc-900">{r.user_level} · <span className="capitalize">{r.status}</span></div>
+                    <div className="mt-1 text-xs text-zinc-600">{schedule.find((session) => String(session.id) === String(r.session_id))?.title || `Session ${r.session_id}`}</div>
+                    {r.notes && <div className="mt-1 text-xs text-amber-800">Note: {r.notes}</div>}
                   </div>
-                  <div className="text-xs text-muted-foreground">{r.marked_at ? new Date(r.marked_at).toLocaleString() : '—'}</div>
+                  <div className="shrink-0 text-right text-xs text-zinc-600">{r.marked_at ? new Date(r.marked_at).toLocaleString() : "Not marked"}</div>
                 </div>
               ))}
-              {attendanceRecords.filter(r => r.user_id === selectedAttendanceMemberId).length === 0 && (
-                <p className="text-sm text-muted-foreground">No attendance records for this member.</p>
+              {selectedMemberAttendanceRecords.length === 0 && (
+                <p className="text-sm text-zinc-600">No attendance records for this member.</p>
               )}
             </div>
           </Card>
@@ -2186,7 +2180,7 @@ export function StaffDashboard({
 
       {active === "shop" && (
         <div>
-          <SectionHeader title="Wolves Shop Item Pipeline" desc="List available products into the e-commerce inventory platform matrix." />
+          <SectionHeader title="Wolves Shop Item Listing" desc="" />
           <ShopPostingForm
             onCreate={async (payload) => {
               const { data, error } = await supabase.from("shop_items").insert(payload).select()

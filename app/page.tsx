@@ -145,14 +145,14 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen w-full text-zinc-100 font-sans antialiased flex flex-col justify-between p-6 md:p-12 relative overflow-hidden" style={{
+    <div className="min-h-screen w-full text-zinc-100 font-sans antialiased flex flex-col justify-between p-5 sm:p-6 md:p-12 relative overflow-hidden" style={{
       backgroundImage: `url('https://jmlhdtltucwhxrrunenl.supabase.co/storage/v1/object/public/pics/Screenshot%202026-07-14%201459121.png')`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundAttachment: 'fixed'
     }}>
       {/* Background overlay for better text readability */}
-      <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+      <div className="absolute inset-0 bg-black/30 md:bg-black/20 pointer-events-none" />
 
       <div className="flex items-center gap-3 z-10 relative">
         <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-zinc-900 border border-[#14B8A6]/50 text-[#14B8A6] shadow-lg shadow-[#14B8A6]/20">
@@ -163,49 +163,45 @@ export default function LoginPage() {
           />
         </div>
         <div>
-          <h1 className="text-xs font-black uppercase tracking-wider text-white leading-none">🐺 Westmount Wolves</h1>
-          <p className="text-[10px] font-mono text-[#14B8A6] tracking-tight mt-0.5">Badminton Portal</p>
+          <h1 className="text-sm font-black uppercase tracking-wider text-white leading-none">🐺 Westmount Wolves</h1>
+          <p className="text-xs font-mono text-[#99f7ed] tracking-tight mt-1">Badminton Portal</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center my-auto max-w-7xl w-full mx-auto z-10">
-        <div className="lg:col-span-7 flex flex-col gap-6">
+        <div className="lg:col-span-7 flex flex-col gap-7">
           <div>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider bg-zinc-900 text-[#14B8A6] border border-zinc-800">
+            <span className="inline-flex items-center px-3 py-1 rounded-sm text-xs font-bold uppercase tracking-wider bg-zinc-950/90 text-[#14B8A6] border border-zinc-700">
               🐺 #BeWolves · Westmount Students Only
             </span>
           </div>
           <h2 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight uppercase leading-none">
             Your home court for <br />
-            <span className="text-[#14B8A6]">everything badminton.</span>
+            <span className="text-[#99f7ed]">everything badminton.</span>
           </h2>
-          <p className="text-sm text-zinc-200 max-w-xl leading-relaxed">
-            Book sessions, follow your training metrics, and view real-time announcements inside the official Wolves badminton portal matrix.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-            <FeatureCard icon={CalendarDays} title="Weekly schedule" desc="See coached sessions and open play by skill level." />
-            <FeatureCard icon={Trophy} title="Track your level" desc="Get coach feedback and watch your game improve." />
-            <FeatureCard icon={Megaphone} title="Club announcements" desc="Never miss tournaments, tryouts, and events." />
-            <FeatureCard icon={ShoppingBag} title="Gear shop" desc="Rackets, shuttles, and club apparel in one place." />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-12 sm:mt-14">
+            <FeatureCard icon={CalendarDays} title="Weekly schedule" desc="View and book session schedules, join for fun sessions, and sign up for trainings." />
+            <FeatureCard icon={Trophy} title="Track your level" desc="Complete assessments, track progress, and review coach feedback to level up." />
+            <FeatureCard icon={Megaphone} title="Club announcements" desc="Never miss sessions and events." />
+            <FeatureCard icon={ShoppingBag} title="Gear & Maintenance" desc="Upgrade your rackets, replace grips, and request re-gripping services." />
           </div>
         </div>
 
         <div className="lg:col-span-5 flex justify-center lg:justify-end relative">
-          <Card className="relative w-full max-w-md border border-[#14B8A6]/40 bg-zinc-900/70 backdrop-blur-xl p-8 rounded-sm shadow-2xl shadow-[#14B8A6]/20 overflow-hidden">
+          <Card className="relative w-full max-w-md border border-[#14B8A6]/50 bg-zinc-950/70 backdrop-blur-xl p-5 sm:p-8 rounded-sm shadow-2xl shadow-[#14B8A6]/20 overflow-hidden">
             {/* Card background accent */}
             <div className="absolute inset-0 bg-gradient-to-br from-[#14B8A6]/5 to-transparent pointer-events-none" />
             
             <div className="relative mb-6">
               <h3 className="text-xl font-extrabold text-white uppercase tracking-tight">Pack Access</h3>
-              <p className="text-xs text-zinc-200 mt-1">🐺 Wolves Only · School Credentials Required</p>
+              <p className="text-sm text-zinc-100 mt-1">WCI Students Only · School Credentials Required</p>
             </div>
 
             <div className="grid grid-cols-2 gap-2 bg-zinc-950 p-1 rounded-sm border border-zinc-800/60 mb-6 relative">
               <button
                 type="button"
                 onClick={() => { setIsRegister(false); setError(null); }}
-                className={`py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-sm transition-all ${
+                className={`py-2.5 text-sm font-mono font-bold uppercase tracking-wider rounded-sm transition-all ${
                   !isRegister ? "bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black border border-[#14B8A6] shadow-lg shadow-[#14B8A6]/50" : "text-zinc-200 hover:text-white"
                 }`}
               >
@@ -214,7 +210,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => { setIsRegister(true); setError(null); }}
-                className={`py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-sm transition-all ${
+                className={`py-2.5 text-sm font-mono font-bold uppercase tracking-wider rounded-sm transition-all ${
                   isRegister ? "bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black border border-[#14B8A6] shadow-lg shadow-[#14B8A6]/50" : "text-zinc-200 hover:text-white"
                 }`}
               >
@@ -223,7 +219,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className={`mb-4 rounded-sm border px-3 py-2 text-center font-mono text-[10px] uppercase tracking-wide ${
+              <div className={`mb-4 rounded-sm border px-3 py-3 text-center font-mono text-xs uppercase tracking-wide ${
                 error.includes("successful") ? "border-emerald-900/50 bg-emerald-950/20 text-emerald-400" : "border-red-900/50 bg-red-950/20 text-red-400"
               }`}>
                 {error}
@@ -232,7 +228,7 @@ export default function LoginPage() {
 
             <form onSubmit={handleAuth} className="flex flex-col gap-4 relative">
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-200 font-mono">School Email</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-white font-mono">School Email</label>
                 <div className="relative flex items-center">
                   <Mail className="absolute left-3 h-4 w-4 text-[#14B8A6]/60" />
                   <input
@@ -240,14 +236,14 @@ export default function LoginPage() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@gapps.yrdsb.ca"
-                    className="w-full bg-zinc-950/80 text-white border border-zinc-800 outline-none rounded-sm py-2.5 pl-10 pr-3 text-xs font-mono transition-all focus:border-[#14B8A6] focus:shadow-lg focus:shadow-[#14B8A6]/30 placeholder-zinc-600"
+                    placeholder="@gapps.yrdsb.ca"
+                    className="w-full bg-zinc-950 text-white border border-zinc-700 outline-none rounded-sm py-3 pl-10 pr-3 text-sm font-mono transition-all focus:border-[#14B8A6] focus:shadow-lg focus:shadow-[#14B8A6]/30 placeholder-zinc-400"
                   />
                 </div>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-200 font-mono">Password</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-white font-mono">Password</label>
                 <div className="relative flex items-center">
                   <Lock className="absolute left-3 h-4 w-4 text-[#14B8A6]/60" />
                   <input
@@ -256,7 +252,7 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-zinc-950/80 text-white border border-zinc-800 outline-none rounded-sm py-2.5 pl-10 pr-3 text-xs font-mono transition-all focus:border-[#14B8A6] focus:shadow-lg focus:shadow-[#14B8A6]/30 placeholder-zinc-600"
+                    className="w-full bg-zinc-950 text-white border border-zinc-700 outline-none rounded-sm py-3 pl-10 pr-3 text-sm font-mono transition-all focus:border-[#14B8A6] focus:shadow-lg focus:shadow-[#14B8A6]/30 placeholder-zinc-400"
                   />
                 </div>
               </div>
@@ -264,7 +260,7 @@ export default function LoginPage() {
               {!isRegister && (
                 <Link
                   href="/auth/forgot-password"
-                  className="text-right text-xs font-mono text-[#14B8A6] hover:text-white"
+                  className="text-right text-sm font-mono text-[#14B8A6] hover:text-white"
                 >
                   Reset password
                 </Link>
@@ -273,7 +269,7 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full mt-2 bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black hover:from-[#0D9488] hover:to-cyan-600 disabled:from-zinc-800 disabled:to-zinc-700 disabled:text-zinc-500 font-extrabold font-mono text-xs uppercase tracking-widest py-3 rounded-sm border-none cursor-pointer shadow-lg shadow-[#14B8A6]/50 hover:shadow-[#14B8A6]/70 transition-all"
+                className="w-full mt-2 bg-gradient-to-r from-[#14B8A6] to-cyan-500 text-black hover:from-[#0D9488] hover:to-cyan-600 disabled:from-zinc-800 disabled:to-zinc-700 disabled:text-zinc-500 font-extrabold font-mono text-sm uppercase tracking-widest py-3.5 rounded-sm border-none cursor-pointer shadow-lg shadow-[#14B8A6]/50 hover:shadow-[#14B8A6]/70 transition-all"
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
@@ -291,7 +287,7 @@ export default function LoginPage() {
       </div>
 
       <div className="text-center border-t border-zinc-900 pt-4 mt-8 z-10">
-        <p className="text-[9px] font-mono uppercase tracking-widest text-zinc-300">
+        <p className="text-xs font-mono uppercase tracking-wide text-white">
           Westmount Collegiate Institute · Badminton Club Department
         </p>
       </div>
@@ -301,13 +297,13 @@ export default function LoginPage() {
 
 function FeatureCard({ icon: Icon, title, desc }: { icon: any; title: string; desc: string }) {
   return (
-    <Card className="flex items-start gap-4 p-4 border border-zinc-800/60 bg-zinc-900/20 rounded-sm">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-zinc-900 border border-zinc-800/80 text-[#14B8A6]">
-        <Icon className="h-4 w-4" />
+    <Card className="flex items-start gap-4 p-4 sm:p-5 border border-white/25 bg-transparent backdrop-blur-md rounded-sm shadow-lg shadow-black/10">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-zinc-900 border border-zinc-700 text-[#14B8A6]">
+        <Icon className="h-5 w-5" />
       </span>
-      <div className="flex flex-col gap-0.5">
-        <h4 className="text-xs font-bold text-zinc-200 uppercase tracking-wide">{title}</h4>
-        <p className="text-[11px] text-zinc-200 leading-normal">{desc}</p>
+      <div className="flex min-w-0 flex-col gap-1">
+        <h4 className="text-sm font-bold text-white uppercase tracking-wide">{title}</h4>
+        <p className="text-sm text-zinc-100 leading-relaxed">{desc}</p>
       </div>
     </Card>
   )

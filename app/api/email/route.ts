@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import type { EmailTemplate } from "@/lib/email-templates"
 import {
-  sendAbsenceEmail,
   sendAnnouncementEmail,
   sendAssessmentEmail,
   sendSessionAlertEmail,
@@ -11,7 +10,7 @@ import {
 
 export const runtime = "nodejs"
 
-type EmailEvent = "announcement" | "session_alert" | "assessment" | "absence" | "shop_update"
+type EmailEvent = "announcement" | "session_alert" | "assessment" | "shop_update"
 
 function isTemplate(value: unknown): value is EmailTemplate {
   return Boolean(
@@ -52,7 +51,7 @@ export async function POST(request: Request) {
     const to = requiredString(body?.to).trim()
     const template = isTemplate(body?.template) ? body.template : undefined
 
-    if (!to || !["announcement", "session_alert", "assessment", "absence", "shop_update"].includes(event)) {
+    if (!to || !["announcement", "session_alert", "assessment", "shop_update"].includes(event)) {
       return NextResponse.json({ error: "A valid email event and recipient are required" }, { status: 400 })
     }
 
@@ -77,15 +76,6 @@ export async function POST(request: Request) {
         to,
         memberName: requiredString(body?.memberName),
         level: requiredString(body?.level),
-        template,
-      })
-    } else if (event === "absence") {
-      result = await sendAbsenceEmail({
-        to,
-        memberName: requiredString(body?.memberName),
-        sessionTitle: requiredString(body?.sessionTitle),
-        sessionDate: requiredString(body?.sessionDate),
-        sessionTime: requiredString(body?.sessionTime),
         template,
       })
     } else {
