@@ -231,6 +231,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   const [active, setActive] = useState("overview")
                                                   const [schedule, setSchedule] = useState<ScheduleSession[]>(initialSchedule)
                                                   const [bookings, setBookings] = useState<Booking[]>(initialBookings)
+                                                  const [bookingCounts, setBookingCounts] = useState<Record<string, number>>({})
                                                   const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
                                                   const [assessments, setAssessments] = useState<Assessment[]>(initialAssessments)
                                                   const [gearGuides, setGearGuides] = useState<EquipmentRecommendation[]>(initialGearGuides)
@@ -362,6 +363,30 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   useEffect(() => {
                                                     setGearGuides(initialGearGuides)
                                                   }, [initialGearGuides])
+
+                                                  useEffect(() => {
+                                                    let active = true
+                                                    const refreshBookingCounts = async () => {
+                                                      try {
+                                                        const response = await fetch("/api/bookings", { credentials: "same-origin", cache: "no-store" })
+                                                        const result = await response.json().catch(() => ({}))
+                                                        if (active && response.ok && result.data && typeof result.data === "object") {
+                                                          setBookingCounts(result.data as Record<string, number>)
+                                                        }
+                                                      } catch (error) {
+                                                        console.error("Booking counts refresh failed:", error)
+                                                      }
+                                                    }
+
+                                                    void refreshBookingCounts()
+                                                    const interval = window.setInterval(() => void refreshBookingCounts(), 15000)
+                                                    window.addEventListener("focus", refreshBookingCounts)
+                                                    return () => {
+                                                      active = false
+                                                      window.clearInterval(interval)
+                                                      window.removeEventListener("focus", refreshBookingCounts)
+                                                    }
+                                                  }, [profile.id])
 
                                                   useEffect(() => {
                                                     const channel = supabase
@@ -534,6 +559,8 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   }, [shopItemsState, shopFilter, shopSearch, shopPriceMin, shopPriceMax])
 
                                                   const bookedSessionIds = useMemo(() => new Set(visibleBookings.map((b) => String(b.session_id))), [visibleBookings])
+                                                  const sessionBookingCount = (sessionId: string | number | null | undefined) =>
+                                                    bookingCounts[String(sessionId ?? "")] ?? bookings.filter((booking) => String(booking.session_id) === String(sessionId)).length
 
                                                   // Computed filtration pipeline for attendance records
                                                   const filteredAttendance = useMemo(() => {
@@ -1134,7 +1161,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                         setSupportCategory(category)
                                                         setSupportMessage("")
                                                         setMessagesList((prev) => [annotatedTicket, ...prev])
-                                                        setSupportStatus("Success! System routing confirmation generated.")
+                                                        setSupportStatus("Message has been sent to club staff. Thanks for your feedback!")
                                                         setSelectedConvoId(conversationId)
                                                         setSelectedMessageId(String(annotatedTicket.id))
                                                         setActive(overrides?.nextView ?? "support")
@@ -1169,7 +1196,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
 
                                                   async function book(session: ScheduleSession) {
                                                     const note = bookingNoteDraft.trim()
-                                                    const currentBookingCount = bookings.filter((b) => String(b.session_id) === String(session.id)).length
+                                                    const currentBookingCount = sessionBookingCount(session.id)
                                                     const ruleSet = getSessionBookingRules(session, currentBookingCount, new Date())
                                                     if (ruleSet.isFull || ruleSet.isBookingBlocked) {
                                                       alert(ruleSet.bookingBlockReason || "This session is full or booking is closed.")
@@ -1191,6 +1218,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                       if (response.ok && inserted) {
                                                         const nextBooking = { ...inserted, notes: inserted.notes ?? note ?? null } as Booking
                                                         setBookings((prev) => [...prev, nextBooking])
+                                                        setBookingCounts((prev) => ({ ...prev, [String(session.id)]: currentBookingCount + 1 }))
                                                         setBookingNoteDraft("")
                                                         alert("✓ You've successfully joined the session!")
                                                         return
@@ -1231,7 +1259,8 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   async function cancel(booking: Booking) {
                                                     const sessionDetail = booking.session_id ? scheduleById.get(String(booking.session_id)) : null
                                                     const sessionInfo = sessionDetail ? `${formatDate(sessionDetail.date)} at ${sessionDetail.time || "TBD"}` : "this session"
-                                                    const ruleSet = sessionDetail ? getSessionBookingRules(sessionDetail, bookings.filter((b) => String(b.session_id) === String(sessionDetail.id)).length, new Date()) : null
+                                                    const currentBookingCount = sessionDetail ? sessionBookingCount(sessionDetail.id) : 0
+                                                    const ruleSet = sessionDetail ? getSessionBookingRules(sessionDetail, currentBookingCount, new Date()) : null
                                                     if (ruleSet?.isCancellationBlocked) {
                                                       alert(ruleSet.cancellationBlockReason || "Cancellation is disabled within 24 hours of the session start. Please talk to the club leaders if you need help.")
                                                       return
@@ -1246,11 +1275,14 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                           const apiResult = await deleteBookingRemotely(booking)
                                                           if (apiResult.ok) {
                                                             setBookings((prev) => prev.filter((b) => b.id !== booking.id))
+                                                            if (sessionDetail) {
+                                                              setBookingCounts((prev) => ({ ...prev, [String(sessionDetail.id)]: Math.max(0, currentBookingCount - 1) }))
+                                                            }
                                                             closeConfirmation()
                                                             const emailStatus = apiResult.result?.email
                                                             showToast(emailStatus?.status === "failed"
                                                               ? `Booking retracted; cancellation email failed: ${emailStatus.error || "email delivery error"}`
-                                                              : "✓ Booking retracted successfully")
+                                                              : "✓ Booking cancelled successfully")
                                                             return
                                                           }
 
@@ -1569,24 +1601,24 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                           Coach: {s.coach || "Club Staff"}
                                                         </p>
                                                         <p className={`text-xs ${theme.textMuted} mt-1 whitespace-pre-line`}>
-                                                          {getSessionBookingNotes(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length)}
+                                                          {getSessionBookingNotes(s, sessionBookingCount(s.id))}
                                                         </p>
                                                       </div>
                                                       <Button
                                                         size="sm"
                                                         type="button"
-                                                        disabled={booked || pendingId === String(s.id) || getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date()).isBookingBlocked || getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date()).isFull}
+                                                        disabled={booked || pendingId === String(s.id) || getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isBookingBlocked || getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isFull}
                                                         onClick={() => {
-                                                          const ruleSet = getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date())
+                                                          const ruleSet = getSessionBookingRules(s, sessionBookingCount(s.id), new Date())
                                                           if (ruleSet.isFull || ruleSet.isBookingBlocked) {
                                                             alert(ruleSet.bookingBlockReason || "This session is full or booking is closed.")
                                                             return
                                                           }
                                                           setConfirmingSession(s)
                                                         }}
-                                                        className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${booked || getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date()).isBookingBlocked || getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date()).isFull ? "bg-zinc-700 text-white" : "bg-[#40938c] text-black font-bold"}`}
+                                                        className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${booked || getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isBookingBlocked || getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isFull ? "bg-zinc-700 text-white" : "bg-[#40938c] text-black font-bold"}`}
                                                       >
-                                                        {booked ? "Claimed" : getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date()).isFull ? "Session Full" : getSessionBookingRules(s, bookings.filter((booking) => String(booking.session_id) === String(s.id)).length, new Date()).isBookingBlocked ? "Booking Closed" : "Join Session"}
+                                                        {booked ? "Claimed" : getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isFull ? "Session Full" : getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isBookingBlocked ? "Booking Closed" : "Join Session"}
                                                       </Button>
                                                     </Card>
                                                   )
@@ -1690,7 +1722,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                       <Card key={b.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
                                                                         <div>
                                                                           <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>{s ? formatDate(s.date) : "Training Interval"} {s?.time && `· ${s.time}`}</p>
-                                                                          {s?.title && <p className={`text-xs font-mono ${theme.textSecondary} mt-0.5`}>Focus: {s.title}</p>}
+                                                                          {s?.title && <p className={`text-xs font-mono ${theme.textSecondary} mt-0.5`}>Session: {s.title}</p>}
                                                                         </div>
                                                                         <Button type="button" size="sm" onClick={() => cancel(b)} className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400 font-mono rounded-sm">Retract Spot</Button>
                                                                       </Card>
@@ -2258,12 +2290,8 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                             <span className="text-lg font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
                                                                           </div>
                                                                           <div className="flex items-center justify-between gap-3 border-b border-zinc-800/40 pb-2">
-                                                                            <p className={`text-sm ${theme.textSecondary}`}>{item.stock ?? 0} {unit} in stock</p>
+                                                                            <p className={`text-sm ${theme.textSecondary}`}>Stock: {item.stock ?? 0} left</p>
                                                                             <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
-                                                                          </div>
-                                                                          <div className="rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-3">
-                                                                            <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
-                                                                            <p className={`mt-2 text-sm ${theme.textSecondary} leading-relaxed whitespace-pre-wrap break-words`}>{item.description || "No description provided."}</p>
                                                                           </div>
                                                                           <div className="flex flex-wrap items-center gap-2 pt-1">
                                                                             <Button
@@ -2281,7 +2309,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                               })}
                                                                               className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
                                                                             >
-                                                                              Learn more
+                                                                              View details
                                                                             </Button>
                                                                             <Button
                                                                               size="sm"
@@ -2316,11 +2344,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                                 <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
                                                                               </div>
                                                                             </div>
-                                                                            <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
-                                                                              <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
-                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed whitespace-pre-wrap break-words`}>{item.description || "No description provided."}</p>
-                                                                            </div>
-                                                                            <p className={`mt-2 text-xs ${theme.textSecondary}`}>Stock: {item.stock ?? 0} {unit}</p>
+                                                                            <p className={`mt-2 text-xs ${theme.textSecondary}`}>Stock: {item.stock ?? 0} left</p>
                                                                           </div>
                                                                           <div className="flex items-center justify-end gap-2">
                                                                             <Button
@@ -2338,7 +2362,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                               })}
                                                                               className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
                                                                             >
-                                                                              Learn more
+                                                                              View details
                                                                             </Button>
                                                                             <Button
                                                                               size="sm"
@@ -2372,14 +2396,10 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                               </div>
                                                                               <h4 className={`text-sm font-bold ${theme.headingColor}`}>{item.name}</h4>
                                                                             </div>
-                                                                            <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
-                                                                              <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
-                                                                              <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed whitespace-pre-wrap break-words`}>{item.description || "No description provided."}</p>
-                                                                            </div>
                                                                           </div>
                                                                         </div>
                                                                         <div className="flex items-center justify-between gap-2 border-t border-zinc-800/30 pt-2 mt-1">
-                                                                          <span className={`text-[10px] ${theme.textSecondary}`}>Stock: {item.stock ?? 0} {unit}</span>
+                                                                          <span className={`text-[10px] ${theme.textSecondary}`}>Stock: {item.stock ?? 0} left</span>
                                                                           <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
                                                                         </div>
                                                                         <div className="flex flex-wrap gap-2 mt-3">
@@ -2398,7 +2418,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                             })}
                                                                             className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
                                                                           >
-                                                                            Learn more
+                                                                            View details
                                                                           </Button>
                                                                           <Button
                                                                             size="sm"
@@ -2627,7 +2647,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                 )}
 
                                                                 {selectedProduct.stock !== undefined && selectedProduct.stock !== null && (
-                                                                  <p className="text-sm text-zinc-300">Stock: {selectedProduct.stock} {selectedProduct.unit || "units"}</p>
+                                                                  <p className="text-sm text-zinc-300">Stock: {selectedProduct.stock} left</p>
                                                                 )}
 
                                                                 {selectedProduct.specs && (

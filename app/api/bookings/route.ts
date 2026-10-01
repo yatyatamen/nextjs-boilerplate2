@@ -13,6 +13,37 @@ function isEmailTemplate(value: unknown): value is EmailTemplate {
   )
 }
 
+export async function GET() {
+  try {
+    const supabase = await createClient()
+    const { data: userData, error: userError } = await supabase.auth.getUser()
+    if (userError || !userData.user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+    }
+
+    const database = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY)
+      ? await createServiceClient()
+      : supabase
+    const { data, error } = await database.from("bookings").select("session_id")
+    if (error) {
+      console.error("Booking counts fetch failed:", error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    const counts: Record<string, number> = {}
+    for (const booking of data ?? []) {
+      if (booking.session_id === null) continue
+      const sessionId = String(booking.session_id)
+      counts[sessionId] = (counts[sessionId] ?? 0) + 1
+    }
+
+    return NextResponse.json({ data: counts })
+  } catch (error) {
+    console.error("Booking counts route error:", error)
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load booking counts" }, { status: 500 })
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
@@ -46,7 +77,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 })
     }
 
-    const { count: currentCount, error: countError } = await supabase
+    const countDatabase = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY)
+      ? await createServiceClient()
+      : supabase
+    const { count: currentCount, error: countError } = await countDatabase
       .from("bookings")
       .select("id", { count: "exact", head: true })
       .eq("session_id", sessionId)
@@ -157,6 +191,7 @@ export async function DELETE(request: NextRequest) {
       ? String(body.booking_id)
       : ""
     const cancellationTemplate = isEmailTemplate(body?.cancellation_template) ? body.cancellation_template : undefined
+    const adminCancellationTemplate = isEmailTemplate(body?.admin_cancellation_template) ? body.admin_cancellation_template : undefined
 
     if (!bookingId) {
       return NextResponse.json({ error: "booking_id required" }, { status: 400 })
@@ -221,16 +256,26 @@ export async function DELETE(request: NextRequest) {
     }
 
     let email: { status: "accepted" | "failed" | "skipped"; error?: string } = { status: "skipped" }
-    if (!canCancelAnyBooking && session) {
-      const recipient = profile?.email?.trim() || userData.user.email?.trim() || ""
+    if (session) {
+      const isAdminRemoval = canCancelAnyBooking && booking.user_id !== userData.user.id
+      const { data: recipientProfile } = isAdminRemoval && booking.user_id
+        ? await supabase
+          .from("profiles")
+          .select("email, full_name")
+          .eq("id", booking.user_id)
+          .maybeSingle()
+        : { data: null }
+      const recipient = isAdminRemoval
+        ? recipientProfile?.email?.trim() || ""
+        : profile?.email?.trim() || userData.user.email?.trim() || ""
       if (recipient) {
         const result = await sendSessionBookingCancellationEmail({
           to: recipient,
-          memberName: profile?.full_name?.trim() || "Member",
+          memberName: (isAdminRemoval ? recipientProfile?.full_name : profile?.full_name)?.trim() || "Member",
           sessionTitle: session.title || "session",
           sessionDate: session.date || "TBD",
           sessionTime: session.time || "TBD",
-          template: cancellationTemplate,
+          template: isAdminRemoval ? adminCancellationTemplate : cancellationTemplate,
         })
         email = result.ok ? { status: "accepted" } : { status: "failed", error: result.error }
       } else {
