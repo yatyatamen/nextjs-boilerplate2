@@ -40,6 +40,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   MinusCircle,
                                                   GraduationCap,
                                                   Image,
+                                                  Lock,
                                                   ChevronLeft,
                                                   ChevronRight,
                                                   MoreHorizontal,
