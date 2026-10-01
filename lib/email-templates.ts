@@ -61,6 +61,19 @@ function isEmailTemplateConfig(value: unknown): value is Partial<Record<EmailTem
   return !!value && typeof value === "object"
 }
 
+export function mergeEmailTemplateConfig(value: unknown): EmailTemplateConfig {
+  const stored = isEmailTemplateConfig(value) ? value : {}
+  const keys = Object.keys(DEFAULT_EMAIL_TEMPLATES) as EmailTemplateKey[]
+
+  return Object.fromEntries(keys.map((key) => {
+    const template = stored[key]
+    return [key, {
+      subject: typeof template?.subject === "string" ? template.subject : DEFAULT_EMAIL_TEMPLATES[key].subject,
+      body: typeof template?.body === "string" ? template.body : DEFAULT_EMAIL_TEMPLATES[key].body,
+    }]
+  })) as EmailTemplateConfig
+}
+
 export function getStoredEmailTemplates(): Partial<Record<EmailTemplateKey, Partial<EmailTemplate>>> {
   if (typeof window === "undefined") return {}
 
@@ -78,52 +91,17 @@ export function getStoredEmailTemplates(): Partial<Record<EmailTemplateKey, Part
 }
 
 export function getEmailTemplateConfig(): EmailTemplateConfig {
-  const stored = getStoredEmailTemplates()
-
-  return {
-    booking_confirmation: {
-      subject: stored.booking_confirmation?.subject ?? DEFAULT_EMAIL_TEMPLATES.booking_confirmation.subject,
-      body: stored.booking_confirmation?.body ?? DEFAULT_EMAIL_TEMPLATES.booking_confirmation.body,
-    },
-    booking_reminder: {
-      subject: stored.booking_reminder?.subject ?? DEFAULT_EMAIL_TEMPLATES.booking_reminder.subject,
-      body: stored.booking_reminder?.body ?? DEFAULT_EMAIL_TEMPLATES.booking_reminder.body,
-    },
-    booking_cancellation: {
-      subject: stored.booking_cancellation?.subject ?? DEFAULT_EMAIL_TEMPLATES.booking_cancellation.subject,
-      body: stored.booking_cancellation?.body ?? DEFAULT_EMAIL_TEMPLATES.booking_cancellation.body,
-    },
-    booking_admin_cancellation: {
-      subject: stored.booking_admin_cancellation?.subject ?? DEFAULT_EMAIL_TEMPLATES.booking_admin_cancellation.subject,
-      body: stored.booking_admin_cancellation?.body ?? DEFAULT_EMAIL_TEMPLATES.booking_admin_cancellation.body,
-    },
-    announcement: {
-      subject: stored.announcement?.subject ?? DEFAULT_EMAIL_TEMPLATES.announcement.subject,
-      body: stored.announcement?.body ?? DEFAULT_EMAIL_TEMPLATES.announcement.body,
-    },
-    session_alert: {
-      subject: stored.session_alert?.subject ?? DEFAULT_EMAIL_TEMPLATES.session_alert.subject,
-      body: stored.session_alert?.body ?? DEFAULT_EMAIL_TEMPLATES.session_alert.body,
-    },
-    assessment: {
-      subject: stored.assessment?.subject ?? DEFAULT_EMAIL_TEMPLATES.assessment.subject,
-      body: stored.assessment?.body ?? DEFAULT_EMAIL_TEMPLATES.assessment.body,
-    },
-    absence: {
-      subject: stored.absence?.subject ?? DEFAULT_EMAIL_TEMPLATES.absence.subject,
-      body: stored.absence?.body ?? DEFAULT_EMAIL_TEMPLATES.absence.body,
-    },
-    shop_update: {
-      subject: stored.shop_update?.subject ?? DEFAULT_EMAIL_TEMPLATES.shop_update.subject,
-      body: stored.shop_update?.body ?? DEFAULT_EMAIL_TEMPLATES.shop_update.body,
-    },
-  }
+  return mergeEmailTemplateConfig(getStoredEmailTemplates())
 }
 
 export function saveEmailTemplateConfig(config: EmailTemplateConfig) {
   if (typeof window === "undefined") return
 
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+  } catch {
+    // Supabase is the source of truth; local storage is only a browser fallback.
+  }
 }
 
 export function applyTemplateText(text: string, replacements: Record<string, string | number | null | undefined>) {

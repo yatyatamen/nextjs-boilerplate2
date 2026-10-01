@@ -1631,7 +1631,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                     <Card key={s.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
                                                       <div>
                                                         <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>
-                                                          {formatDate(s.date)} · <span className="font-mono text-sm font-bold text-white">{s.time}</span>
+                                                          {formatDate(s.date)} · <span className={`font-mono text-sm font-bold ${theme.headingColor}`}>{s.time}</span>
                                                         </p>
                                                         <p className={`mt-1 text-[13px] font-semibold ${theme.textSecondary}`}>{s.title || "Standard Class Roster"}</p>
                                                         <p className={`text-xs ${theme.textMuted} mt-1 whitespace-pre-line`}>

@@ -29,6 +29,7 @@ import { ALL_ROLE_AND_TIER_OPTIONS, LEVELS, ROLES } from "@/lib/types"
 import { isSessionEnded, parseSessionStart } from "@/lib/scheduling"
 import {
   getEmailTemplateConfig,
+  mergeEmailTemplateConfig,
   saveEmailTemplateConfig,
   type EmailTemplateConfig,
 } from "@/lib/email-templates"
@@ -268,6 +269,28 @@ export function StaffDashboard({
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadEmailTemplates() {
+      try {
+        const response = await fetch("/api/email-templates")
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(result.error || "Unable to load email templates")
+        if (mounted && result.data) {
+          const templates = mergeEmailTemplateConfig(result.data)
+          setEmailTemplates(templates)
+          saveEmailTemplateConfig(templates)
+        }
+      } catch (error) {
+        console.error("Email template load failed:", error)
+      }
+    }
+
+    void loadEmailTemplates()
+    return () => { mounted = false }
+  }, [])
 
   useEffect(() => {
     const nextStart = schedule
@@ -2008,9 +2031,17 @@ export function StaffDashboard({
           <EmailTemplatesEditor
             value={emailTemplates}
             onChange={setEmailTemplates}
-            onSave={(nextConfig) => {
-              saveEmailTemplateConfig(nextConfig)
-              setEmailTemplates(nextConfig)
+            onSave={async (nextConfig) => {
+              const response = await fetch("/api/email-templates", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ templates: nextConfig }),
+              })
+              const result = await response.json().catch(() => ({}))
+              if (!response.ok) throw new Error(result.error || "Unable to save email templates")
+              const savedTemplates = mergeEmailTemplateConfig(result.data)
+              saveEmailTemplateConfig(savedTemplates)
+              setEmailTemplates(savedTemplates)
               showToast("Auto email templates saved")
             }}
           />
@@ -3446,7 +3477,7 @@ function EmailTemplatesEditor({
 }: {
   value: EmailTemplateConfig
   onChange: (next: EmailTemplateConfig) => void
-  onSave: (next: EmailTemplateConfig) => void
+  onSave: (next: EmailTemplateConfig) => Promise<void> | void
 }) {
   const { showConfirmation, closeConfirmation, confirmState } = useConfirmation()
   const { toast, showToast } = useToast()
@@ -3460,7 +3491,7 @@ function EmailTemplatesEditor({
         closeConfirmation()
         setSaving(true)
         try {
-          onSave(value)
+          await onSave(value)
         } catch (error) {
           showToast(error instanceof Error ? error.message : "Unable to save email templates")
         } finally {
@@ -3474,6 +3505,7 @@ function EmailTemplatesEditor({
     { key: "booking_confirmation", label: "Booking confirmation" },
     { key: "booking_reminder", label: "Booking reminder" },
     { key: "booking_cancellation", label: "Booking cancellation" },
+    { key: "booking_admin_cancellation", label: "Admin booking cancellation" },
     { key: "announcement", label: "Announcement" },
     { key: "session_alert", label: "New session alert" },
     { key: "assessment", label: "Assessment" },

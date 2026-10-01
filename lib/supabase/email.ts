@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer"
 import { randomUUID } from "node:crypto"
-import { applyTemplateText, getEmailTemplateConfig, type EmailTemplate } from "@/lib/email-templates"
+import { applyTemplateText, getEmailTemplateConfig, mergeEmailTemplateConfig, type EmailTemplate, type EmailTemplateKey } from "@/lib/email-templates"
+import { createClient } from "@/lib/supabase/server"
 
 const smtpUser = process.env.SMTP_USER?.trim() || process.env.GMAIL_USER?.trim() || process.env.EMAIL_USER?.trim()
 const smtpPassword = process.env.SMTP_PASSWORD?.trim() || (process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD)?.trim().replace(/\s+/g, "")
@@ -21,6 +22,26 @@ const transporter = smtpUser && smtpPassword
       },
     })
   : null
+
+async function getSavedEmailTemplate(key: EmailTemplateKey, fallback?: EmailTemplate) {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from("email_template_settings")
+      .select("templates")
+      .eq("id", true)
+      .maybeSingle()
+
+    if (!error && data?.templates) {
+      return mergeEmailTemplateConfig(data.templates)[key]
+    }
+    if (error) console.warn("Unable to load saved email templates:", error.message)
+  } catch (error) {
+    console.warn("Unable to load saved email templates:", error)
+  }
+
+  return fallback ?? getEmailTemplateConfig()[key]
+}
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>'"]/g, (character) => ({
@@ -157,7 +178,7 @@ export async function sendSessionBookingReminderEmail({
   sessionTime: string
   template?: EmailTemplate
 }) {
-  const selectedTemplate = template ?? getEmailTemplateConfig().booking_reminder
+  const selectedTemplate = await getSavedEmailTemplate("booking_reminder", template)
   const subject = applyTemplateText(selectedTemplate.subject, { memberName, sessionTitle, sessionDate, sessionTime })
   const text = applyTemplateText(selectedTemplate.body, { memberName, sessionTitle, sessionDate, sessionTime })
 
@@ -189,7 +210,7 @@ export async function sendSessionBookingConfirmationEmail({
   sessionTime: string
   template?: EmailTemplate
 }) {
-  const selectedTemplate = template ?? getEmailTemplateConfig().booking_confirmation
+  const selectedTemplate = await getSavedEmailTemplate("booking_confirmation", template)
   const subject = applyTemplateText(selectedTemplate.subject, { memberName, sessionTitle, sessionDate, sessionTime })
   const text = applyTemplateText(selectedTemplate.body, { memberName, sessionTitle, sessionDate, sessionTime })
 
@@ -221,7 +242,7 @@ export async function sendSessionBookingCancellationEmail({
   sessionTime: string
   template?: EmailTemplate
 }) {
-  const selectedTemplate = template ?? getEmailTemplateConfig().booking_cancellation
+  const selectedTemplate = await getSavedEmailTemplate("booking_cancellation", template)
   const replacements = { memberName, sessionTitle, sessionDate, sessionTime }
   const subject = applyTemplateText(selectedTemplate.subject, replacements)
   const text = applyTemplateText(selectedTemplate.body, replacements)
@@ -250,7 +271,7 @@ export async function sendAnnouncementEmail({
   content: string
   template?: EmailTemplate
 }) {
-  const selectedTemplate = template ?? getEmailTemplateConfig().announcement
+  const selectedTemplate = await getSavedEmailTemplate("announcement", template)
   const subject = applyTemplateText(selectedTemplate.subject, { title, content })
   const text = applyTemplateText(selectedTemplate.body, { title, content })
 
@@ -280,7 +301,7 @@ export async function sendSessionAlertEmail({
   time: string
   template?: EmailTemplate
 }) {
-  const selectedTemplate = template ?? getEmailTemplateConfig().session_alert
+  const selectedTemplate = await getSavedEmailTemplate("session_alert", template)
   const replacements = { title, sessionTitle: title, date, time, sessionDate: date, sessionTime: time }
   const subject = applyTemplateText(selectedTemplate.subject, replacements)
   const text = applyTemplateText(selectedTemplate.body, replacements)
@@ -309,7 +330,7 @@ export async function sendAssessmentEmail({
   level: string
   template?: EmailTemplate
 }) {
-  const selectedTemplate = template ?? getEmailTemplateConfig().assessment
+  const selectedTemplate = await getSavedEmailTemplate("assessment", template)
   const subject = applyTemplateText(selectedTemplate.subject, { memberName, level })
   const text = applyTemplateText(selectedTemplate.body, { memberName, level })
 
@@ -341,7 +362,7 @@ export async function sendAbsenceEmail({
   sessionTime?: string
   template?: EmailTemplate
 }) {
-  const selectedTemplate = template ?? getEmailTemplateConfig().absence
+  const selectedTemplate = await getSavedEmailTemplate("absence", template)
   const subject = applyTemplateText(selectedTemplate.subject, { memberName, sessionTitle, sessionDate, sessionTime })
   const text = applyTemplateText(selectedTemplate.body, { memberName, sessionTitle, sessionDate, sessionTime })
 
@@ -367,7 +388,7 @@ export async function sendShopUpdateEmail({
   itemName: string
   template?: EmailTemplate
 }) {
-  const selectedTemplate = template ?? getEmailTemplateConfig().shop_update
+  const selectedTemplate = await getSavedEmailTemplate("shop_update", template)
   const subject = applyTemplateText(selectedTemplate.subject, { itemName })
   const text = applyTemplateText(selectedTemplate.body, { itemName })
 
