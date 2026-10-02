@@ -981,8 +981,8 @@ export function StaffDashboard({
 
     const edit = membersNameEdits[memberId]
     const fullName = typeof edit === "string" ? edit.trim() : member.full_name ?? getMemberDisplayName(member)
-    const level = member.level ?? null
     const role = member.role ?? "member"
+    const level = member.level ?? (role === "member" ? "member" : null)
 
     if (!fullName && !level && !role) {
       showToast("Enter a display name or select a level before saving.")
@@ -1309,7 +1309,7 @@ export function StaffDashboard({
                                 ? m.role
                                 : m.level && ALL_ROLE_AND_TIER_OPTIONS.includes(m.level as (typeof ALL_ROLE_AND_TIER_OPTIONS)[number])
                                   ? m.level
-                                  : "Bronze"
+                                  : "member"
                             }
                             onChange={(e) => {
                               const nextValue = e.target.value
