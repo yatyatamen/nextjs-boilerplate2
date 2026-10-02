@@ -1526,30 +1526,34 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                         <div className={`w-full ${theme.bg} p-6 box-border`}>
                                                           
                                                           {active === "leader-schedule" && isLeader && (
-                                                            <StaffDashboard
-                                                              profile={profile}
-                                                              initialMembers={allProfiles}
-                                                              initialSchedule={schedule}
-                                                              initialAnnouncements={[]}
-                                                              initialBlogPosts={[]}
-                                                              initialAssessments={[]}
-                                                              initialBookings={leaderBookings}
-                                                              initialAttendanceRecords={attendanceList}
-                                                              embeddedSection="schedule"
-                                                            />
+                                                            <div className="w-full rounded-sm bg-[#0B0B0C] p-4 text-zinc-100" style={{ colorScheme: "dark" }}>
+                                                              <StaffDashboard
+                                                                profile={profile}
+                                                                initialMembers={allProfiles}
+                                                                initialSchedule={schedule}
+                                                                initialAnnouncements={[]}
+                                                                initialBlogPosts={[]}
+                                                                initialAssessments={[]}
+                                                                initialBookings={leaderBookings}
+                                                                initialAttendanceRecords={attendanceList}
+                                                                embeddedSection="schedule"
+                                                              />
+                                                            </div>
                                                           )}
                                                           {active === "leader-attendance" && isLeader && (
-                                                            <StaffDashboard
-                                                              profile={profile}
-                                                              initialMembers={allProfiles}
-                                                              initialSchedule={schedule}
-                                                              initialAnnouncements={[]}
-                                                              initialBlogPosts={[]}
-                                                              initialAssessments={[]}
-                                                              initialBookings={leaderBookings}
-                                                              initialAttendanceRecords={attendanceList}
-                                                              embeddedSection="attendance"
-                                                            />
+                                                            <div className="w-full rounded-sm bg-[#0B0B0C] p-4 text-zinc-100" style={{ colorScheme: "dark" }}>
+                                                              <StaffDashboard
+                                                                profile={profile}
+                                                                initialMembers={allProfiles}
+                                                                initialSchedule={schedule}
+                                                                initialAnnouncements={[]}
+                                                                initialBlogPosts={[]}
+                                                                initialAssessments={[]}
+                                                                initialBookings={leaderBookings}
+                                                                initialAttendanceRecords={attendanceList}
+                                                                embeddedSection="attendance"
+                                                              />
+                                                            </div>
                                                           )}
 
                                                           {/* OVERVIEW MODULE */}
