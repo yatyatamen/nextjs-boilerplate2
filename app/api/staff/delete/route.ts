@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 
 const TABLES = {
+  schedule: "schedule",
   gear_guide: "equipment_recommendations",
   shop_item: "shop_items",
   announcement: "announcements",
@@ -35,7 +36,11 @@ export async function POST(request: Request) {
       .eq("id", user.id)
       .single()
 
-    if (profileError || !["staff", "admin"].includes(profile?.role)) {
+    const canDelete =
+      profile?.role === "staff" ||
+      profile?.role === "admin" ||
+      (profile?.role === "leader" && type === "schedule")
+    if (profileError || !canDelete) {
       return NextResponse.json({ error: "Only staff can delete published items" }, { status: 403 })
     }
 

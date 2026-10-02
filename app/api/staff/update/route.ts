@@ -44,7 +44,11 @@ export async function POST(request: Request) {
       .eq("id", user.id)
       .single()
 
-    if (profileError || !["staff", "admin"].includes(profile?.role)) {
+    const canUpdate =
+      profile?.role === "staff" ||
+      profile?.role === "admin" ||
+      (profile?.role === "leader" && type === "schedule")
+    if (profileError || !canUpdate) {
       return NextResponse.json({ error: "Only staff can update published items" }, { status: 403 })
     }
 

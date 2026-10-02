@@ -42,12 +42,16 @@ export async function POST(request: Request) {
       .eq("id", user.id)
       .maybeSingle()
 
-    if (!profile || !["staff", "admin"].includes(profile.role)) {
+    const body = await request.json().catch(() => ({}))
+    const event = body?.event as EmailEvent
+    const canSendEmail =
+      profile?.role === "staff" ||
+      profile?.role === "admin" ||
+      (profile?.role === "leader" && event === "session_alert")
+    if (!canSendEmail) {
       return NextResponse.json({ error: "Only staff can send these emails" }, { status: 403 })
     }
 
-    const body = await request.json().catch(() => ({}))
-    const event = body?.event as EmailEvent
     const to = requiredString(body?.to).trim()
     const template = isTemplate(body?.template) ? body.template : undefined
 

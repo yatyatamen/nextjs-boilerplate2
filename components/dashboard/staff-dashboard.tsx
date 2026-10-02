@@ -93,6 +93,7 @@ const NAV: NavItem[] = [
   { key: "assessments", label: "Assessments", icon: ClipboardList },
   { key: "comments", label: "Comments", icon: MessageSquareText },
 ]
+const LEADER_NAV = NAV.filter((item) => item.key === "schedule" || item.key === "attendance")
 const ALL_TIERS = [...LEVELS]
 const TIME_SLOTS = ["3:20-4:30 PM", "3:20-4:45 PM", "3:20-5:00 PM", "3:20-5:15 PM"] as const
 const ATTENDANCE_FILTERS = ["all", "present", "absent", "late"] as const
@@ -220,7 +221,8 @@ export function StaffDashboard({
   initialMessages?: SupportTicket[]
 }) {
   const supabase = createClient()
-  const [active, setActive] = useState("overview")
+  const isLeader = profile.role === "leader"
+  const [active, setActive] = useState(isLeader ? "schedule" : "overview")
 
   const [members, setMembers] = useState<Profile[]>(initialMembers)
   const [schedule, setSchedule] = useState<ScheduleSession[]>(() => sortSessions(initialSchedule || []))
@@ -452,10 +454,14 @@ export function StaffDashboard({
   }
 
   async function deleteScheduleItem(id: string) {
-    const { error } = await supabase.from("schedule").delete().eq("id", id)
-    if (error) {
-      alert(`Schedule delete failed: ${error.message}`)
-      return
+    const response = await fetch("/api/staff/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, type: "schedule" }),
+    })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to delete session")
     }
     setSchedule((prev) => prev.filter((item) => item.id !== id))
   }
@@ -1136,12 +1142,12 @@ export function StaffDashboard({
 
   return (
     <DashboardShell
-      navItems={NAV}
+      navItems={isLeader ? LEADER_NAV : NAV}
       activeKey={active}
       onChange={setActive}
       displayName={displayName}
       subtitle={profile.email ?? ""}
-      badgeLabel="Staff"
+      badgeLabel={isLeader ? "Leader" : "Staff"}
     >
       {selectedAttendanceMemberId && (
         <div className="fixed inset-0 z-40 flex items-start justify-center pt-20">
@@ -1363,16 +1369,16 @@ export function StaffDashboard({
           <SectionHeader title="Schedule Management" desc="   " />
           <ScheduleForm
             onCreate={async (payload) => {
-              const { data, error } = await supabase
-                .from("schedule")
-                .insert(payload)
-                .select()
-              if (error) {
-                console.error("Full Error Details:", error)
-                throw new Error(`Schedule DB Error: ${error.message} (${error.code})`)
+              const response = await fetch("/api/schedule", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              })
+              const result = await response.json().catch(() => ({}))
+              if (!response.ok || !result.data) {
+                throw new Error(result.error || "Unable to save session")
               }
-              if (!data?.[0]) throw new Error("Schedule save returned no record")
-              const createdSession = data[0] as ScheduleSession
+              const createdSession = result.data as ScheduleSession
               setSchedule((prev) => sortSessions([...prev, createdSession]))
               const emailResult = await sendConfiguredEmails(
                 "session_alert",

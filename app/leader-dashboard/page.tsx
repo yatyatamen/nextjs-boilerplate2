@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
-import { MemberDashboard } from "@/components/dashboard/member-dashboard"
+import { StaffDashboard } from "@/components/dashboard/staff-dashboard"
 import type { Profile } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
@@ -25,32 +25,23 @@ export default async function LeaderDashboardPage() {
     ? await createServiceClient()
     : supabase
 
-  const [schedule, bookings, announcements, shopItems, assessments, attendance, gearGuides, allProfiles, supportTickets, leaderBookings] = await Promise.all([
+  const [members, schedule, bookings, attendance] = await Promise.all([
+    rosterClient.from("profiles").select("*"),
     supabase.from("schedule").select("*").order("date", { ascending: true }),
-    supabase.from("bookings").select("*").eq("user_id", user.id),
-    supabase.from("announcements").select("*").order("created_at", { ascending: false }),
-    supabase.from("shop_items").select("*").order("name", { ascending: true }),
-    supabase.from("assessments").select("*").eq("user_id", user.id).order("date", { ascending: false }),
-    rosterClient.from("attendance").select("*"),
-    supabase.from("equipment_recommendations").select("*"),
-    rosterClient.from("profiles").select("id, first_name, last_name, full_name, email, role, level, created_at").order("full_name", { ascending: true }),
-    supabase.from("support_tickets").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
     rosterClient.from("bookings").select("*"),
+    rosterClient.from("attendance").select("*"),
   ])
 
   return (
-    <MemberDashboard
+    <StaffDashboard
       profile={profile}
-      schedule={schedule.data ?? []}
+      initialMembers={members.data ?? []}
+      initialSchedule={schedule.data ?? []}
       initialBookings={bookings.data ?? []}
-      announcements={announcements.data ?? []}
-      shopItems={(shopItems.data ?? []).filter((item: any) => !(item.is_hidden === true || item.hidden === true || item.visible === false))}
-      assessments={assessments.data ?? []}
-      attendanceRecords={attendance.data ?? []}
-      gearGuides={(gearGuides.data ?? []).filter((item: any) => !(item.is_hidden === true || item.hidden === true || item.visible === false))}
-      allProfiles={allProfiles.data ?? []}
-      leaderBookings={leaderBookings.data ?? []}
-      supportTickets={supportTickets.data ?? []}
+      initialAttendanceRecords={attendance.data ?? []}
+      initialAnnouncements={[]}
+      initialAssessments={[]}
+      initialBlogPosts={[]}
     />
   )
 }

@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
         time: body.time.trim(),
         level: typeof body.level === "string" ? body.level : null,
         max_capacity: capacity,
+        visibility_tiers: Array.isArray(body.visibility_tiers) ? body.visibility_tiers : [],
         coach: typeof body.coach === "string" ? body.coach : null,
         title: typeof body.title === "string" ? body.title : "Training Session",
         notes: typeof body.notes === "string" ? body.notes : null,
