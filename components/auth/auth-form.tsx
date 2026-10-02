@@ -290,7 +290,7 @@ export function AuthForm() {
               id="fullName"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="Jordan Lee"
+              placeholder=" "
               autoComplete="name"
               required
             />
