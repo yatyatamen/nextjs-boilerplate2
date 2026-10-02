@@ -185,7 +185,7 @@ export function TeacherDashboard({ profile, initialMembers, initialSchedule, ini
   }
 
   return (
-    <div className={`min-h-screen ${dark ? "bg-[#0B0B0C] text-white" : "bg-zinc-50 text-black"}`}>
+    <div className={`min-h-screen ${dark ? "bg-[#0B0B0C] text-white" : "bg-zinc-50 text-black"}`} style={{ colorScheme: dark ? "dark" : "light" }}>
       <DashboardShell navItems={NAV} activeKey={active} onChange={setActive} displayName={name.trim() || profile.email || "Teacher"} subtitle={profile.email ?? ""} badgeLabel="Teacher">
         {active === "overview" && <Overview theme={theme} name={name.trim() || profile.email || "Teacher"} sessions={visibleSchedule.length} bookings={myBookings.length} attendance={records.length} announcement={announcement} />}
         {active === "schedule" && <Schedule theme={theme} sessions={visibleSchedule} bookedIds={bookedIds} confirming={confirming} setConfirming={setConfirming} note={note} setNote={setNote} joining={joining} joinSession={joinSession} />}
