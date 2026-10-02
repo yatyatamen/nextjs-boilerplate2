@@ -13,7 +13,9 @@ type DeletableType = keyof typeof TABLES
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}))
-    const id = typeof body?.id === "string" ? body.id : ""
+    const id = typeof body?.id === "string"
+      ? body.id.trim()
+      : typeof body?.id === "number" && Number.isFinite(body.id) ? String(body.id) : ""
     const type = body?.type as DeletableType
     const table = TABLES[type]
 
