@@ -46,7 +46,7 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateConfig = {
     body: `Hello {memberName},\n\nYour latest assessment has been posted and your tier is now set to {level}.\n\nPlease check the dashboard to review your feedback.`,
   },
   absence: {
-    subject: "Attendance update: {sessionTitle}",
+    subject: "Attendance update: {sessionTitle} - {sessionDate} {sessionTime}",
     body: `Hello {memberName},\n\nWe have marked your attendance for {sessionTitle} as absent.\n\nDate: {sessionDate}\nTime: {sessionTime}\n\nIf this was a mistake, please contact club leaders as soon as possible.`,
   },
   shop_update: {

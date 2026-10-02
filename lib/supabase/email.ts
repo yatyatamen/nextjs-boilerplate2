@@ -126,11 +126,11 @@ export async function sendEmail({
   }
 
   try {
-    const timestamp = new Date().toISOString()
+    const date = new Date().toISOString().slice(0, 10)
     const result = await transporter.sendMail({
       from: emailFrom,
       to: recipients,
-      subject: `${subject} [${timestamp}]`,
+      subject: `${subject} [${date}]`,
       html,
       text: text ?? html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
       headers: {
