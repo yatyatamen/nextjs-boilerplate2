@@ -1,3 +1,7 @@
 @import "tailwindcss";
 
 /* That's it! Let's keep it clean so the compiler doesn't crash */
+
+:root {
+	color-scheme: dark;
+}

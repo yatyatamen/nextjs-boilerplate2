@@ -6,6 +6,7 @@ export type EmailTemplateKey =
   | "announcement"
   | "session_alert"
   | "assessment"
+  | "attendance_update"
   | "absence"
   | "shop_update"
 
@@ -44,6 +45,10 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateConfig = {
   assessment: {
     subject: "Your assessment is ready",
     body: `Hello {memberName},\n\nYour latest assessment has been posted and your tier is now set to {level}.\n\nPlease check the dashboard to review your feedback.`,
+  },
+  attendance_update: {
+    subject: "Attendance update: {sessionTitle}",
+    body: `Hello {memberName},\n\nYour attendance for {sessionTitle} on {sessionDate} at {sessionTime} has been marked as {status}.`,
   },
   absence: {
     subject: "Attendance update: {sessionTitle} - {sessionDate} {sessionTime}",

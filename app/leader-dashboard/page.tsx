@@ -33,7 +33,7 @@ export default async function LeaderDashboardPage() {
     supabase.from("assessments").select("*").eq("user_id", user.id).order("date", { ascending: false }),
     rosterClient.from("attendance").select("*"),
     supabase.from("equipment_recommendations").select("*"),
-    rosterClient.from("profiles").select("id, first_name, last_name, full_name, email, role, level, created_at").order("full_name", { ascending: true }),
+    rosterClient.from("profiles").select("id, first_name, last_name, full_name, email, role, level"),
     supabase.from("support_tickets").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
     rosterClient.from("bookings").select("*"),
   ])

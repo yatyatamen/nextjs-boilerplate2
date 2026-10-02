@@ -42,7 +42,7 @@ export type Profile = {
   level: string | null
   avatar_url?: string | null
   marketing_emails?: boolean | null
-  created_at: string
+  created_at?: string
 }
 
 export type ScheduleSession = {

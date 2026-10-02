@@ -54,7 +54,6 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   { key: "bookings", label: "My Bookings", icon: Ticket },
                                                   { key: "assessments", label: "My Assessment", icon: TrendingUp },
                                                   { key: "grading-manager", label: "Classroom Grading", icon: GraduationCap },
-                                                  { key: "attendance", label: "Active Check-Ins", icon: UserCheck },
                                                   { key: "gear", label: "Equipment Guides", icon: Award },
                                                   { key: "resources", label: "Rubrics & PDFs", icon: GraduationCap },
                                                   { key: "shop", label: "Wolves Shop", icon: ShoppingBag },
@@ -66,13 +65,6 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
   { key: "leader-schedule", label: "Session Management", icon: CalendarDays },
   { key: "leader-attendance", label: "Attendance Management", icon: UserCheck },
 ]
-
-                                                const AVAILABLE_TIME_SLOTS = [
-                                                  "3:20-4:30 PM",
-                                                  "3:20-4:45 PM",
-                                                  "3:20-5:00 PM",
-                                                  "3:20-5:15 PM"
-                                                ]
 
                                                 const PLAYER_TIERS = LEVELS
 
@@ -319,13 +311,6 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                     .filter((item) => isFeatureAnnouncement(item.title))
                                                     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
                                                   
-                                                  // Dropdown Form Management
-                                                  const [newSessionDate, setNewSessionDate] = useState("")
-                                                  const [newSessionTime, setNewSessionTime] = useState(AVAILABLE_TIME_SLOTS[0])
-                                                  const [newSessionLevel, setNewSessionLevel] = useState<string>(PLAYER_TIERS[0])
-                                                  const [newSessionCapacity, setNewSessionCapacity] = useState<string>("")
-                                                  const [sessionTitles, setSessionTitles] = useState<string[]>(["Core Training Focus"])
-
                                                   const [newAnnTitle, setNewAnnTitle] = useState("")
                                                   const [newAnnContent, setNewAnnContent] = useState("")
 
@@ -366,8 +351,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   const isStaff = profile.role === "staff"
                                                   const isLeader = profile.role === "leader"
                                                   const canManageAttendance = isStaff || isLeader
-                                                  const canPostSchedule = isStaff || isLeader
-                                                  const dashboardNav = NAV.filter(item => item.key === "attendance" ? canManageAttendance : item.key === "grading-manager" ? isStaff : true)
+                                                  const dashboardNav = NAV.filter(item => item.key !== "grading-manager" || isStaff)
                                                   const visibleDashboardNav = isLeader ? [...dashboardNav, ...LEADER_MANAGEMENT_NAV] : dashboardNav
 
                                                   function getProfileDisplayName(profileEntry: Partial<Profile> | null | undefined) {
@@ -720,50 +704,6 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                     } finally {
                                                       setIsSavingEmailPrefs(false)
                                                     }
-                                                  }
-
-                                                  const handleAddTitleInputRow = () => setSessionTitles([...sessionTitles, ""])
-                                                  const handleRemoveTitleInputRow = (index: number) => setSessionTitles(sessionTitles.filter((_, i) => i !== index))
-                                                  const handleUpdateTitleRowValue = (index: number, value: string) => {
-                                                    const updated = [...sessionTitles]
-                                                    updated[index] = value
-                                                    setSessionTitles(updated)
-                                                  }
-
-                                                  async function handleCreateSession() {
-                                                    if (!newSessionDate) return
-                                                    const combinedFocusTitle = sessionTitles.filter(t => t.trim() !== "").join(" & ") || "General Drill Session"
-                                                    showConfirmation(
-                                                      "Post this session?",
-                                                      "This will publish the schedule item for members to view and register for.",
-                                                      async () => {
-                                                        closeConfirmation()
-                                                        try {
-                                                          const response = await fetch("/api/schedule", {
-                                                            method: "POST",
-                                                            credentials: "same-origin",
-                                                            headers: { "Content-Type": "application/json" },
-                                                            body: JSON.stringify({
-                                                              date: newSessionDate,
-                                                              time: newSessionTime,
-                                                              level: newSessionLevel,
-                                                              max_capacity: newSessionCapacity ? Number(newSessionCapacity) : null,
-                                                              coach: displayName,
-                                                              title: combinedFocusTitle,
-                                                              notes: getSessionBookingNotes({ date: newSessionDate, time: newSessionTime, max_capacity: newSessionCapacity ? Number(newSessionCapacity) : null, notes: "" }, 0),
-                                                            }),
-                                                          })
-                                                          const result = await response.json().catch(() => ({}))
-                                                          if (!response.ok || !result.data) throw new Error(result.error || "Unable to post session")
-                                                          setSchedule((prev) => [result.data as ScheduleSession, ...prev])
-                                                          setNewSessionDate("")
-                                                          setSessionTitles(["Core Training Focus"])
-                                                          showToast("Session posted successfully")
-                                                        } catch (error) {
-                                                          showToast(error instanceof Error ? error.message : "Unable to post session")
-                                                        }
-                                                      },
-                                                    )
                                                   }
 
   async function handlePostAnnouncement() {
@@ -1489,14 +1429,14 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
 
                                                   const theme = {
                                                     bg: isDarkMode ? "bg-[#0B0B0C]" : "bg-zinc-50",
-                                                    textPrimary: isDarkMode ? "text-white" : "text-black",
-                                                    textSecondary: isDarkMode ? "text-white" : "text-black",
-                                                    textMuted: isDarkMode ? "text-white" : "text-black",
-                                                    cardBg: isDarkMode ? "bg-zinc-900/40" : "bg-white",
-                                                    cardBorder: isDarkMode ? "border-zinc-800" : "border-zinc-200",
+                                                    textPrimary: isDarkMode ? "text-zinc-100" : "text-zinc-900",
+                                                    textSecondary: isDarkMode ? "text-zinc-300" : "text-zinc-700",
+                                                    textMuted: isDarkMode ? "text-zinc-400" : "text-zinc-600",
+                                                    cardBg: isDarkMode ? "bg-zinc-900" : "bg-white",
+                                                    cardBorder: isDarkMode ? "border-zinc-700" : "border-zinc-300",
                                                     subtleBg: isDarkMode ? "bg-zinc-900" : "bg-zinc-100",
-                                                    headingColor: isDarkMode ? "text-white" : "text-black",
-                                                    inputBg: isDarkMode ? "bg-zinc-950 text-white border-zinc-800" : "bg-white text-black border-zinc-300",
+                                                    headingColor: isDarkMode ? "text-zinc-50" : "text-zinc-950",
+                                                    inputBg: isDarkMode ? "bg-zinc-950 text-zinc-100 border-zinc-700" : "bg-white text-zinc-900 border-zinc-300",
                                                   }
 
                                                   // Auto-cleanup expired bookings every minute
@@ -1571,7 +1511,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   }, [profile.id, supabase])
 
                                                   return (
-                                                    <div className={`w-full min-h-screen ${theme.bg} ${theme.textPrimary} transition-colors duration-200`}>
+                                                    <div className={`w-full min-h-screen ${theme.bg} ${theme.textPrimary} transition-colors duration-200`} style={{ colorScheme: isDarkMode ? "dark" : "light" }}>
                                                       <DashboardShell
                                                         navItems={visibleDashboardNav}
                                                         activeKey={active}
@@ -1733,48 +1673,6 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Session Schedule</h2>
                                                                   </div>
                                                                   
-                                                                  {canPostSchedule && (
-                                                                    <Card className={`p-4 border border-[#40938c]/30 bg-[#40938c]/5 rounded-sm mb-4 flex flex-col gap-3`}>
-                                                                      <p className="text-[11px] font-bold uppercase tracking-wide text-[#40938c]">Create New Schedule Track</p>
-                                                                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                                                                        <input type="date" value={newSessionDate} onChange={(e) => setNewSessionDate(e.target.value)} className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`} />
-                                                                        
-                                                                        <select value={newSessionTime} onChange={(e) => setNewSessionTime(e.target.value)} className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`}>
-                                                                          {AVAILABLE_TIME_SLOTS.map(slot => <option key={slot} value={slot}>{slot}</option>)}
-                                                                        </select>
-
-                                                                        <select value={newSessionLevel} onChange={(e) => setNewSessionLevel(e.target.value)} className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`}>
-                                                                          {PLAYER_TIERS.map(tier => <option key={tier} value={tier}>{tier}</option>)}
-                                                                        </select>
-
-                                                                        <input type="number" min={1} value={newSessionCapacity} onChange={(e) => setNewSessionCapacity(e.target.value)} placeholder="Capacity" className={`px-2 py-1.5 text-xs font-mono rounded-sm border ${theme.inputBg}`} />
-                                                                      </div>
-
-                                                                      <div className="flex flex-col gap-1.5 mt-2">
-                                                                        <label className={`text-[10px] font-mono uppercase ${theme.textSecondary} flex justify-between`}>
-                                                                          <span>Training Context Target Matrices</span>
-                                                                          <button onClick={handleAddTitleInputRow} className="text-[#40938c] flex items-center gap-1 hover:underline"><PlusCircle className="h-3 w-3" /> Append Node</button>
-                                                                        </label>
-                                                                        {sessionTitles.map((title, idx) => (
-                                                                          <div key={idx} className="flex gap-2 items-center">
-                                                                            <input 
-                                                                              type="text" 
-                                                                              placeholder="Context Target Title" 
-                                                                              value={title} 
-                                                                              onChange={(e) => handleUpdateTitleRowValue(idx, e.target.value)} 
-                                                                              className={`flex-1 px-2 py-1 text-xs font-mono rounded-sm border ${theme.inputBg}`} 
-                                                                            />
-                                                                            {sessionTitles.length > 1 && (
-                                                                              <button onClick={() => handleRemoveTitleInputRow(idx)} className="text-red-400 hover:text-red-500"><MinusCircle className="h-4 w-4" /></button>
-                                                                            )}
-                                                                          </div>
-                                                                        ))}
-                                                                      </div>
-
-                                                                      <Button size="sm" onClick={handleCreateSession} className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-1.5 self-end rounded-sm border-none mt-2">Inject Slot</Button>
-                                                                    </Card>
-                                                                  )}
-
                                                                   <div className="flex flex-col gap-3">
                                                                     {visibleSchedule.map((s) => {
                                                   const booked = bookedSessionIds.has(String(s.id))

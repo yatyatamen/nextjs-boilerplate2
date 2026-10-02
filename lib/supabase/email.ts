@@ -379,6 +379,42 @@ export async function sendAbsenceEmail({
   })
 }
 
+export async function sendAttendanceUpdateEmail({
+  to,
+  memberName,
+  sessionTitle,
+  sessionDate,
+  sessionTime,
+  status,
+  template,
+}: {
+  to: string
+  memberName: string
+  sessionTitle: string
+  sessionDate?: string
+  sessionTime?: string
+  status: "present" | "absent" | "late"
+  template?: EmailTemplate
+}) {
+  const templateKey = status === "absent" ? "absence" : "attendance_update"
+  const selectedTemplate = await getSavedEmailTemplate(templateKey, template)
+  const replacements = { memberName, sessionTitle, sessionDate, sessionTime, status }
+  const subject = applyTemplateText(selectedTemplate.subject, replacements)
+  const text = applyTemplateText(selectedTemplate.body, replacements)
+
+  return sendEmail({
+    to,
+    subject,
+    html: `
+      <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
+        <h2>Attendance update</h2>
+        <p>${textToHtml(text)}</p>
+      </div>
+    `,
+    text,
+  })
+}
+
 export async function sendShopUpdateEmail({
   to,
   itemName,

@@ -1071,6 +1071,7 @@ export function StaffDashboard({
             user_level: nextRecord.user_level,
             status,
             notes: nextRecord.notes,
+            attendance_template: emailTemplates.attendance_update,
             absence_template: emailTemplates.absence,
           }),
         })
@@ -1111,6 +1112,7 @@ export function StaffDashboard({
           user_level: nextRecord.user_level,
           status,
           notes: nextRecord.notes,
+          attendance_template: emailTemplates.attendance_update,
           absence_template: emailTemplates.absence,
         }),
       })
@@ -2577,19 +2579,19 @@ function EditScheduleButton({
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
           <Card className="w-full max-w-lg border border-zinc-800 bg-white p-5 text-black shadow-2xl">
             <h3 className="text-base font-semibold">Edit session</h3>
-            <form onSubmit={submitEditor} className="mt-4 flex flex-col gap-3">
-              <label className="flex flex-col gap-1 text-xs font-medium"><span>Title</span><Input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
+            <form onSubmit={submitEditor} className="mt-4 flex flex-col gap-3" style={{ colorScheme: "light" }}>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Title</span><Input className="bg-white text-zinc-900" value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
               <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1 text-xs font-medium"><span>Date</span><Input type="date" value={date ?? ""} onChange={(e) => setDate(e.target.value)} required /></label>
-                <label className="flex flex-col gap-1 text-xs font-medium"><span>Time</span><Select value={time} onChange={(e) => setTime(e.target.value)}>
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Date</span><Input className="bg-white text-zinc-900" type="date" value={date ?? ""} onChange={(e) => setDate(e.target.value)} required /></label>
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Time</span><Select className="bg-white text-zinc-900" value={time} onChange={(e) => setTime(e.target.value)}>
                   <option value="">Select time slot</option>
                   {TIME_SLOTS.map((slot) => (
-                    <option key={slot} value={slot}>{slot}</option>
+                    <option className="bg-white text-zinc-900" key={slot} value={slot}>{slot}</option>
                   ))}
                 </Select></label>
-                <label className="flex flex-col gap-1 text-xs font-medium"><span>Member limit</span><Input type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="No limit" /></label>
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Member limit</span><Input className="bg-white text-zinc-900" type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="No limit" /></label>
               </div>
-              <label className="flex flex-col gap-1 text-xs font-medium"><span>Notes</span><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>Notes</span><Textarea className="bg-white text-zinc-900" value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
               <div className="mt-2 flex justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
                 <Button type="submit" size="sm" disabled={confirmLoading} className="bg-[#40938c] text-black font-bold">
@@ -2671,9 +2673,10 @@ function ScheduleForm({
   return (
     <>
       <Card className="p-5">
-        <form
+          <form
           className="grid grid-cols-1 gap-4 sm:grid-cols-2"
           onSubmit={handleSubmit}
+            style={{ colorScheme: "dark" }}
         >
           <div className="flex flex-col gap-1.5 sm:col-span-2">
             <Label htmlFor="s-title">Session Title</Label>
@@ -2695,7 +2698,7 @@ function ScheduleForm({
             <Select id="s-time" value={time} onChange={(e) => setTime(e.target.value)} required>
               <option value="">Select time slot</option>
               {TIME_SLOTS.map((slot) => (
-                <option key={slot} value={slot}>{slot}</option>
+                <option className="bg-zinc-900 text-zinc-100" key={slot} value={slot}>{slot}</option>
               ))}
             </Select>
           </div>
@@ -3518,6 +3521,7 @@ function EmailTemplatesEditor({
     { key: "announcement", label: "Announcement" },
     { key: "session_alert", label: "New session alert" },
     { key: "assessment", label: "Assessment" },
+    { key: "attendance_update", label: "Attendance update" },
     { key: "absence", label: "Absence notice" },
     { key: "shop_update", label: "Shop update" },
   ] as const
@@ -3528,7 +3532,7 @@ function EmailTemplatesEditor({
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-foreground">Automatic email content</h3>
-            <p className="text-xs text-muted-foreground">Use placeholders like {'{memberName}'}, {'{sessionTitle}'}, {'{sessionDate}'}, {'{sessionTime}'}, {'{title}'}, {'{content}'}, {'{level}'}, {'{itemName}'}</p>
+            <p className="text-xs text-muted-foreground">Use placeholders like {'{memberName}'}, {'{sessionTitle}'}, {'{sessionDate}'}, {'{sessionTime}'}, {'{status}'}, {'{title}'}, {'{content}'}, {'{level}'}, {'{itemName}'}</p>
           </div>
           <div className="flex shrink-0 gap-2">
             <Button type="button" onClick={onSaveClick} disabled={saving} className="bg-[#40938c] text-black font-bold">
