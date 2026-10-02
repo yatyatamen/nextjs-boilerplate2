@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     } else if (existingProfile) {
       const { error: profileUpdateError } = await supabase
         .from("profiles")
-        .update({ email: user.email ?? null, full_name: fullName })
+        .update({ email: user.email ?? null, full_name: fullName, role: "member", level: "member" })
         .eq("id", user.id)
       if (profileUpdateError) console.error("Confirmed user profile name sync failed:", profileUpdateError.message)
     } else {

@@ -109,6 +109,7 @@ export default function LoginPage() {
           emailRedirectTo: `${AUTH_REDIRECT_URL?.replace(/\/$/, "") || FALLBACK_AUTH_REDIRECT_URL}/auth/callback`,
           data: {
             full_name: normalizedFullName,
+            role: "member",
             level: "member",
           },
         },
@@ -138,7 +139,7 @@ export default function LoginPage() {
           }, { onConflict: "id" })
           if (profileError) console.error("New member profile save failed:", profileError.message)
         }
-        setError("Registration successful! Please check your email or try logging in.")
+        setError(" Registration successful! Please verify your email via the confirmation link sent to your inbox to activate your account.")
         setIsRegister(false)
         setLoading(false)
       }

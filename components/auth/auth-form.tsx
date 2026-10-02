@@ -76,7 +76,9 @@ export function AuthForm() {
       .maybeSingle()
 
     const rawRole = String(existingProfile?.role ?? "member").trim().toLowerCase()
-    const normalizedRole = MEMBER_LEVEL_ROLES.has(rawRole) ? "member" : rawRole || "member"
+    const normalizedRole = isNewRegistration
+      ? "member"
+      : MEMBER_LEVEL_ROLES.has(rawRole) ? "member" : rawRole || "member"
     const normalizedLevel = isNewRegistration
       ? "member"
       : String(existingProfile?.level ?? "member").trim() || "member"
