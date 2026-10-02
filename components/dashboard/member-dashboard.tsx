@@ -2554,7 +2554,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                       className="h-full w-full object-cover"
                                                                     />
                                                                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent p-4">
-                                                                      <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-white/80">Leadership Team</p>
+                                                                      <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-white/80"></p>
                                                                     </div>
                                                                   </div>
                                                                 </div>
