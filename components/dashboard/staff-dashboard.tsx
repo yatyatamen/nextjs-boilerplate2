@@ -1179,7 +1179,7 @@ export function StaffDashboard({
               <p className="text-sm text-sidebar-foreground/70">Staff console</p>
               <h2 className="text-2xl font-bold">Welcome, {displayName}</h2>
               <p className="mt-1 text-sm text-sidebar-foreground/70">
-                Manage your multi-tier schedules, post gear guides, and upload inventory live onto the Wolves platform.
+                   
               </p>
             </div>
           </Card>
@@ -1234,7 +1234,7 @@ export function StaffDashboard({
 
       {active === "members" && (
         <div>
-          <SectionHeader title="Members" desc="View members and update account names and skill levels." />
+          <SectionHeader title="Members" desc="  " />
 
           <div className="mb-4">
             <Label className="mb-2 block text-xs uppercase tracking-[0.2em] text-muted-foreground">Search Members</Label>
@@ -1360,7 +1360,7 @@ export function StaffDashboard({
 
       {active === "schedule" && (
         <div>
-          <SectionHeader title="Schedule Management" desc="Create structured, multi-tier crossing sessions visible only to qualifying members." />
+          <SectionHeader title="Schedule Management" desc="   " />
           <ScheduleForm
             onCreate={async (payload) => {
               const { data, error } = await supabase
@@ -1449,7 +1449,7 @@ export function StaffDashboard({
 
       {active === "bookings" && (
         <div>
-          <SectionHeader title="Session Bookings" desc="View all member bookings for your sessions." />
+          <SectionHeader title="Session Bookings" desc="   " />
           <div className="mt-6 flex flex-col gap-4">
             {schedule.length === 0 ? (
               <Card className="p-6 text-center">
@@ -1566,7 +1566,7 @@ export function StaffDashboard({
 
       {active === "attendance" && (
         <div>
-          <SectionHeader title="Attendance" desc="Mark attendance and review session sign-ups for each booking." />
+          <SectionHeader title="Attendance" desc="   " />
           {attendanceSaveError && (
             <Card role="alert" className="mb-4 border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-300">
               {attendanceSaveError}
@@ -1953,14 +1953,14 @@ export function StaffDashboard({
 
       {active === "resources" && (
         <div>
-          <SectionHeader title="Assessment PDFs" desc="Post rubric and assessment PDFs for all members to view." />
+          <SectionHeader title="Assessment PDFs" desc=" " />
           
           {/* Add New Resource */}
           <Card className="p-4 mb-6">
             <div className="flex flex-col gap-3">
               <Label className="text-sm font-semibold">Add New Resource</Label>
               <Input
-                placeholder="Resource title (e.g., 'Level Testing Rubric')"
+                placeholder="Resource title"
                 value={newResourceTitle}
                 onChange={(e) => setNewResourceTitle(e.target.value)}
               />
@@ -2050,7 +2050,7 @@ export function StaffDashboard({
 
       {active === "announcements" && (
         <div className="space-y-6">
-          <SectionHeader title="Announcements" desc="Post global updates for your student body dashboard." />
+          <SectionHeader title="Announcements" desc="   " />
 
           <Card className="p-5 border-dashed border-primary/30 bg-primary/5">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary mb-3">
@@ -2284,7 +2284,7 @@ export function StaffDashboard({
 
       {active === "gear" && (
         <div className="space-y-6">
-          <SectionHeader title="Equipment Guide Publisher" desc="Upload technical equipment descriptions layout profiles." />
+          <SectionHeader title="Equipment Guide Publisher" desc="   " />
           <EquipmentGuideForm
             onCreate={async (payload) => {
               const { data, error } = await supabase.from("equipment_recommendations").insert(payload).select()
@@ -2337,7 +2337,7 @@ export function StaffDashboard({
 
       {active === "assessments" && (
         <div>
-          <SectionHeader title="Assessments" desc="Give feedback and instantly record a user's promotional tier." />
+          <SectionHeader title="Assessments" desc="   " />
           <AssessmentForm
             members={members.filter((m) => m.role === "member")}
             onCreate={async ({ userId, level, feedback, date, score, pdf_url }) => {
@@ -2429,7 +2429,7 @@ export function StaffDashboard({
       {active === "comments" && (
         <div className="space-y-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <SectionHeader title="Member comments" desc="Review member advice and feedback and update each item to the right status." />
+            <SectionHeader title="Member comments" desc="   " />
             <div className="flex flex-wrap gap-2">
               {(["all", "unread", "solved"] as const).map((filter) => (
                 <button
@@ -2668,7 +2668,7 @@ function ScheduleForm({
         >
           <div className="flex flex-col gap-1.5 sm:col-span-2">
             <Label htmlFor="s-title">Session Title</Label>
-            <Input id="s-title" placeholder="e.g., Free play section" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <Input id="s-title" placeholder="  Free play section" value={title} onChange={(e) => setTitle(e.target.value)} required />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="s-date">Date</Label>
@@ -2712,11 +2712,11 @@ function ScheduleForm({
         </div>
         <div className="flex flex-col gap-1.5 sm:col-span-2">
           <Label htmlFor="s-notes">Session Notes</Label>
-          <Textarea id="s-notes" placeholder="Constraints description..." value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <Textarea id="s-notes" placeholder=" Description..." value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         <div className="sm:col-span-2">
           <Button type="submit" disabled={confirmLoading} className="bg-[#40938c] text-black font-bold">
-            Inject Active Session Slot
+            Post Session
           </Button>
         </div>
       </form>

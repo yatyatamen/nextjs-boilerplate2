@@ -1361,7 +1361,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                     }
                                                     
                                                     showConfirmation(
-                                                      "Retract Spot?",
+                                                      " Cancel Booking?",
                                                       `Remove your booking from ${sessionInfo}?`,
                                                       async () => {
                                                         setConfirmLoading(true)
@@ -1823,7 +1823,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                           <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>{s ? formatDate(s.date) : "Training Interval"} {s?.time && `· ${s.time}`}</p>
                                                                           {s?.title && <p className={`text-xs font-mono ${theme.textSecondary} mt-0.5`}>Focus: {s.title}</p>}
                                                                         </div>
-                                                                        <Button type="button" size="sm" onClick={() => cancel(b)} className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400 font-mono rounded-sm">Retract Spot</Button>
+                                                                        <Button type="button" size="sm" onClick={() => cancel(b)} className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400 font-mono rounded-sm"> Cancel Booking</Button>
                                                                       </Card>
                                                                     )
                                                                   })}
@@ -1837,7 +1837,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                             <div>
                                                               <div className="mb-4"><h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>My Performance Assessment</h2></div>
                                                               {assessments.length === 0 ? (
-                                                                <Card className={`p-6 text-center ${theme.cardBorder} ${theme.cardBg} rounded-sm`}><p className={`text-xs ${theme.textMuted}`}>No evaluation marks logged yet by your trainers.</p></Card>
+                                                                <Card className={`p-6 text-center ${theme.cardBorder} ${theme.cardBg} rounded-sm`}><p className={`text-xs ${theme.textMuted}`}>No evaluation marks have been returned yet.</p></Card>
                                                               ) : (
                                                                 <div className="flex flex-col gap-4">
                                                                   {assessments.map((as) => (
@@ -2567,7 +2567,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                             <div>
                                                               <div className="mb-6">
                                                                 <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Rubrics & Assessment PDFs</h2>
-                                                                <p className={`text-[11px] ${theme.textMuted} mt-1`}>View and download rubrics, assessment guides, and other learning resources shared by your coaches.</p>
+                                                                <p className={`text-[11px] ${theme.textMuted} mt-1`}>View assessment rubrics and guides shared by your leaders.</p>
                                                               </div>
 
                                                               {resources.length === 0 ? (
@@ -2665,11 +2665,11 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                               <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col gap-4`}>
                                                                 <div>
                                                                   <h3 className="text-sm font-bold uppercase tracking-wide text-[#40938c]">Account Configuration</h3>
-                                                                  <p className={`text-[11px] ${theme.textMuted}`}>Modify display identities and alter theme configuration flags</p>
+                                                                  <p className={`text-[11px] ${theme.textMuted}`}>   </p>
                                                                 </div>
                                                                 <div className="flex flex-col sm:flex-row items-end gap-3 max-w-md">
                                                                   <div className="flex flex-col gap-1 w-full">
-                                                                    <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>User Display Identity</label>
+                                                                    <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>User Display Name</label>
                                                                     <input 
                                                                       type="text" 
                                                                       value={customName} 
@@ -2702,7 +2702,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                               <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex justify-between items-center`}>
                                                                 <div>
                                                                   <h4 className={`text-xs font-bold uppercase tracking-wide ${theme.textSecondary}`}>Visual Display Mode</h4>
-                                                                  <p className={`text-[11px] ${theme.textMuted} font-mono`}>Toggle alternative color layouts</p>
+                                                                  <p className={`text-[11px] ${theme.textMuted} font-mono`}> </p>
                                                                 </div>
                                                                 <button 
                                                                   onClick={() => setIsDarkMode(!isDarkMode)} 
@@ -2839,7 +2839,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                       </div>
                                                       <div>
                                                         <p className={`text-[10px] font-mono uppercase tracking-wider ${theme.textMuted}`}>{label}</p>
-                                                        <p className="text-2xl font-black font-mono tracking-tight text-white mt-0.5">{value}</p>
+                                                        <p className={`text-2xl font-black font-mono tracking-tight ${theme.textPrimary} mt-0.5`}>{value}</p>
                                                       </div>
                                                     </Card>
                                                   )
