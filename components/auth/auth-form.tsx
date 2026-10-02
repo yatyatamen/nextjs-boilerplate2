@@ -67,6 +67,7 @@ export function AuthForm() {
     userId: string,
     fullNameFromUser: string,
     emailFromUser?: string | null,
+    isNewRegistration = false,
   ) {
     const { data: existingProfile } = await supabase
       .from("profiles")
@@ -76,7 +77,9 @@ export function AuthForm() {
 
     const rawRole = String(existingProfile?.role ?? "member").trim().toLowerCase()
     const normalizedRole = MEMBER_LEVEL_ROLES.has(rawRole) ? "member" : rawRole || "member"
-    const normalizedLevel = String(existingProfile?.level ?? "member").trim() || "member"
+    const normalizedLevel = isNewRegistration
+      ? "member"
+      : String(existingProfile?.level ?? "member").trim() || "member"
 
     const upsertPayload = {
       id: userId,
@@ -181,14 +184,11 @@ export function AuthForm() {
             emailRedirectTo: `${AUTH_REDIRECT_URL?.replace(/\/$/, "") || FALLBACK_AUTH_REDIRECT_URL}/auth/callback`,
             data: {
               full_name: fullName.trim(),
+              level: "member",
             },
           },
         })
         console.debug("supabase signUp response", { data, error })
-
-        if (data.user) {
-          await ensureProfileDefaults(supabase, data.user.id, fullName.trim(), normalizedEmail)
-        }
 
         if (
           error ||
@@ -206,6 +206,8 @@ export function AuthForm() {
 
         const user = data.user
         if (user) {
+          await ensureProfileDefaults(supabase, user.id, fullName.trim(), normalizedEmail, true)
+
           if (user.identities && user.identities.length === 0) {
             setFormError("This email is already in use. Please sign in instead.")
             setMode("login")
