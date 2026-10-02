@@ -599,7 +599,12 @@ export function StaffDashboard({
       `Are you sure you want to delete this ${label}? This action cannot be undone.`,
       async () => {
         closeConfirmation()
-        await onConfirm()
+        try {
+          await onConfirm()
+        } catch (error) {
+          console.error(`Failed to delete ${label}:`, error)
+          showToast(error instanceof Error ? error.message : `Unable to delete ${label}`)
+        }
       },
     )
   }
@@ -2267,7 +2272,7 @@ export function StaffDashboard({
                   const imageUrls = parseImageUrls(item.pic_url || (item.image_urls ? JSON.stringify(item.image_urls) : null))
                   const firstImage = imageUrls[0]
                   return (
-                    <Card key={item.id} className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                    <Card key={item.id} className="flex flex-col gap-3 border-zinc-200 bg-white p-4 text-zinc-900 md:flex-row md:items-center md:justify-between">
                       <div className="flex items-center gap-3">
                         <div className="h-14 w-14 overflow-hidden rounded-lg border border-border bg-muted/30">
                           {firstImage ? (
@@ -2324,7 +2329,7 @@ export function StaffDashboard({
                   const imageUrls = parseImageUrls(guide.image_url ?? (guide.image_urls ? JSON.stringify(guide.image_urls) : null))
                   const firstImage = imageUrls[0]
                   return (
-                    <Card key={guide.id} className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                    <Card key={guide.id} className="flex flex-col gap-3 border-zinc-200 bg-white p-4 text-zinc-900 md:flex-row md:items-center md:justify-between">
                       <div className="flex items-center gap-3">
                         <div className="h-14 w-14 overflow-hidden rounded-lg border border-border bg-muted/30">
                           {firstImage ? (
@@ -2464,7 +2469,7 @@ export function StaffDashboard({
           </div>
 
           {filteredComments.length === 0 ? (
-            <Card className="p-6 text-center text-sm text-black">No comments in this filter.</Card>
+            <Card className="p-6 text-center text-sm text-muted-foreground">No comments in this filter.</Card>
           ) : (
             <div className="grid gap-4">
               {filteredComments.map((message) => {
@@ -2718,14 +2723,17 @@ function ScheduleForm({
             <Label className="text-[#40938c] font-bold">Select Visible Ranks</Label>
             <div className="flex flex-wrap gap-4">
               {ALL_TIERS.map((tier) => (
-                <label key={tier} className="flex items-center gap-2 text-xs font-mono text-zinc-200 cursor-pointer">
+                <label
+                  key={tier}
+                  className={`flex cursor-pointer items-center gap-2 rounded-sm border px-2.5 py-1.5 text-xs font-mono transition-colors ${selectedTiers.includes(tier) ? "border-[#40938c] bg-[#40938c]/15 text-emerald-100" : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"}`}
+                >
                 <input
                   type="checkbox"
                   checked={selectedTiers.includes(tier)}
                   onChange={() => toggleTier(tier)}
-                  className="accent-[#40938c] h-4 w-4"
+                    className="h-4 w-4 shrink-0 accent-[#40938c]"
                 />
-                {tier}
+                  <span>{tier}</span>
               </label>
             ))}
           </div>
