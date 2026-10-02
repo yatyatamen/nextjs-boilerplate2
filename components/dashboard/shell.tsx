@@ -19,6 +19,7 @@ export function DashboardShell({
   displayName,
   subtitle,
   badgeLabel,
+  bare = false,
   children,
 }: {
   navItems: NavItem[]
@@ -27,8 +28,11 @@ export function DashboardShell({
   displayName: string
   subtitle: string
   badgeLabel?: string
+  bare?: boolean
   children: React.ReactNode
 }) {
+  if (bare) return <>{children}</>
+
   const activeLabel = navItems.find((n) => n.key === activeKey)?.label ?? ""
 
   return (

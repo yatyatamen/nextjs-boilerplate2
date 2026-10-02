@@ -3,6 +3,7 @@
                                                 import { useMemo, useState, useEffect, useRef } from "react"
                                                 import { createClient } from "@/lib/supabase/client"
                                                 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
+                                                import { StaffDashboard } from "@/components/dashboard/staff-dashboard"
                                                 import { Badge, Button, Card } from "@/components/ui/primitives"
                                                 import type {
                                                   Profile,
@@ -61,6 +62,10 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   { key: "support", label: "Contact & Support", icon: LifeBuoy },
                                                   { key: "settings", label: "Settings", icon: Settings },
                                                 ]
+const LEADER_MANAGEMENT_NAV: NavItem[] = [
+  { key: "leader-schedule", label: "Session Management", icon: CalendarDays },
+  { key: "leader-attendance", label: "Attendance Management", icon: UserCheck },
+]
 
                                                 const AVAILABLE_TIME_SLOTS = [
                                                   "3:20-4:30 PM",
@@ -362,6 +367,8 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   const isLeader = profile.role === "leader"
                                                   const canManageAttendance = isStaff || isLeader
                                                   const canPostSchedule = isStaff || isLeader
+                                                  const dashboardNav = NAV.filter(item => item.key === "attendance" ? canManageAttendance : item.key === "grading-manager" ? isStaff : true)
+                                                  const visibleDashboardNav = isLeader ? [...dashboardNav, ...LEADER_MANAGEMENT_NAV] : dashboardNav
 
                                                   function getProfileDisplayName(profileEntry: Partial<Profile> | null | undefined) {
                                                     if (!profileEntry) return "Member"
@@ -1566,7 +1573,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   return (
                                                     <div className={`w-full min-h-screen ${theme.bg} ${theme.textPrimary} transition-colors duration-200`}>
                                                       <DashboardShell
-                                                        navItems={NAV.filter(item => item.key === "attendance" ? canManageAttendance : item.key === "grading-manager" ? isStaff : true)}
+                                                        navItems={visibleDashboardNav}
                                                         activeKey={active}
                                                         onChange={(newKey) => {
                                                           setActive(newKey)
@@ -1578,6 +1585,33 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                       >
                                                         <div className={`w-full ${theme.bg} p-6 box-border`}>
                                                           
+                                                          {active === "leader-schedule" && isLeader && (
+                                                            <StaffDashboard
+                                                              profile={profile}
+                                                              initialMembers={allProfiles}
+                                                              initialSchedule={schedule}
+                                                              initialAnnouncements={[]}
+                                                              initialBlogPosts={[]}
+                                                              initialAssessments={[]}
+                                                              initialBookings={leaderBookings}
+                                                              initialAttendanceRecords={attendanceList}
+                                                              embeddedSection="schedule"
+                                                            />
+                                                          )}
+                                                          {active === "leader-attendance" && isLeader && (
+                                                            <StaffDashboard
+                                                              profile={profile}
+                                                              initialMembers={allProfiles}
+                                                              initialSchedule={schedule}
+                                                              initialAnnouncements={[]}
+                                                              initialBlogPosts={[]}
+                                                              initialAssessments={[]}
+                                                              initialBookings={leaderBookings}
+                                                              initialAttendanceRecords={attendanceList}
+                                                              embeddedSection="attendance"
+                                                            />
+                                                          )}
+
                                                           {/* OVERVIEW MODULE */}
                                                           {active === "overview" && (
                                                             <div className="flex flex-col gap-6">

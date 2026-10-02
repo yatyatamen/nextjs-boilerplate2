@@ -207,6 +207,7 @@ export function StaffDashboard({
   initialShopItems = [],
   initialAttendanceRecords = [],
   initialMessages = [],
+  embeddedSection,
 }: {
   profile: Profile
   initialMembers: Profile[]
@@ -219,10 +220,11 @@ export function StaffDashboard({
   initialGearGuides?: EquipmentRecommendation[]
   initialAttendanceRecords?: AttendanceRecord[]
   initialMessages?: SupportTicket[]
+  embeddedSection?: "schedule" | "attendance"
 }) {
   const supabase = createClient()
   const isLeader = profile.role === "leader"
-  const [active, setActive] = useState(isLeader ? "schedule" : "overview")
+  const [active, setActive] = useState(embeddedSection ?? (isLeader ? "schedule" : "overview"))
 
   const [members, setMembers] = useState<Profile[]>(initialMembers)
   const [schedule, setSchedule] = useState<ScheduleSession[]>(() => sortSessions(initialSchedule || []))
@@ -1142,6 +1144,7 @@ export function StaffDashboard({
 
   return (
     <DashboardShell
+      bare={Boolean(embeddedSection)}
       navItems={isLeader ? LEADER_NAV : NAV}
       activeKey={active}
       onChange={setActive}
