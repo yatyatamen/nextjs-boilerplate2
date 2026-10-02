@@ -3,7 +3,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { sendAbsenceEmail } from "@/lib/supabase/email"
 import type { EmailTemplate } from "@/lib/email-templates"
 
-const ATTENDANCE_ROLES = new Set(["staff", "teacher"])
+const ATTENDANCE_ROLES = new Set(["staff", "teacher", "leader"])
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message

@@ -28,6 +28,8 @@ export default async function MemberDashboardPage() {
     .eq("id", user.id)
     .maybeSingle<Profile>()
 
+  if (profile?.role === "leader") redirect("/leader-dashboard")
+
   // Fixed mapping block to fully satisfy the internal Profile type definition
   const activeProfile: Profile = {
     id: user.id,

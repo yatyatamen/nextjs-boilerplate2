@@ -1,12 +1,13 @@
 export const ALLOWED_DOMAIN = "@gapps.yrdsb.ca"
 
-export const VALID_ROLES = ["staff", "teacher", "member"] as const
+export const VALID_ROLES = ["staff", "teacher", "leader", "member"] as const
 export const VALID_LEVELS = ["Bronze", "Silver", "Gold", "Diamond", "member"] as const
 
 // Roles and levels share one set of selectable profile values, but role and level are intentionally separate.
 export const ROLE_AND_LEVEL_OPTIONS = [
   "staff",
   "teacher",
+  "leader",
   "Bronze",
   "Silver",
   "Gold",

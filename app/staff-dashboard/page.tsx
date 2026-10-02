@@ -28,6 +28,7 @@ export default async function StaffDashboardPage() {
     .single<Profile>()
 
   if (!profile) redirect("/")
+  if (profile.role === "leader") redirect("/leader-dashboard")
   if (profile.role !== "staff") redirect("/member-dashboard")
 
   // 2. Fetch support tickets using service role to bypass RLS

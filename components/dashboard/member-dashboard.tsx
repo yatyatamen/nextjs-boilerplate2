@@ -239,6 +239,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   attendanceRecords = [],
                                                   gearGuides: initialGearGuides = [],
                                                   allProfiles = [],
+                                                  leaderBookings = [],
                                                   supportTickets: initialTickets = [],
                                                 }: {
                                                   profile: Profile
@@ -250,6 +251,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   attendanceRecords?: AttendanceRecord[]
                                                   gearGuides?: EquipmentRecommendation[]
                                                   allProfiles?: Profile[]
+                                                  leaderBookings?: Booking[]
                                                   supportTickets?: SupportTicket[]
                                                 }) {
                                                   const supabase = createClient()
@@ -301,6 +303,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   // Advanced State Fields
                                                   const [attendanceList, setAttendanceList] = useState<AttendanceRecord[]>(attendanceRecords)
                                                   const [attendanceFilter, setAttendanceFilter] = useState<"all" | "present" | "absent" | "late">("all")
+                                                  const [attendanceSaving, setAttendanceSaving] = useState<Record<string, boolean>>({})
                                                   const [resources, setResources] = useState<Resource[]>([])
 
                                                   const latestGeneralAnnouncement = [...announcements]
@@ -356,6 +359,9 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
 
                                                   const displayName = customName.trim() || profile.email || "Member"
                                                   const isStaff = profile.role === "staff"
+                                                  const isLeader = profile.role === "leader"
+                                                  const canManageAttendance = isStaff || isLeader
+                                                  const canPostSchedule = isStaff || isLeader
 
                                                   function getProfileDisplayName(profileEntry: Partial<Profile> | null | undefined) {
                                                     if (!profileEntry) return "Member"
@@ -720,34 +726,38 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   async function handleCreateSession() {
                                                     if (!newSessionDate) return
                                                     const combinedFocusTitle = sessionTitles.filter(t => t.trim() !== "").join(" & ") || "General Drill Session"
-    showConfirmation(
-      "Post this session?",
-      "This will publish the schedule item for members to view and register for.",
-      async () => {
-        closeConfirmation()
-        const { data, error } = await supabase
-          .from("schedule")
-          .insert({
-            date: newSessionDate,
-            time: newSessionTime,
-            level: newSessionLevel,
-            max_capacity: newSessionCapacity ? Number(newSessionCapacity) : null,
-            coach: displayName,
-            title: combinedFocusTitle,
-            notes: getSessionBookingNotes({ date: newSessionDate, time: newSessionTime, max_capacity: newSessionCapacity ? Number(newSessionCapacity) : null, notes: "" }, 0)
-          })
-          .select()
-          .single()
-        
-        if (!error && data) {
-          setSchedule((prev) => [data as ScheduleSession, ...prev])
-          setNewSessionDate("")
-          setSessionTitles(["Core Training Focus"])
-          showToast("Session posted successfully")
-        }
-      }
-    )
-  }
+                                                    showConfirmation(
+                                                      "Post this session?",
+                                                      "This will publish the schedule item for members to view and register for.",
+                                                      async () => {
+                                                        closeConfirmation()
+                                                        try {
+                                                          const response = await fetch("/api/schedule", {
+                                                            method: "POST",
+                                                            credentials: "same-origin",
+                                                            headers: { "Content-Type": "application/json" },
+                                                            body: JSON.stringify({
+                                                              date: newSessionDate,
+                                                              time: newSessionTime,
+                                                              level: newSessionLevel,
+                                                              max_capacity: newSessionCapacity ? Number(newSessionCapacity) : null,
+                                                              coach: displayName,
+                                                              title: combinedFocusTitle,
+                                                              notes: getSessionBookingNotes({ date: newSessionDate, time: newSessionTime, max_capacity: newSessionCapacity ? Number(newSessionCapacity) : null, notes: "" }, 0),
+                                                            }),
+                                                          })
+                                                          const result = await response.json().catch(() => ({}))
+                                                          if (!response.ok || !result.data) throw new Error(result.error || "Unable to post session")
+                                                          setSchedule((prev) => [result.data as ScheduleSession, ...prev])
+                                                          setNewSessionDate("")
+                                                          setSessionTitles(["Core Training Focus"])
+                                                          showToast("Session posted successfully")
+                                                        } catch (error) {
+                                                          showToast(error instanceof Error ? error.message : "Unable to post session")
+                                                        }
+                                                      },
+                                                    )
+                                                  }
 
   async function handlePostAnnouncement() {
     if (!newAnnTitle || !newAnnContent) return
@@ -1390,9 +1400,57 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   }
 
                                                   async function toggleAttendance(id: string, nextStatus: "present" | "absent" | "late") {
-                                                    const { error } = await supabase.from("attendance").update({ status: nextStatus }).eq("id", id)
-                                                    if (!error) {
-                                                      setAttendanceList((prev) => prev.map((item) => (item.id === id ? { ...item, status: nextStatus } : item)))
+                                                    const response = await fetch("/api/attendance", {
+                                                      method: "POST",
+                                                      credentials: "same-origin",
+                                                      headers: { "Content-Type": "application/json" },
+                                                      body: JSON.stringify({ attendance_id: id, status: nextStatus }),
+                                                    })
+                                                    const result = await response.json().catch(() => ({}))
+                                                    if (!response.ok) {
+                                                      showToast(result.error || "Unable to update attendance")
+                                                      return
+                                                    }
+                                                    if (result.data) {
+                                                      setAttendanceList((prev) => prev.map((item) => (item.id === id ? result.data as AttendanceRecord : item)))
+                                                    }
+                                                  }
+
+                                                  async function markBookingAttendance(booking: Booking, nextStatus: "present" | "absent" | "late") {
+                                                    const bookingId = String(booking.id)
+                                                    const member = allProfiles.find((entry) => String(entry.id) === String(booking.user_id))
+                                                    const name = getProfileDisplayName(member)
+                                                    const existing = attendanceList.find((record) =>
+                                                      String(record.session_id) === String(booking.session_id) && String(record.user_id) === String(booking.user_id),
+                                                    )
+                                                    setAttendanceSaving((previous) => ({ ...previous, [bookingId]: true }))
+                                                    try {
+                                                      const response = await fetch("/api/attendance", {
+                                                        method: "POST",
+                                                        credentials: "same-origin",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({
+                                                          ...(existing ? { attendance_id: existing.id } : {
+                                                            session_id: booking.session_id,
+                                                            user_id: booking.user_id,
+                                                          }),
+                                                          user_name: name,
+                                                          user_level: member?.level || "Unknown",
+                                                          status: nextStatus,
+                                                        }),
+                                                      })
+                                                      const result = await response.json().catch(() => ({}))
+                                                      if (!response.ok) throw new Error(result.error || "Unable to save attendance")
+                                                      if (result.data) {
+                                                        setAttendanceList((previous) => [
+                                                          result.data as AttendanceRecord,
+                                                          ...previous.filter((record) => String(record.id) !== String(result.data.id)),
+                                                        ])
+                                                      }
+                                                    } catch (error) {
+                                                      showToast(error instanceof Error ? error.message : "Unable to save attendance")
+                                                    } finally {
+                                                      setAttendanceSaving((previous) => ({ ...previous, [bookingId]: false }))
                                                     }
                                                   }
 
@@ -1508,7 +1566,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   return (
                                                     <div className={`w-full min-h-screen ${theme.bg} ${theme.textPrimary} transition-colors duration-200`}>
                                                       <DashboardShell
-                                                        navItems={NAV.filter(item => (item.key !== "attendance" && item.key !== "grading-manager") || isStaff)}
+                                                        navItems={NAV.filter(item => item.key === "attendance" ? canManageAttendance : item.key === "grading-manager" ? isStaff : true)}
                                                         activeKey={active}
                                                         onChange={(newKey) => {
                                                           setActive(newKey)
@@ -1516,7 +1574,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                         }}
                                                         displayName={displayName}
                                                         subtitle={profile.email ?? ""}
-                                                        badgeLabel={isStaff ? "Status: Management Staff" : `Tier: ${profile.level ?? "Bronze"}`}
+                                                        badgeLabel={isStaff ? "Status: Management Staff" : isLeader ? "Status: Club Leader" : `Tier: ${profile.level ?? "Bronze"}`}
                                                       >
                                                         <div className={`w-full ${theme.bg} p-6 box-border`}>
                                                           
@@ -1641,7 +1699,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                                     <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Session Schedule</h2>
                                                                   </div>
                                                                   
-                                                                  {isStaff && (
+                                                                  {canPostSchedule && (
                                                                     <Card className={`p-4 border border-[#40938c]/30 bg-[#40938c]/5 rounded-sm mb-4 flex flex-col gap-3`}>
                                                                       <p className="text-[11px] font-bold uppercase tracking-wide text-[#40938c]">Create New Schedule Track</p>
                                                                       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
@@ -1915,8 +1973,56 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                           )}
 
                                                           {/* ACTIVE CHECK-INS / STUDENT ROSTER ATTENDANCE */}
-                                                          {active === "attendance" && isStaff && (
+                                                          {active === "attendance" && canManageAttendance && (
                                                             <div>
+                                                              <div className="mb-6">
+                                                                <h2 className={`text-lg font-semibold ${theme.headingColor}`}>Mark Attendance</h2>
+                                                                <p className={`text-sm ${theme.textMuted}`}>Set a check-in status for members booked into an active session.</p>
+                                                              </div>
+                                                              <div className="mb-6 flex flex-col gap-4">
+                                                                {schedule.filter((session) => !isSessionEnded(session)).map((session) => {
+                                                                  const sessionBookings = leaderBookings.filter((booking) => String(booking.session_id) === String(session.id))
+                                                                  return (
+                                                                    <Card key={`roster-${session.id}`} className={`p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                      <div className="mb-3">
+                                                                        <h3 className={`text-sm font-bold ${theme.headingColor}`}>{session.title || "Training Session"}</h3>
+                                                                        <p className={`text-xs ${theme.textMuted}`}>{formatDate(session.date)} · {session.time || "TBD"}</p>
+                                                                      </div>
+                                                                      {sessionBookings.length === 0 ? (
+                                                                        <p className={`text-xs ${theme.textMuted}`}>No bookings for this session.</p>
+                                                                      ) : (
+                                                                        <div className="flex flex-col gap-2">
+                                                                          {sessionBookings.map((booking) => {
+                                                                            const member = allProfiles.find((entry) => String(entry.id) === String(booking.user_id))
+                                                                            const record = attendanceList.find((entry) => String(entry.session_id) === String(session.id) && String(entry.user_id) === String(booking.user_id))
+                                                                            return (
+                                                                              <div key={booking.id} className={`flex flex-col gap-3 border-t ${theme.cardBorder} pt-3 sm:flex-row sm:items-center sm:justify-between`}>
+                                                                                <div>
+                                                                                  <p className={`text-xs font-bold ${theme.headingColor}`}>{getProfileDisplayName(member)}</p>
+                                                                                  <p className={`text-[10px] ${theme.textMuted}`}>Tier: {member?.level || "Unknown"} · Current: {record?.status || "Not marked"}</p>
+                                                                                </div>
+                                                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                                                  {(["present", "late", "absent"] as const).map((status) => (
+                                                                                    <button
+                                                                                      key={status}
+                                                                                      type="button"
+                                                                                      disabled={attendanceSaving[String(booking.id)]}
+                                                                                      onClick={() => void markBookingAttendance(booking, status)}
+                                                                                      className={`rounded-sm border px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide transition-all disabled:opacity-50 ${record?.status === status ? status === "present" ? "border-green-500/40 bg-green-500/10 font-bold text-green-400" : status === "absent" ? "border-red-500/40 bg-red-500/10 font-bold text-red-400" : "border-yellow-500/40 bg-yellow-500/10 font-bold text-yellow-400" : `border-zinc-800 bg-transparent ${theme.textMuted}`}`}
+                                                                                    >
+                                                                                      {status}
+                                                                                    </button>
+                                                                                  ))}
+                                                                                </div>
+                                                                              </div>
+                                                                            )
+                                                                          })}
+                                                                        </div>
+                                                                      )}
+                                                                    </Card>
+                                                                  )
+                                                                })}
+                                                              </div>
                                                               <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                                                 <div>
                                                                   <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Active Bookings Checklist</h2>
@@ -1969,7 +2075,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                           )}
 
                                                           {/* MEMBER ATTENDANCE HISTORY */}
-                                                          {active === "attendance" && !isStaff && (
+                                                          {active === "attendance" && !canManageAttendance && (
                                                             <div>
                                                               <div className="mb-6">
                                                                 <h2 className={`text-lg font-semibold ${theme.headingColor}`}>Your Attendance</h2>

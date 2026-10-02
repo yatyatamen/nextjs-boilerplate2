@@ -116,6 +116,8 @@ export function AuthForm() {
       router.push("/staff-dashboard")
     } else if (normalizedRole === "teacher") {
       router.push("/teacher-dashboard")
+    } else if (normalizedRole === "leader") {
+      router.push("/leader-dashboard")
     } else {
       router.push("/member-dashboard")
     }
