@@ -1723,12 +1723,18 @@ export function StaffDashboard({
 
                   const rows = uniqueBookings
                     .map((booking) => {
-                      const member = members.find((m) => m.id === booking.user_id)
+                      const member = members.find((m) => String(m.id) === String(booking.user_id))
                       const attendance = attendanceRecords.find(
                         (record) => String(record.session_id) === String(booking.session_id) && String(record.user_id) === String(booking.user_id),
                       )
+                      const savedName = attendance?.user_name?.trim()
+                      const displayName = member?.full_name?.trim()
+                        || [member?.first_name, member?.last_name].filter(Boolean).join(" ")
+                        || (savedName && !["unknown", "unknown member", "member"].includes(savedName.toLowerCase()) ? savedName : "")
+                        || member?.email
+                        || "Name unavailable"
                       const status = attendance?.status ?? "not marked"
-                      return { booking, member, attendance, status }
+                      return { booking, member, attendance, status, displayName }
                     })
                     .filter((row) => {
                       const matchesStatus = attendanceFilter === "all" || row.status === attendanceFilter
@@ -1806,7 +1812,7 @@ export function StaffDashboard({
                             <thead className="border-b border-zinc-800 bg-zinc-900 text-zinc-300">
                               <tr>
                                 <th className="px-4 py-3">Member</th>
-                                <th className="px-4 py-3">Tier</th>
+                                <th className="px-4 py-3">Role / Level</th>
                                 <th className="px-4 py-3">Session</th>
                                 <th className="px-4 py-3">Status</th>
                                 <th className="px-4 py-3">Notes</th>
@@ -1815,7 +1821,7 @@ export function StaffDashboard({
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-800">
-                              {rows.map(({ booking, member, attendance, status }) => (
+                              {rows.map(({ booking, member, attendance, status, displayName }) => (
                                 <tr key={booking.id} className="hover:bg-zinc-900">
                                   <td className="px-4 py-3 align-top">
                                     <p className="font-medium text-zinc-100">
@@ -1824,12 +1830,14 @@ export function StaffDashboard({
                                         onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
                                         className="text-left p-0 m-0 underline-offset-2 hover:underline"
                                       >
-                                        {member?.full_name || member?.email || "Unknown Member"}
+                                        {displayName}
                                       </button>
                                     </p>
-                                    <p className="text-xs text-zinc-400">{booking.user_id}</p>
+                                    <p className="text-xs text-zinc-400">{member?.email || "Email unavailable"}</p>
                                   </td>
-                                  <td className="px-4 py-3 align-top text-xs text-zinc-400">{member?.level || "N/A"}</td>
+                                  <td className="px-4 py-3 align-top text-xs text-zinc-400">
+                                    {[member?.role, member?.level].filter(Boolean).join(" · ") || "N/A"}
+                                  </td>
                                   <td className="px-4 py-3 align-top text-xs text-zinc-300">
                                     <div className="font-medium text-zinc-100">{session.title ?? "Untitled Session"}</div>
                                     <div className="text-zinc-400">{formatDate(session.date)}</div>

@@ -38,6 +38,10 @@ export default async function LeaderDashboardPage() {
     rosterClient.from("bookings").select("*"),
   ])
 
+  if (allProfiles.error) {
+    console.error("Leader profile roster fetch failed:", allProfiles.error.message)
+  }
+
   return (
     <MemberDashboard
       profile={profile}

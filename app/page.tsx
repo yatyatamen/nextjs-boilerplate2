@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Card, Button } from "@/components/ui/primitives"
 import { isValidSchoolEmail, ALLOWED_DOMAIN } from "@/lib/types"
-import { CalendarDays, Trophy, Megaphone, ShoppingBag, Mail, Lock, Loader2 } from "lucide-react"
+import { CalendarDays, Trophy, Megaphone, ShoppingBag, Mail, Lock, Loader2, UserRound } from "lucide-react"
 
 const DOMAIN_ERROR = `Only YRDSB school email addresses (${ALLOWED_DOMAIN}) are allowed.`
 const AUTH_REDIRECT_URL = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
@@ -34,6 +34,7 @@ export default function LoginPage() {
   const supabase = createClient()
   const router = useRouter()
   const [isRegister, setIsRegister] = useState(false)
+  const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -80,6 +81,13 @@ export default function LoginPage() {
     const normalizedEmail = email.trim()
 
     if (isRegister) {
+      const normalizedFullName = fullName.trim()
+      if (!normalizedFullName) {
+        setError("Please enter your full name.")
+        setLoading(false)
+        return
+      }
+
       if (!isValidSchoolEmail(normalizedEmail)) {
         setError(DOMAIN_ERROR)
         setLoading(false)
@@ -99,6 +107,10 @@ export default function LoginPage() {
         password,
         options: {
           emailRedirectTo: `${AUTH_REDIRECT_URL?.replace(/\/$/, "") || FALLBACK_AUTH_REDIRECT_URL}/auth/callback`,
+          data: {
+            full_name: normalizedFullName,
+            level: "member",
+          },
         },
       })
       console.debug("supabase signUp response", { data, error })
@@ -115,6 +127,17 @@ export default function LoginPage() {
         setError(error.message)
         setLoading(false)
       } else {
+        if (data.user && data.session) {
+          const { error: profileError } = await supabase.from("profiles").upsert({
+            id: data.user.id,
+            email: normalizedEmail,
+            full_name: normalizedFullName,
+            role: "member",
+            level: "member",
+            marketing_emails: true,
+          }, { onConflict: "id" })
+          if (profileError) console.error("New member profile save failed:", profileError.message)
+        }
         setError("Registration successful! Please check your email or try logging in.")
         setIsRegister(false)
         setLoading(false)
@@ -229,6 +252,24 @@ export default function LoginPage() {
             )}
 
             <form onSubmit={handleAuth} className="flex flex-col gap-4 relative">
+              {isRegister && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-white font-mono">Full Name</label>
+                  <div className="relative flex items-center">
+                    <UserRound className="absolute left-3 h-4 w-4 text-[#14B8A6]/60" />
+                    <input
+                      type="text"
+                      required
+                      autoComplete="name"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Jordan Lee"
+                      className="w-full bg-zinc-950 text-white border border-zinc-700 outline-none rounded-sm py-3 pl-10 pr-3 text-sm font-mono transition-all focus:border-[#14B8A6] focus:shadow-lg focus:shadow-[#14B8A6]/30 placeholder-zinc-400"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider text-white font-mono">School Email</label>
                 <div className="relative flex items-center">

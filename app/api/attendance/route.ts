@@ -31,7 +31,7 @@ async function notifyAttendanceUpdate(
   template?: EmailTemplate,
 ) {
   if (
-    (nextStatus !== "present" && nextStatus !== "absent" && nextStatus !== "late") ||
+    (nextStatus !== "absent" && nextStatus !== "late") ||
     previousStatus === nextStatus
   ) return { status: "not_needed" as const }
 
