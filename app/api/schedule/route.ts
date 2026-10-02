@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 
 function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Unable to post schedule session"
+  if (error instanceof Error) return error.message
+  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+    return error.message
+  }
+  return "Unable to post schedule session"
 }
 
 export async function POST(request: NextRequest) {
@@ -42,7 +46,9 @@ export async function POST(request: NextRequest) {
       .insert({
         date: body.date.trim(),
         time: body.time.trim(),
-        level: typeof body.level === "string" ? body.level : null,
+        max_level: typeof body.max_level === "string"
+          ? body.max_level
+          : typeof body.level === "string" ? body.level : null,
         max_capacity: capacity,
         visibility_tiers: Array.isArray(body.visibility_tiers) ? body.visibility_tiers : [],
         coach: typeof body.coach === "string" ? body.coach : null,
