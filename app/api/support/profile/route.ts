@@ -11,7 +11,7 @@ export async function PATCH(request: NextRequest) {
     const memberLevel = typeof body?.member_level === "string" ? body.member_level.trim() : undefined
     const marketingEmails = typeof body?.marketing_emails === "boolean" ? body.marketing_emails : undefined
 
-    const validRoles = new Set(["staff", "teacher", "member"])
+    const validRoles = new Set(["staff", "teacher", "leader", "member"])
     const validLevels = new Set(["bronze", "silver", "gold", "diamond", "member"])
     const normalizedRole = rawRole && validRoles.has(rawRole.toLowerCase()) ? rawRole.toLowerCase() : undefined
     const normalizedLevel = rawLevel && (validLevels.has(rawLevel.toLowerCase()) || rawLevel.toLowerCase() === "member") ? rawLevel : undefined

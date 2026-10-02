@@ -137,6 +137,8 @@ export default function LoginPage() {
           window.location.href = "/staff-dashboard"
         } else if (profile?.role === "teacher") {
           window.location.href = "/teacher-dashboard"
+        } else if (profile?.role === "leader") {
+          window.location.href = "/leader-dashboard"
         } else {
           window.location.href = "/member-dashboard"
         }
