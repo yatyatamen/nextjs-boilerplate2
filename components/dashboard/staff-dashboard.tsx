@@ -208,6 +208,7 @@ export function StaffDashboard({
   initialAttendanceRecords = [],
   initialMessages = [],
   embeddedSection,
+  onScheduleChange,
 }: {
   profile: Profile
   initialMembers: Profile[]
@@ -221,6 +222,7 @@ export function StaffDashboard({
   initialAttendanceRecords?: AttendanceRecord[]
   initialMessages?: SupportTicket[]
   embeddedSection?: "schedule" | "attendance"
+  onScheduleChange?: (change: { type: "upsert"; session: ScheduleSession } | { type: "delete"; id: string }) => void
 }) {
   const supabase = createClient()
   const isLeader = profile.role === "leader"

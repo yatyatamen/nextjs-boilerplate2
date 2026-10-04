@@ -34,13 +34,17 @@ export async function POST(request: NextRequest) {
       .select("role")
       .eq("id", authData.user.id)
       .single()
-    if (profileError || !profile || !["staff", "leader"].includes(profile.role)) {
+    const role = String(profile?.role ?? "").trim().toLowerCase()
+    if (profileError || !["staff", "leader", "admin"].includes(role)) {
       return NextResponse.json({ error: "Schedule access denied" }, { status: 403 })
     }
 
-    const database = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY
-      ? await createServiceClient()
-      : supabase
+    let database = supabase
+    try {
+      database = await createServiceClient()
+    } catch {
+      // Use the authenticated client when the service role is unavailable.
+    }
     const { data, error } = await database
       .from("schedule")
       .insert({
