@@ -1521,7 +1521,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                         }}
                                                         displayName={displayName}
                                                         subtitle={profile.email ?? ""}
-                                                        badgeLabel={isStaff ? "Status: Management Staff" : isLeader ? "Status: Club Leader" : `Tier: ${profile.level ?? "Bronze"}`}
+                                                        badgeLabel={isStaff ? "Status: Management Staff" : isLeader ? "Status: Club Leader" : `Tier: ${profile.level ?? "member"}`}
                                                       >
                                                         <div className={`w-full ${theme.bg} p-6 box-border`}>
                                                           
@@ -1567,7 +1567,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 <div className="mt-4 flex gap-2">
                                                                   {!isStaff && (
                                                                     <Badge className="bg-[#40938c] text-black font-bold text-xs px-2.5 py-0.5 rounded-sm border-none">
-                                                                      <Trophy className="mr-1 h-3 w-3 fill-black text-black" /> {profile.level ?? "Bronze"}
+                                                                      <Trophy className="mr-1 h-3 w-3 fill-black text-black" /> {profile.level ?? "member"}
                                                                     </Badge>
                                                                   )}
                                                                   {isStaff && <Badge className="bg-red-500 text-white text-xs px-2.5 py-0.5 rounded-sm border-none font-bold uppercase tracking-wide">Club Staff</Badge>}
@@ -1717,6 +1717,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   )
                                                 })}
                                                                   </div>
+                                                                  <Card className={`mt-4 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                    <p className={`text-xs leading-relaxed ${theme.textSecondary}`}>
+                                                                      Booking closes 6 hours before a session starts. Cancellations must be made at least 24 hours before the session starts. If you have any problems, please talk to a club leader.
+                                                                    </p>
+                                                                  </Card>
                                                                 </>
                                                               ) : (
                                                                 /* INTERMEDIARY VERIFICATION CONFIRMATION VIEW */

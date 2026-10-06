@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     ? user.user_metadata.full_name.trim()
     : ""
 
-  if (!userError && user && fullName) {
+  if (!userError && user) {
     const { data: existingProfile, error: profileLookupError } = await supabase
       .from("profiles")
       .select("id")
@@ -33,16 +33,22 @@ export async function GET(request: Request) {
     if (profileLookupError) {
       console.error("Confirmed user profile lookup failed:", profileLookupError.message)
     } else if (existingProfile) {
+      const updates = {
+        email: user.email ?? null,
+        role: "member",
+        level: "member",
+        ...(fullName ? { full_name: fullName } : {}),
+      }
       const { error: profileUpdateError } = await supabase
         .from("profiles")
-        .update({ email: user.email ?? null, full_name: fullName, role: "member", level: "member" })
+        .update(updates)
         .eq("id", user.id)
-      if (profileUpdateError) console.error("Confirmed user profile name sync failed:", profileUpdateError.message)
+      if (profileUpdateError) console.error("Confirmed user profile default sync failed:", profileUpdateError.message)
     } else {
       const { error: profileInsertError } = await supabase.from("profiles").insert({
         id: user.id,
         email: user.email ?? null,
-        full_name: fullName,
+        full_name: fullName || null,
         role: "member",
         level: "member",
         marketing_emails: true,
