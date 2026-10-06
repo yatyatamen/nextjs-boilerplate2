@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createServiceClient } from "@/lib/supabase/server"
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
@@ -23,8 +23,16 @@ export async function GET(request: Request) {
     ? user.user_metadata.full_name.trim()
     : ""
 
+  let profileSyncFailed = false
   if (!userError && user) {
-    const { data: existingProfile, error: profileLookupError } = await supabase
+    let database = supabase
+    try {
+      database = await createServiceClient()
+    } catch {
+      // Use the authenticated client when service-role configuration is unavailable.
+    }
+
+    const { data: existingProfile, error: profileLookupError } = await database
       .from("profiles")
       .select("id")
       .eq("id", user.id)
@@ -32,6 +40,7 @@ export async function GET(request: Request) {
 
     if (profileLookupError) {
       console.error("Confirmed user profile lookup failed:", profileLookupError.message)
+      profileSyncFailed = true
     } else if (existingProfile) {
       const updates = {
         email: user.email ?? null,
@@ -39,22 +48,44 @@ export async function GET(request: Request) {
         level: "member",
         ...(fullName ? { full_name: fullName } : {}),
       }
-      const { error: profileUpdateError } = await supabase
+      const { data: updatedProfile, error: profileUpdateError } = await database
         .from("profiles")
         .update(updates)
         .eq("id", user.id)
-      if (profileUpdateError) console.error("Confirmed user profile default sync failed:", profileUpdateError.message)
+        .select("role, level")
+        .maybeSingle()
+      if (profileUpdateError) {
+        console.error("Confirmed user profile default sync failed:", profileUpdateError.message)
+        profileSyncFailed = true
+      } else if (updatedProfile?.role !== "member" || updatedProfile.level !== "member") {
+        console.error("Confirmed user profile defaults were not saved as member.", updatedProfile)
+        profileSyncFailed = true
+      }
     } else {
-      const { error: profileInsertError } = await supabase.from("profiles").insert({
-        id: user.id,
-        email: user.email ?? null,
-        full_name: fullName || null,
-        role: "member",
-        level: "member",
-        marketing_emails: true,
-      })
-      if (profileInsertError) console.error("Confirmed user profile creation failed:", profileInsertError.message)
+      const { data: createdProfile, error: profileInsertError } = await database
+        .from("profiles")
+        .insert({
+          id: user.id,
+          email: user.email ?? null,
+          full_name: fullName || null,
+          role: "member",
+          level: "member",
+          marketing_emails: true,
+        })
+        .select("role, level")
+        .single()
+      if (profileInsertError) {
+        console.error("Confirmed user profile creation failed:", profileInsertError.message)
+        profileSyncFailed = true
+      } else if (createdProfile.role !== "member" || createdProfile.level !== "member") {
+        console.error("New confirmed user profile defaults were not saved as member.", createdProfile)
+        profileSyncFailed = true
+      }
     }
+  }
+
+  if (profileSyncFailed) {
+    return NextResponse.redirect(new URL("/?error=profile_sync_failed", requestUrl.origin))
   }
 
   const safeNext = next?.startsWith("/") && !next.startsWith("//") ? next : "/member-dashboard"

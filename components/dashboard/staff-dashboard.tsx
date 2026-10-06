@@ -27,6 +27,7 @@ import type {
 } from "@/lib/types"
 import { ALL_ROLE_AND_TIER_OPTIONS, LEVELS, ROLES } from "@/lib/types"
 import { isSessionEnded, parseSessionStart } from "@/lib/scheduling"
+import { isSessionVisibleToLevel } from "../../lib/session-visibility"
 import {
   getEmailTemplateConfig,
   mergeEmailTemplateConfig,
@@ -1395,8 +1396,13 @@ export function StaffDashboard({
               const emailResult = await sendConfiguredEmails(
                 "session_alert",
                 members
-                  .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher")
+                  .filter((member) =>
+                    member.email &&
+                    String(member.role).trim().toLowerCase() === "member" &&
+                    isSessionVisibleToLevel(createdSession.visibility_tiers, member.level),
+                  )
                   .map((member) => ({ to: member.email!, payload: {
+                    sessionId: String(createdSession.id),
                     sessionTitle: createdSession.title || "New session",
                     sessionDate: createdSession.date || "TBD",
                     sessionTime: createdSession.time || "TBD",
@@ -2723,6 +2729,9 @@ function ScheduleForm({
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2 border border-zinc-800 p-3 rounded bg-zinc-950/40">
             <Label className="text-[#40938c] font-bold">Select Visible Ranks</Label>
+            <p className="text-xs text-muted-foreground">
+              Selected member levels can see this session and receive its email alert. Staff, teachers, and leaders can always see all sessions.
+            </p>
             <div className="flex flex-wrap gap-4">
               {ALL_TIERS.map((tier) => (
                 <label

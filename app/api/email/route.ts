@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createServiceClient } from "@/lib/supabase/server"
+import { isSessionVisibleToLevel } from "../../../lib/session-visibility"
 import type { EmailTemplate } from "@/lib/email-templates"
 import {
   sendAnnouncementEmail,
@@ -57,6 +58,40 @@ export async function POST(request: Request) {
 
     if (!to || !["announcement", "session_alert", "assessment", "shop_update"].includes(event)) {
       return NextResponse.json({ error: "A valid email event and recipient are required" }, { status: 400 })
+    }
+
+    if (event === "session_alert") {
+      const sessionId = requiredString(body?.sessionId).trim()
+      if (!sessionId) {
+        return NextResponse.json({ error: "A session ID is required for session alert emails" }, { status: 400 })
+      }
+
+      let database = supabase
+      try {
+        database = await createServiceClient()
+      } catch {
+        // Fall back to the authenticated client when the service role is unavailable.
+      }
+
+      const [{ data: session, error: sessionError }, { data: recipient, error: recipientError }] = await Promise.all([
+        database.from("schedule").select("visibility_tiers").eq("id", sessionId).maybeSingle(),
+        database.from("profiles").select("role, level").eq("email", to).maybeSingle(),
+      ])
+
+      if (sessionError || recipientError) {
+        const error = sessionError ?? recipientError
+        console.error("Session alert eligibility lookup failed:", error?.message)
+        return NextResponse.json({ error: "Unable to verify session alert recipient eligibility" }, { status: 500 })
+      }
+      if (!session) {
+        return NextResponse.json({ error: "Session not found" }, { status: 404 })
+      }
+      if (
+        String(recipient?.role ?? "").trim().toLowerCase() !== "member" ||
+        !isSessionVisibleToLevel(session.visibility_tiers, recipient?.level)
+      ) {
+        return NextResponse.json({ error: "Recipient is not eligible for this session alert" }, { status: 403 })
+      }
     }
 
     let result

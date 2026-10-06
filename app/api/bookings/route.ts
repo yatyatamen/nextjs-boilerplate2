@@ -4,6 +4,25 @@ import { getSessionBookingRules, parseSessionStart } from "@/lib/scheduling"
 import { sendSessionBookingCancellationEmail, sendSessionBookingConfirmationEmail, sendSessionBookingReminderEmail } from "@/lib/supabase/email"
 import type { EmailTemplate } from "@/lib/email-templates"
 
+function isSessionVisibleToLevel(visibilityTiers: unknown, memberLevel: unknown): boolean {
+  if (!Array.isArray(visibilityTiers) || visibilityTiers.length === 0) {
+    return true
+  }
+
+  const normalizedLevel = typeof memberLevel === "number" ? memberLevel : Number(memberLevel)
+  if (!Number.isFinite(normalizedLevel)) {
+    return true
+  }
+
+  return visibilityTiers.some((tier) => {
+    if (typeof tier !== "object" || tier === null) return false
+    const value = tier as { level?: number | string; visible?: boolean }
+    const tierLevel = typeof value.level === "number" ? value.level : Number(value.level)
+    if (!Number.isFinite(tierLevel)) return false
+    return tierLevel <= normalizedLevel && value.visible !== false
+  })
+}
+
 function isEmailTemplate(value: unknown): value is EmailTemplate {
   return Boolean(
     value &&
@@ -64,7 +83,7 @@ export async function POST(request: NextRequest) {
 
     const { data: session, error: sessionError } = await supabase
       .from("schedule")
-      .select("id, title, date, time, max_level, notes")
+      .select("id, title, date, time, max_level, notes, visibility_tiers")
       .eq("id", sessionId)
       .maybeSingle()
 
@@ -75,6 +94,23 @@ export async function POST(request: NextRequest) {
 
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 })
+    }
+
+    const { data: memberProfile, error: memberProfileError } = await supabase
+      .from("profiles")
+      .select("role, level")
+      .eq("id", userData.user.id)
+      .maybeSingle()
+    if (memberProfileError) {
+      console.error("Booking eligibility profile lookup failed:", memberProfileError)
+      return NextResponse.json({ error: memberProfileError.message }, { status: 500 })
+    }
+    const memberRole = String(memberProfile?.role ?? "").trim().toLowerCase()
+    if (!memberProfile || !["member", "staff", "teacher", "leader", "admin"].includes(memberRole)) {
+      return NextResponse.json({ error: "A valid profile is required to book this session." }, { status: 403 })
+    }
+    if (memberRole === "member" && !isSessionVisibleToLevel(session.visibility_tiers, memberProfile.level)) {
+      return NextResponse.json({ error: "This session is not available for your member level." }, { status: 403 })
     }
 
     const countDatabase = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY)
