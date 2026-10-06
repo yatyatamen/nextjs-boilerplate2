@@ -51,6 +51,6 @@ export async function GET(request: Request) {
     }
   }
 
-  const safeNext = next?.startsWith("/") && !next.startsWith("//") ? next : "/"
+  const safeNext = next?.startsWith("/") && !next.startsWith("//") ? next : "/member-dashboard"
   return NextResponse.redirect(new URL(safeNext, requestUrl.origin))
 }

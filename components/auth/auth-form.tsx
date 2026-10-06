@@ -186,6 +186,7 @@ export function AuthForm() {
             emailRedirectTo: `${AUTH_REDIRECT_URL?.replace(/\/$/, "") || FALLBACK_AUTH_REDIRECT_URL}/auth/callback`,
             data: {
               full_name: fullName.trim(),
+              role: "member",
               level: "member",
             },
           },
