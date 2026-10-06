@@ -19,6 +19,7 @@
                                                 } from "@/lib/types"
 import { LEVELS } from "@/lib/types"
 import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded, parseSessionStart } from "@/lib/scheduling"
+import { isSessionVisibleToLevel } from "@/lib/session-visibility"
 import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                 import {
                                                   LayoutDashboard,
@@ -481,7 +482,16 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                     }
                                                   }, [initialGearGuides, initialSchedule, profile.id, supabase])
 
-                                                  const visibleSchedule = useMemo(() => schedule.filter((s) => !isSessionEnded(s)), [schedule])
+                                                  const canSeeAllSessions = ["staff", "teacher", "leader", "admin"].includes(
+                                                    String(profile.role).trim().toLowerCase(),
+                                                  )
+                                                  const visibleSchedule = useMemo(
+                                                    () => schedule.filter((session) =>
+                                                      !isSessionEnded(session) &&
+                                                      (canSeeAllSessions || isSessionVisibleToLevel(session.visibility_tiers, profile.level)),
+                                                    ),
+                                                    [schedule, canSeeAllSessions, profile.level],
+                                                  )
 
                                                   const visibleBookings = useMemo(() => bookings.filter((b) => {
                                                     const session = b.session_id ? scheduleById.get(String(b.session_id)) : undefined
@@ -1676,6 +1686,12 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   <div className="mb-4">
                                                                     <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Session Schedule</h2>
                                                                   </div>
+
+                                                                  <Card className={`mb-4 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                    <p className={`text-xs leading-relaxed ${theme.textSecondary}`}>
+                                                                      Booking closes 6 hours before a session starts. Cancellations must be made at least 24 hours before the session starts. If you have any problems, please talk to a club leader.
+                                                                    </p>
+                                                                  </Card>
                                                                   
                                                                   <div className="flex flex-col gap-3">
                                                                     {visibleSchedule.map((s) => {
@@ -1717,11 +1733,6 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   )
                                                 })}
                                                                   </div>
-                                                                  <Card className={`mt-4 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                                                                    <p className={`text-xs leading-relaxed ${theme.textSecondary}`}>
-                                                                      Booking closes 6 hours before a session starts. Cancellations must be made at least 24 hours before the session starts. If you have any problems, please talk to a club leader.
-                                                                    </p>
-                                                                  </Card>
                                                                 </>
                                                               ) : (
                                                                 /* INTERMEDIARY VERIFICATION CONFIRMATION VIEW */
