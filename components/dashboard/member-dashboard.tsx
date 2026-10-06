@@ -1683,16 +1683,16 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                             <div>
                                                               {!confirmingSession ? (
                                                                 <>
-                                                                  <div className="mb-4">
-                                                                    <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Session Schedule</h2>
-                                                                  </div>
+                                                                <Card className={`mb-4 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                  <p className={`text-xs leading-relaxed ${theme.textSecondary}`}>
+                                                                    Booking closes 6 hours before a session starts. Cancellations must be made at least 24 hours before the session starts. If you have any problems, please talk to a club leader.
+                                                                  </p>
+                                                                </Card>
 
-                                                                  <Card className={`mb-4 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                                                                    <p className={`text-xs leading-relaxed ${theme.textSecondary}`}>
-                                                                      Booking closes 6 hours before a session starts. Cancellations must be made at least 24 hours before the session starts. If you have any problems, please talk to a club leader.
-                                                                    </p>
-                                                                  </Card>
-                                                                  
+                                                                <div className="mb-4">
+                                                                  <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Session Schedule</h2>
+                                                                </div>
+
                                                                   <div className="flex flex-col gap-3">
                                                                     {visibleSchedule.map((s) => {
                                                   const booked = bookedSessionIds.has(String(s.id))
