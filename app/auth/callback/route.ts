@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 
     const { data: existingProfile, error: profileLookupError } = await database
       .from("profiles")
-      .select("id")
+      .select("id, level")
       .eq("id", user.id)
       .maybeSingle()
 
@@ -44,21 +44,20 @@ export async function GET(request: Request) {
     } else if (existingProfile) {
       const updates = {
         email: user.email ?? null,
-        role: "member",
-        level: "member",
         ...(fullName ? { full_name: fullName } : {}),
+        ...(!existingProfile.level?.trim() ? { level: "member" } : {}),
       }
       const { data: updatedProfile, error: profileUpdateError } = await database
         .from("profiles")
         .update(updates)
         .eq("id", user.id)
-        .select("role, level")
+        .select("id")
         .maybeSingle()
       if (profileUpdateError) {
         console.error("Confirmed user profile default sync failed:", profileUpdateError.message)
         profileSyncFailed = true
-      } else if (updatedProfile?.role !== "member" || updatedProfile.level !== "member") {
-        console.error("Confirmed user profile defaults were not saved as member.", updatedProfile)
+      } else if (!updatedProfile) {
+        console.error("Confirmed user profile sync did not update a profile.")
         profileSyncFailed = true
       }
     } else {

@@ -67,21 +67,19 @@ export function AuthForm() {
     userId: string,
     fullNameFromUser: string,
     emailFromUser?: string | null,
-    isNewRegistration = false,
   ) {
-    const { data: existingProfile } = await supabase
+    const { data: existingProfile, error: profileLookupError } = await supabase
       .from("profiles")
       .select("id, role, level, full_name, email, marketing_emails")
       .eq("id", userId)
       .maybeSingle()
+    if (profileLookupError) {
+      throw new Error(`Unable to load your profile defaults: ${profileLookupError.message}`)
+    }
 
     const rawRole = String(existingProfile?.role ?? "member").trim().toLowerCase()
-    const normalizedRole = isNewRegistration
-      ? "member"
-      : MEMBER_LEVEL_ROLES.has(rawRole) ? "member" : rawRole || "member"
-    const normalizedLevel = isNewRegistration
-      ? "member"
-      : String(existingProfile?.level ?? "member").trim() || "member"
+    const normalizedRole = MEMBER_LEVEL_ROLES.has(rawRole) ? "member" : rawRole || "member"
+    const normalizedLevel = String(existingProfile?.level ?? "member").trim() || "member"
 
     const upsertPayload = {
       id: userId,
@@ -209,7 +207,7 @@ export function AuthForm() {
 
         const user = data.user
         if (user) {
-          await ensureProfileDefaults(supabase, user.id, fullName.trim(), normalizedEmail, true)
+          await ensureProfileDefaults(supabase, user.id, fullName.trim(), normalizedEmail)
 
           if (user.identities && user.identities.length === 0) {
             setFormError("This email is already in use. Please sign in instead.")
