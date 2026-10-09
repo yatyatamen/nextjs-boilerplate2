@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
       const updates: Record<string, unknown> = { status, marked_at: markedAt }
       if (typeof body?.user_name === "string") updates.user_name = body.user_name
       if (typeof body?.user_level === "string") updates.user_level = body.user_level
+      if (typeof body?.notes === "string" || body?.notes === null) updates.notes = body.notes
 
       const { data, error } = await database
         .from("attendance")
@@ -147,6 +148,7 @@ export async function POST(request: NextRequest) {
         .update({
           user_name: typeof body?.user_name === "string" ? body.user_name : "Unknown",
           user_level: typeof body?.user_level === "string" ? body.user_level : "Unknown",
+          ...(typeof body?.notes === "string" || body?.notes === null ? { notes: body.notes } : {}),
           status,
           marked_at: markedAt,
         })
@@ -165,6 +167,7 @@ export async function POST(request: NextRequest) {
         user_id: userId,
         user_name: typeof body?.user_name === "string" ? body.user_name : "Unknown",
         user_level: typeof body?.user_level === "string" ? body.user_level : "Unknown",
+        ...(typeof body?.notes === "string" || body?.notes === null ? { notes: body.notes } : {}),
         status,
         marked_at: markedAt,
       })

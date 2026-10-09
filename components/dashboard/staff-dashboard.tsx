@@ -1830,7 +1830,7 @@ export function StaffDashboard({
                                 <th className="px-4 py-3">Status</th>
                                 <th className="px-4 py-3">Notes</th>
                                 <th className="px-4 py-3">Marked At</th>
-                                <th className="px-4 py-3">Actions</th>
+                                <th className="sticky right-0 z-10 bg-zinc-900 px-4 py-3">Actions</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-800">
@@ -1860,7 +1860,7 @@ export function StaffDashboard({
                                   <td className="px-4 py-3 align-top text-xs text-zinc-400">
                                     {attendance?.marked_at ? new Date(attendance.marked_at).toLocaleString() : "—"}
                                   </td>
-                                  <td className="px-4 py-3 align-top">
+                                  <td className="sticky right-0 z-10 bg-zinc-950 px-4 py-3 align-top">
                                     <div className="flex items-center gap-3">
                                       {(["present", "late", "absent"] as const).map((opt) => (
                                         <label key={opt} className="inline-flex items-center gap-2">

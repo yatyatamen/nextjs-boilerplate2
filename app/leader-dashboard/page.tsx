@@ -38,8 +38,13 @@ export default async function LeaderDashboardPage() {
     rosterClient.from("bookings").select("*"),
   ])
 
-  if (allProfiles.error) {
-    console.error("Leader profile roster fetch failed:", allProfiles.error.message)
+  const rosterErrors = [
+    allProfiles.error && `profiles: ${allProfiles.error.message}`,
+    leaderBookings.error && `bookings: ${leaderBookings.error.message}`,
+    attendance.error && `attendance: ${attendance.error.message}`,
+  ].filter((error): error is string => Boolean(error))
+  if (rosterErrors.length > 0) {
+    console.error("Leader roster fetch failed:", rosterErrors.join("; "))
   }
 
   return (
@@ -51,6 +56,7 @@ export default async function LeaderDashboardPage() {
       shopItems={(shopItems.data ?? []).filter((item: any) => !(item.is_hidden === true || item.hidden === true || item.visible === false))}
       assessments={assessments.data ?? []}
       attendanceRecords={attendance.data ?? []}
+      rosterAccessIssue={rosterErrors.length > 0}
       gearGuides={(gearGuides.data ?? []).filter((item: any) => !(item.is_hidden === true || item.hidden === true || item.visible === false))}
       allProfiles={allProfiles.data ?? []}
       leaderBookings={leaderBookings.data ?? []}

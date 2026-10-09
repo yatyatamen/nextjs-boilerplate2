@@ -235,6 +235,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   shopItems,
                                                   assessments: initialAssessments,
                                                   attendanceRecords = [],
+                                                  rosterAccessIssue = false,
                                                   gearGuides: initialGearGuides = [],
                                                   allProfiles = [],
                                                   leaderBookings = [],
@@ -247,6 +248,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   shopItems: ShopItem[]
                                                   assessments: Assessment[]
                                                   attendanceRecords?: AttendanceRecord[]
+                                                  rosterAccessIssue?: boolean
                                                   gearGuides?: EquipmentRecommendation[]
                                                   allProfiles?: Profile[]
                                                   leaderBookings?: Booking[]
@@ -1537,6 +1539,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                           
                                                           {active === "leader-schedule" && isLeader && (
                                                             <div className="w-full rounded-sm bg-[#0B0B0C] p-4 text-zinc-100" style={{ colorScheme: "dark" }}>
+                                                              {rosterAccessIssue && (
+                                                                <p role="alert" className="mb-4 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+                                                                  Member roster data is unavailable. Apply the leader attendance Supabase migration, then refresh this page.
+                                                                </p>
+                                                              )}
                                                               <StaffDashboard
                                                                 profile={profile}
                                                                 initialMembers={allProfiles}
@@ -1552,6 +1559,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                           )}
                                                           {active === "leader-attendance" && isLeader && (
                                                             <div className="w-full rounded-sm bg-[#0B0B0C] p-4 text-zinc-100" style={{ colorScheme: "dark" }}>
+                                                              {rosterAccessIssue && (
+                                                                <p role="alert" className="mb-4 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+                                                                  Member roster data is unavailable. Apply the leader attendance Supabase migration, then refresh this page.
+                                                                </p>
+                                                              )}
                                                               <StaffDashboard
                                                                 profile={profile}
                                                                 initialMembers={allProfiles}
