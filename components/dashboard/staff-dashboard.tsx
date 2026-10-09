@@ -27,7 +27,6 @@ import type {
 } from "@/lib/types"
 import { ALL_ROLE_AND_TIER_OPTIONS, LEVELS, ROLES } from "@/lib/types"
 import { isSessionEnded, parseSessionStart } from "@/lib/scheduling"
-import { isSessionVisibleToLevel } from "../../lib/session-visibility"
 import {
   getEmailTemplateConfig,
   mergeEmailTemplateConfig,
@@ -1392,23 +1391,25 @@ export function StaffDashboard({
                 throw new Error(result.error || "Unable to save session")
               }
               const createdSession = result.data as ScheduleSession
+              if (!Array.isArray(createdSession.visibility_tiers)) {
+                throw new Error("The session was saved, but its visible ranks were not returned. No alert emails were sent.")
+              }
               setSchedule((prev) => sortSessions([...prev, createdSession]))
-              const emailResult = await sendConfiguredEmails(
-                "session_alert",
-                members
-                  .filter((member) =>
-                    member.email &&
-                    String(member.role).trim().toLowerCase() === "member" &&
-                    isSessionVisibleToLevel(createdSession.visibility_tiers, member.level),
-                  )
-                  .map((member) => ({ to: member.email!, payload: {
-                    sessionId: String(createdSession.id),
-                    sessionTitle: createdSession.title || "New session",
-                    sessionDate: createdSession.date || "TBD",
-                    sessionTime: createdSession.time || "TBD",
-                  } })),
-              )
-              showEmailBatchResult("Session posted", emailResult)
+              const emailResponse = await fetch("/api/email", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  event: "session_alert_batch",
+                  sessionId: String(createdSession.id),
+                  template: emailTemplates.session_alert,
+                }),
+              })
+              const emailResult = await emailResponse.json().catch(() => ({}))
+              if (!emailResponse.ok || !emailResult.data) {
+                showToast(`Session posted; alert emails failed: ${emailResult.error || "Unable to send session alert"}`)
+                return
+              }
+              showEmailBatchResult("Session posted", emailResult.data)
             }}
           />
           <div className="mt-6 flex flex-col gap-3">
@@ -2662,7 +2663,7 @@ function ScheduleForm({
     
     showConfirmation(
       "Create New Session?",
-      `Schedule session for ${formatDate(date)} at ${time || "TBD"}?`,
+      `Schedule session for ${formatDate(date)} at ${time || "TBD"}? Visible ranks: ${selectedTiers.length ? selectedTiers.join(", ") : "none"}.`,
       async () => {
         setConfirmLoading(true)
         try {

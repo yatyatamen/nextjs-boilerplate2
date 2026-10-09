@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
+import { LEVELS } from "@/lib/types"
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message
@@ -21,6 +22,16 @@ export async function POST(request: NextRequest) {
       : Number(body.max_capacity)
     if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1)) {
       return NextResponse.json({ error: "Capacity must be a positive whole number" }, { status: 400 })
+    }
+
+    const visibilityTiers = Array.isArray(body.visibility_tiers)
+      ? body.visibility_tiers.map((tier: unknown) => {
+          if (typeof tier !== "string") return null
+          return LEVELS.find((level) => level.toLowerCase() === tier.trim().toLowerCase()) ?? null
+        })
+      : null
+    if (!visibilityTiers || visibilityTiers.some((tier: string | null) => tier === null)) {
+      return NextResponse.json({ error: "Visible member levels are invalid" }, { status: 400 })
     }
 
     const supabase = await createClient()
@@ -54,7 +65,7 @@ export async function POST(request: NextRequest) {
           ? body.max_level
           : typeof body.level === "string" ? body.level : null,
         max_capacity: capacity,
-        visibility_tiers: Array.isArray(body.visibility_tiers) ? body.visibility_tiers : [],
+        visibility_tiers: [...new Set(visibilityTiers)],
         coach: typeof body.coach === "string" ? body.coach : null,
         title: typeof body.title === "string" ? body.title : "Training Session",
         notes: typeof body.notes === "string" ? body.notes : null,
