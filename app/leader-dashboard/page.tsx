@@ -33,10 +33,19 @@ export default async function LeaderDashboardPage() {
     supabase.from("assessments").select("*").eq("user_id", user.id).order("date", { ascending: false }),
     rosterClient.from("attendance").select("*"),
     supabase.from("equipment_recommendations").select("*"),
-    rosterClient.from("profiles").select("id, first_name, last_name, full_name, email, role, level"),
+    supabase.rpc("get_leader_roster"),
     supabase.from("support_tickets").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
     rosterClient.from("bookings").select("*"),
   ])
+
+  const rosterErrors = [
+    allProfiles.error && `profile roster: ${allProfiles.error.message}${allProfiles.error.code ? ` (code ${allProfiles.error.code})` : ""}`,
+    leaderBookings.error && `bookings: ${leaderBookings.error.message}${leaderBookings.error.code ? ` (code ${leaderBookings.error.code})` : ""}`,
+    attendance.error && `attendance: ${attendance.error.message}${attendance.error.code ? ` (code ${attendance.error.code})` : ""}`,
+  ].filter((error): error is string => Boolean(error))
+  if (rosterErrors.length > 0) {
+    console.error("Leader roster fetch failed:", rosterErrors.join("; "))
+  }
 
   return (
     <MemberDashboard
