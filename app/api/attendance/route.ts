@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
         .update({
           user_name: typeof body?.user_name === "string" ? body.user_name : "Unknown",
           user_level: typeof body?.user_level === "string" ? body.user_level : "Unknown",
-          ...(typeof body?.notes === "string" || body?.notes === null ? { notes: body.notes } : {}),
+          notes: typeof body?.notes === "string" ? body.notes : null,
           status,
           marked_at: markedAt,
         })
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
         user_id: userId,
         user_name: typeof body?.user_name === "string" ? body.user_name : "Unknown",
         user_level: typeof body?.user_level === "string" ? body.user_level : "Unknown",
-        ...(typeof body?.notes === "string" || body?.notes === null ? { notes: body.notes } : {}),
+        notes: typeof body?.notes === "string" ? body.notes : null,
         status,
         marked_at: markedAt,
       })

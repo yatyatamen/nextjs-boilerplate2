@@ -361,9 +361,17 @@ export function StaffDashboard({
     return { sent, failed: deliveries.length - sent, attempted: deliveries.length, error: firstError }
   }
 
-  function showEmailBatchResult(action: string, result: { sent: number; failed: number; attempted: number; error?: string }) {
+  function showEmailBatchResult(
+    action: string,
+    result: { sent: number; failed: number; attempted: number; error?: string },
+    eligibleRecipientLabel?: string,
+  ) {
     const failureSummary = result.failed > 0 ? `; ${result.failed} failed` : ""
-    const recipientSummary = result.attempted === 0 ? "; no eligible recipients" : ` (${result.sent}/${result.attempted} accepted)`
+    const recipientSummary = result.attempted === 0
+      ? `; no eligible ${eligibleRecipientLabel ?? "recipients"}`
+      : eligibleRecipientLabel
+        ? ` for ${result.attempted} ${eligibleRecipientLabel}`
+        : ` (${result.sent}/${result.attempted} accepted)`
     const errorSummary = result.error ? `; ${result.error.slice(0, 140)}` : ""
     showToast(`${action}: ${result.sent} email${result.sent === 1 ? "" : "s"} accepted by mail server${recipientSummary}${failureSummary}${errorSummary}`)
   }
@@ -1076,8 +1084,8 @@ export function StaffDashboard({
             attendance_id: existingRecord.id,
             user_name: nextRecord.user_name,
             user_level: nextRecord.user_level,
-            status,
             notes: nextRecord.notes,
+            status,
             attendance_template: emailTemplates.attendance_update,
             absence_template: emailTemplates.absence,
           }),
@@ -1117,8 +1125,8 @@ export function StaffDashboard({
           user_id: String(booking.user_id ?? ""),
           user_name: nextRecord.user_name,
           user_level: nextRecord.user_level,
-          status,
           notes: nextRecord.notes,
+          status,
           attendance_template: emailTemplates.attendance_update,
           absence_template: emailTemplates.absence,
         }),
@@ -1409,7 +1417,7 @@ export function StaffDashboard({
                 showToast(`Session posted; alert emails failed: ${emailResult.error || "Unable to send session alert"}`)
                 return
               }
-              showEmailBatchResult("Session posted", emailResult.data)
+              showEmailBatchResult("Session posted", emailResult.data, "eligible members")
             }}
           />
           <div className="mt-6 flex flex-col gap-3">
