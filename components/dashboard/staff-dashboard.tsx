@@ -376,23 +376,6 @@ export function StaffDashboard({
     showToast(`${action}: ${result.sent} email${result.sent === 1 ? "" : "s"} accepted by mail server${recipientSummary}${failureSummary}${errorSummary}`)
   }
 
-  // initialize attendanceSelection defaults when bookings or attendanceRecords change
-  useEffect(() => {
-    const next: Record<string, "present" | "late" | "absent"> = {}
-    bookings.forEach((booking) => {
-      const record = attendanceRecords.find((r) => String(r.session_id) === String(booking.session_id) && String(r.user_id) === String(booking.user_id))
-      next[booking.id] = (record?.status as any) ?? attendanceSelection[booking.id] ?? "present"
-    })
-
-    setAttendanceSelection((prev) => {
-      const prevKeys = Object.keys(prev)
-      const nextKeys = Object.keys(next)
-      const changed = prevKeys.length !== nextKeys.length || nextKeys.some((key) => prev[key] !== next[key])
-      return changed ? next : prev
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookings, attendanceRecords])
-
   const displayName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || profile.email || "Staff"
 
   const normalizeCommentStatus = (status: SupportTicket["status"] | string | null | undefined) => {
@@ -1784,13 +1767,13 @@ export function StaffDashboard({
                           onClick={() => {
                             const toSave = rows.filter((row) => {
                               const booking = row.booking
-                              const desired = attendanceSelection[booking.id] ?? "present"
+                              const desired = attendanceSelection[booking.id]
                               const current = row.attendance?.status ?? "not marked"
-                              return desired !== current
+                              return desired !== undefined && desired !== current
                             })
 
                             if (toSave.length === 0) {
-                              showToast("No attendance changes to save")
+                              showToast("Select a status for at least one member before saving")
                               return
                             }
 
@@ -1805,7 +1788,8 @@ export function StaffDashboard({
                                 let firstSaveError = ""
                                 for (const row of toSave) {
                                   const booking = row.booking
-                                  const desired = attendanceSelection[booking.id] ?? "present"
+                                  const desired = attendanceSelection[booking.id]
+                                  if (!desired) continue
                                   const result = await markAttendance(booking, desired)
                                   if (result.saved) savedCount += 1
                                   else firstSaveError ||= result.error || "Attendance save failed"
@@ -1843,7 +1827,7 @@ export function StaffDashboard({
                                 </button>
                                 <div role="group" aria-label={`Attendance status for ${displayName}`} className="grid grid-cols-3 gap-2">
                                   {(["present", "late", "absent"] as const).map((opt) => {
-                                    const selected = (attendanceSelection[booking.id] ?? (attendance?.status ?? "present")) === opt
+                                    const selected = (attendanceSelection[booking.id] ?? attendance?.status) === opt
                                     const selectedClass = opt === "present"
                                       ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
                                       : opt === "late"
@@ -1917,7 +1901,7 @@ export function StaffDashboard({
                                             type="radio"
                                             name={`attendance-${booking.id}`}
                                             value={opt}
-                                            checked={(attendanceSelection[booking.id] ?? (attendance?.status ?? "present")) === opt}
+                                            checked={(attendanceSelection[booking.id] ?? attendance?.status) === opt}
                                             onChange={() => setAttendanceSelection((prev) => ({ ...prev, [booking.id]: opt }))}
                                           />
                                           <span className={`text-xs ${opt === "present" ? "text-emerald-400" : opt === "late" ? "text-amber-400" : "text-rose-400"}`}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</span>
