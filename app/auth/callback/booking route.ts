@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server"
+import { getSessionBookingRules } from "@/lib/scheduling"
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,6 +15,18 @@ export async function POST(request: NextRequest) {
     if (userError || !userData?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 })
 
     const user = userData.user
+    const { data: session, error: sessionError } = await supabase
+      .from("schedule")
+      .select("date, time")
+      .eq("id", session_id)
+      .maybeSingle()
+    if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 })
+    if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 })
+
+    const bookingRules = getSessionBookingRules(session)
+    if (bookingRules.isBookingBlocked) {
+      return NextResponse.json({ error: bookingRules.bookingBlockReason || "Booking is closed." }, { status: 409 })
+    }
 
     const { data, error } = await supabase
       .from("bookings")
@@ -44,7 +57,7 @@ export async function DELETE(request: NextRequest) {
     const user = userData.user
 
     // fetch booking to verify ownership
-    const { data: existing, error: fetchError } = await supabase.from("bookings").select("*").eq("id", booking_id).single()
+    const { data: existing, error: fetchError } = await supabase.from("bookings").select("id, session_id, user_id").eq("id", booking_id).single()
     if (fetchError || !existing) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 })
     }
@@ -52,9 +65,27 @@ export async function DELETE(request: NextRequest) {
     // check actor role or ownership
     const { data: actorProfile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
     const isStaff = actorProfile?.role === "staff"
+    const isAdminRemoval = isStaff && existing.user_id !== user.id
 
-    if (!isStaff && existing.user_id !== user.id) {
+    if (!isAdminRemoval && existing.user_id !== user.id) {
       return NextResponse.json({ error: "Not authorized to delete this booking" }, { status: 403 })
+    }
+
+    if (existing.session_id && !isAdminRemoval) {
+      const { data: session, error: sessionError } = await supabase
+        .from("schedule")
+        .select("date, time")
+        .eq("id", existing.session_id)
+        .maybeSingle()
+      if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 })
+      if (session) {
+        const cancellationRules = getSessionBookingRules(session)
+        if (cancellationRules.isCancellationBlocked) {
+          return NextResponse.json({
+            error: cancellationRules.cancellationBlockReason || "Cancellation is closed.",
+          }, { status: 409 })
+        }
+      }
     }
 
     const { data, error } = await supabase.from("bookings").delete().eq("id", booking_id).select()

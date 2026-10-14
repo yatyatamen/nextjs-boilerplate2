@@ -235,7 +235,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   shopItems,
                                                   assessments: initialAssessments,
                                                   attendanceRecords = [],
-                                                  rosterAccessIssue = false,
+                                                  rosterAccessErrors = [],
                                                   gearGuides: initialGearGuides = [],
                                                   allProfiles = [],
                                                   leaderBookings = [],
@@ -248,7 +248,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   shopItems: ShopItem[]
                                                   assessments: Assessment[]
                                                   attendanceRecords?: AttendanceRecord[]
-                                                  rosterAccessIssue?: boolean
+                                                  rosterAccessErrors?: string[]
                                                   gearGuides?: EquipmentRecommendation[]
                                                   allProfiles?: Profile[]
                                                   leaderBookings?: Booking[]
@@ -1325,7 +1325,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                     const currentBookingCount = sessionDetail ? sessionBookingCount(sessionDetail.id) : 0
                                                     const ruleSet = sessionDetail ? getSessionBookingRules(sessionDetail, currentBookingCount, new Date()) : null
                                                     if (ruleSet?.isCancellationBlocked) {
-                                                      alert(ruleSet.cancellationBlockReason || "Cancellation is disabled within 24 hours of the session start. Please talk to the club leaders if you need help.")
+                                                      alert(ruleSet.cancellationBlockReason || "Cancellation is disabled within 3 hours of the session start. Please talk to the club leaders if you need help.")
                                                       return
                                                     }
                                                     
@@ -1539,9 +1539,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                           
                                                           {active === "leader-schedule" && isLeader && (
                                                             <div className="w-full rounded-sm bg-[#0B0B0C] p-4 text-zinc-100" style={{ colorScheme: "dark" }}>
-                                                              {rosterAccessIssue && (
+                                                              {rosterAccessErrors.length > 0 && (
                                                                 <p role="alert" className="mb-4 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
-                                                                  Member roster data is unavailable. Apply the leader attendance Supabase migration, then refresh this page.
+                                                                  Member roster data is unavailable. Supabase reported:
+                                                                  <span className="mt-1 block font-mono text-xs">{rosterAccessErrors.join(" · ")}</span>
+                                                                  Send this error message so we can identify the required database fix.
                                                                 </p>
                                                               )}
                                                               <StaffDashboard
@@ -1559,9 +1561,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                           )}
                                                           {active === "leader-attendance" && isLeader && (
                                                             <div className="w-full rounded-sm bg-[#0B0B0C] p-4 text-zinc-100" style={{ colorScheme: "dark" }}>
-                                                              {rosterAccessIssue && (
+                                                              {rosterAccessErrors.length > 0 && (
                                                                 <p role="alert" className="mb-4 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
-                                                                  Member roster data is unavailable. Apply the leader attendance Supabase migration, then refresh this page.
+                                                                  Member roster data is unavailable. Supabase reported:
+                                                                  <span className="mt-1 block font-mono text-xs">{rosterAccessErrors.join(" · ")}</span>
+                                                                  Send this error message so we can identify the required database fix.
                                                                 </p>
                                                               )}
                                                               <StaffDashboard
@@ -1697,7 +1701,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 <>
                                                                 <Card className={`mb-4 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                   <p className={`text-xs leading-relaxed ${theme.textSecondary}`}>
-                                                                    Booking closes 6 hours before a session starts. Cancellations must be made at least 24 hours before the session starts. If you have any problems, please talk to a club leader.
+                                                                    Booking and cancellation close 3 hours before a session starts. If you have any problems, please talk to a club leader.
                                                                   </p>
                                                                 </Card>
 
@@ -1781,10 +1785,10 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     <div className="space-y-2 rounded-sm border border-zinc-800/60 bg-zinc-950/40 p-3">
                                                                       <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#40938c]">Booking Policy</p>
                                                                       <p className="text-xs leading-relaxed text-zinc-200">
-                                                                        Booking policy: members can only book before 6 hours remain until the session start. Please talk to the club leaders if you need help.
+                                                                        Booking policy: members can only book before 3 hours remain until the session start. Please talk to the club leaders if you need help.
                                                                       </p>
                                                                       <p className="text-xs leading-relaxed text-zinc-200">
-                                                                        Cancellation policy: bookings cannot be cancelled within 24 hours of the session start. Please talk to the club leaders if you need help.
+                                                                        Cancellation policy: bookings cannot be cancelled within 3 hours of the session start. Please talk to the club leaders if you need help.
                                                                       </p>
                                                                     </div>
 
@@ -1839,13 +1843,27 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 <div className="flex flex-col gap-3">
                                                                   {bookings.map((b) => {
                                                                     const s = b.session_id ? scheduleById.get(String(b.session_id)) : null
+                                                                    const cancellationBlocked = s
+                                                                      ? getSessionBookingRules(s, sessionBookingCount(s.id), new Date()).isCancellationBlocked
+                                                                      : false
                                                                     return (
                                                                       <Card key={b.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
                                                                         <div>
                                                                           <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>{s ? formatDate(s.date) : "Training Interval"} {s?.time && `· ${s.time}`}</p>
                                                                           {s?.title && <p className={`text-xs font-mono ${theme.textSecondary} mt-0.5`}>Focus: {s.title}</p>}
+                                                                          {cancellationBlocked && (
+                                                                            <p className={`mt-1 text-xs ${theme.textMuted}`}>Cancellation closes 3 hours before the session starts.</p>
+                                                                          )}
                                                                         </div>
-                                                                        <Button type="button" size="sm" onClick={() => cancel(b)} className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400 font-mono rounded-sm"> Cancel Booking</Button>
+                                                                        <Button
+                                                                          type="button"
+                                                                          size="sm"
+                                                                          disabled={cancellationBlocked}
+                                                                          onClick={() => cancel(b)}
+                                                                          className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400 font-mono rounded-sm"
+                                                                        >
+                                                                          Cancel Booking
+                                                                        </Button>
                                                                       </Card>
                                                                     )
                                                                   })}

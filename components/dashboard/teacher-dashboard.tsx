@@ -6,6 +6,7 @@ import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
 import { Button, Card, Input, Label, Select } from "@/components/ui/primitives"
 import type { Announcement, AttendanceRecord, Booking, Profile, ScheduleSession } from "@/lib/types"
 import { CalendarDays, LayoutDashboard, Moon, Settings, Sun, Ticket, UserCheck } from "lucide-react"
+import { getSessionBookingRules } from "@/lib/scheduling"
 
 const NAV: NavItem[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
@@ -146,7 +147,6 @@ export function TeacherDashboard({ profile, initialMembers, initialSchedule, ini
             user_name: nameOf(member),
             user_level: member?.level ?? "Unknown",
             status: nextStatus,
-            notes: booking.notes ?? null,
           }),
         })
         const result = await response.json().catch(() => ({}))
@@ -202,12 +202,48 @@ function Overview({ theme, name, sessions, bookings, attendance, announcement }:
 }
 
 function Schedule({ theme, sessions, bookedIds, confirming, setConfirming, note, setNote, joining, joinSession }: { theme: Theme; sessions: ScheduleSession[]; bookedIds: Set<string>; confirming: ScheduleSession | null; setConfirming: (value: ScheduleSession | null) => void; note: string; setNote: (value: string) => void; joining: boolean; joinSession: (session: ScheduleSession) => Promise<void> }) {
-  if (confirming) return <Card className={`mx-auto flex max-w-xl flex-col gap-5 p-6 ${theme.card}`}><p className="text-[10px] uppercase tracking-widest text-[#40938c]">Selected Target Interval</p><h3 className="text-2xl font-black uppercase">{formatDate(confirming.date)}</h3><p className="font-mono text-sm font-bold text-[#40938c]">{confirming.time}</p><div className="grid gap-4 text-xs sm:grid-cols-2"><div className="border border-zinc-800 bg-zinc-950/40 p-3"><span className={theme.muted}>Training Context</span><p className="mt-1 font-bold">{confirming.title || "Standard Training Session"}</p></div><div className="border border-zinc-800 bg-zinc-950/40 p-3"><span className={theme.muted}>Session Description</span><p className="mt-1">{confirming.notes || "Session details will be provided by staff."}</p></div></div><Label>Optional note for staff/teacher<textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} className={`mt-2 w-full rounded-sm border px-3 py-2 text-xs ${theme.input}`} placeholder="Late arrival, early leave, or any note for the coach" /></Label><div className="flex justify-end gap-3 border-t border-zinc-800 pt-4"><Button variant="outline" disabled={joining} onClick={() => setConfirming(null)}>Cancel</Button><Button disabled={joining} onClick={() => void joinSession(confirming)} className="bg-[#40938c] text-black font-bold">{joining ? "Joining..." : "Confirm & Join"}</Button></div></Card>
-  return <div><h2 className="mb-4 text-xs font-bold uppercase tracking-widest">Session Schedule</h2><div className="flex flex-col gap-3">{sessions.map((session) => { const booked = bookedIds.has(String(session.id)); return <Card key={session.id} className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between ${theme.card}`}><div><p className="text-sm font-bold uppercase">{formatDate(session.date)} · <span className="font-mono text-xs text-[#40938c]">{session.time}</span></p><p className={`mt-1 text-xs font-bold ${theme.muted}`}>[{session.title || "Standard Class Roster"}]</p><p className={`mt-1 text-xs ${theme.muted}`}>Coach: {session.coach || "Club Staff"}</p><p className={`mt-1 text-xs ${theme.muted}`}>{session.notes || "Session details will be provided by staff."}</p></div><Button size="sm" disabled={booked} onClick={() => setConfirming(session)} className={booked ? "bg-zinc-700 text-white" : "bg-[#40938c] text-black font-bold"}>{booked ? "Claimed" : "Join Session"}</Button></Card> })}</div></div>
+  if (confirming) return <Card className={`mx-auto flex max-w-xl flex-col gap-5 p-6 ${theme.card}`}><p className="text-[10px] uppercase tracking-widest text-[#40938c]">Selected Target Interval</p><h3 className="text-2xl font-black uppercase">{formatDate(confirming.date)}</h3><p className="font-mono text-sm font-bold text-[#40938c]">{confirming.time}</p><div className="grid gap-4 text-xs sm:grid-cols-2"><div className="border border-zinc-800 bg-zinc-950/40 p-3"><span className={theme.muted}>Training Context</span><p className="mt-1 font-bold">{confirming.title || "Standard Training Session"}</p></div><div className="border border-zinc-800 bg-zinc-950/40 p-3"><span className={theme.muted}>Session Description</span><p className="mt-1">{confirming.notes || "Session details will be provided by staff."}</p></div></div><p className={`text-xs ${theme.muted}`}>Bookings and cancellations close 3 hours before the session starts.</p><Label>Optional note for staff/teacher<textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} className={`mt-2 w-full rounded-sm border px-3 py-2 text-xs ${theme.input}`} placeholder="Late arrival, early leave, or any note for the coach" /></Label><div className="flex justify-end gap-3 border-t border-zinc-800 pt-4"><Button variant="outline" disabled={joining} onClick={() => setConfirming(null)}>Cancel</Button><Button disabled={joining} onClick={() => void joinSession(confirming)} className="bg-[#40938c] text-black font-bold">{joining ? "Joining..." : "Confirm & Join"}</Button></div></Card>
+  return <div><h2 className="mb-2 text-xs font-bold uppercase tracking-widest">Session Schedule</h2><p className={`mb-4 text-xs ${theme.muted}`}>Bookings and cancellations close 3 hours before the session starts.</p><div className="flex flex-col gap-3">{sessions.map((session) => { const booked = bookedIds.has(String(session.id)); const bookingClosed = getSessionBookingRules(session).isBookingBlocked; return <Card key={session.id} className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between ${theme.card}`}><div><p className="text-sm font-bold uppercase">{formatDate(session.date)} · <span className="font-mono text-xs text-[#40938c]">{session.time}</span></p><p className={`mt-1 text-xs font-bold ${theme.muted}`}>[{session.title || "Standard Class Roster"}]</p><p className={`mt-1 text-xs ${theme.muted}`}>Coach: {session.coach || "Club Staff"}</p><p className={`mt-1 text-xs ${theme.muted}`}>{session.notes || "Session details will be provided by staff."}</p></div><Button size="sm" disabled={booked || bookingClosed} onClick={() => setConfirming(session)} className={booked || bookingClosed ? "bg-zinc-700 text-white" : "bg-[#40938c] text-black font-bold"}>{booked ? "Claimed" : bookingClosed ? "Booking Closed" : "Join Session"}</Button></Card> })}</div></div>
 }
 
-function Bookings({ theme, bookings, scheduleById, cancelBooking }: { theme: Theme; bookings: Booking[]; scheduleById: Map<string, ScheduleSession>; cancelBooking: (booking: Booking) => Promise<void> }) {Session:
-  return <div><h2 className="mb-4 text-xs font-bold uppercase tracking-widest">My Confirmed Placements</h2>{bookings.length === 0 ? <p className={`text-xs ${theme.muted}`}>No active bookings found.</p> : <div className="flex flex-col gap-3">{bookings.map((booking) => { const session = scheduleById.get(String(booking.session_id)); return <Card key={booking.id} className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between ${theme.card}`}><div><p className="text-sm font-bold uppercase">{session ? formatDate(session.date) : "Training Interval"} {session?.time && `· ${session.time}`}</p>{session?.title && <p className={`mt-1 text-xs ${theme.muted}`}> {session.title}</p>}{booking.notes && <p className="mt-1 text-xs text-red-600 dark:text-red-300">Note: {booking.notes}</p>}</div><Button size="sm" onClick={() => void cancelBooking(booking)} className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400"> Cancel Booking</Button></Card> })}</div>}</div>
+function Bookings({ theme, bookings, scheduleById, cancelBooking }: { theme: Theme; bookings: Booking[]; scheduleById: Map<string, ScheduleSession>; cancelBooking: (booking: Booking) => Promise<void> }) {
+  return (
+    <div>
+      <h2 className="mb-4 text-xs font-bold uppercase tracking-widest">My Confirmed Placements</h2>
+      {bookings.length === 0 ? (
+        <p className={`text-xs ${theme.muted}`}>No active bookings found.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {bookings.map((booking) => {
+            const session = scheduleById.get(String(booking.session_id))
+            const cancellationBlocked = session ? getSessionBookingRules(session).isCancellationBlocked : false
+            return (
+              <Card key={booking.id} className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between ${theme.card}`}>
+                <div>
+                  <p className="text-sm font-bold uppercase">
+                    {session ? formatDate(session.date) : "Training Interval"} {session?.time && `· ${session.time}`}
+                  </p>
+                  {session?.title && <p className={`mt-1 text-xs ${theme.muted}`}>{session.title}</p>}
+                  {booking.notes && <p className="mt-1 text-xs text-red-600 dark:text-red-300">Note: {booking.notes}</p>}
+                  {cancellationBlocked && (
+                    <p className="mt-1 text-xs text-amber-500">Cancellation closes 3 hours before the session starts.</p>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  disabled={cancellationBlocked}
+                  onClick={() => void cancelBooking(booking)}
+                  className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400"
+                >
+                  Cancel Booking
+                </Button>
+              </Card>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function Attendance({ theme, schedule, bookings, members, records, tiers, view, setView, statusFilter, setStatusFilter, dayFilter, setDayFilter, monthFilter, setMonthFilter, tierFilter, setTierFilter, dateFilter, setDateFilter, memberFilter, setMemberFilter, rowsFor, selection, setSelection, saving, saveSession, resetFilters }: { theme: Theme; schedule: ScheduleSession[]; bookings: Booking[]; members: Profile[]; records: AttendanceRecord[]; tiers: string[]; view: "by-session" | "all-records"; setView: (value: "by-session" | "all-records") => void; statusFilter: (typeof FILTERS)[number]; setStatusFilter: (value: (typeof FILTERS)[number]) => void; dayFilter: (typeof DAYS)[number]; setDayFilter: (value: (typeof DAYS)[number]) => void; monthFilter: (typeof MONTHS)[number]; setMonthFilter: (value: (typeof MONTHS)[number]) => void; tierFilter: string; setTierFilter: (value: string) => void; dateFilter: string; setDateFilter: (value: string) => void; memberFilter: string | null; setMemberFilter: (value: string | null) => void; rowsFor: (session: ScheduleSession) => Booking[]; selection: Record<string, Status>; setSelection: (value: (previous: Record<string, Status>) => Record<string, Status>) => void; saving: Record<string, boolean>; saveSession: (rows: Booking[]) => Promise<void>; resetFilters: () => void }) {

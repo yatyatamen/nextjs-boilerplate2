@@ -119,8 +119,8 @@ export function getSessionBookingRules(
   const start = parseSessionStart(session.date, session.time)
   const ended = isSessionEnded(session, now)
   const isFull = limit !== null && currentCount >= limit
-  const bookingCutoff = start ? new Date(start.getTime() - 6 * 60 * 60 * 1000) : null
-  const cancellationCutoff = start ? new Date(start.getTime() - 24 * 60 * 60 * 1000) : null
+  const bookingCutoff = start ? new Date(start.getTime() - 3 * 60 * 60 * 1000) : null
+  const cancellationCutoff = start ? new Date(start.getTime() - 3 * 60 * 60 * 1000) : null
 
   const bookingBlocked = ended || (!!start && !!bookingCutoff && now >= bookingCutoff)
   const cancellationBlocked = !!start && !!cancellationCutoff && now >= cancellationCutoff
@@ -140,11 +140,11 @@ export function getSessionBookingRules(
       : ended
         ? "This session has ended and is no longer available for booking."
         : bookingBlocked
-        ? "Booking is no longer available within 6 hours of the session start. Please talk to the club leaders if you need help."
+        ? "Booking is no longer available within 3 hours of the session start. Please talk to the club leaders if you need help."
         : null,
     isCancellationBlocked: cancellationBlocked,
     cancellationBlockReason: cancellationBlocked
-      ? "Cancellation is disabled within 24 hours of the session start. Please talk to the club leaders if you need help."
+      ? "Cancellation is disabled within 3 hours of the session start. Please talk to the club leaders if you need help."
       : null,
     sessionNotes,
   }

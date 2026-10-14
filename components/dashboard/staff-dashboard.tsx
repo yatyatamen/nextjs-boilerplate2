@@ -1542,22 +1542,28 @@ export function StaffDashboard({
                                       async () => {
                                         setConfirmLoading(true)
                                         try {
-                                          const { error } = await supabase
-                                            .from("bookings")
-                                            .delete()
-                                            .eq("id", booking.id)
-                                          if (error) {
-                                            console.error("❌ Cancel Booking Error:", error.message)
-                                            alert(`Error cancelling booking: ${error.message}`)
-                                            setConfirmLoading(false)
-                                            return
-                                          }
-                                          setBookings((prev) => prev.filter((b) => b.id !== booking.id))
-                                          closeConfirmation()
-                                          showToast(`Cancelled booking for ${member?.full_name || "member"}`)
-                                        } finally {
-                                          setConfirmLoading(false)
-                                        }
+                                        const response = await fetch("/api/bookings", {
+                                          method: "DELETE",
+                                          credentials: "same-origin",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({
+                                            booking_id: booking.id,
+                                            admin_cancellation_template: emailTemplates.booking_admin_cancellation,
+                                          }),
+                                        })
+                                        const result = await response.json().catch(() => ({}))
+                                        if (!response.ok) throw new Error(result.error || "Unable to cancel booking")
+                                        setBookings((prev) => prev.filter((b) => b.id !== booking.id))
+                                        closeConfirmation()
+                                        showToast(result.email?.status === "failed"
+                                          ? `Cancelled booking for ${member?.full_name || "member"}; cancellation email failed: ${result.email.error || "email delivery error"}`
+                                          : `Cancelled booking for ${member?.full_name || "member"}`)
+                                      } catch (error) {
+                                        console.error("❌ Cancel Booking Error:", error)
+                                        alert(`Error cancelling booking: ${error instanceof Error ? error.message : "Unable to cancel booking"}`)
+                                      } finally {
+                                        setConfirmLoading(false)
+                                      }
                                       }
                                     )
                                   }

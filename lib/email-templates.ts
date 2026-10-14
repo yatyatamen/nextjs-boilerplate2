@@ -17,14 +17,18 @@ export type EmailTemplate = {
 
 export type EmailTemplateConfig = Record<EmailTemplateKey, EmailTemplate>
 
+const BOOKING_POLICY_TEXT = "Bookings and cancellations close 3 hours before the session starts. Please talk to the club leaders if you need help."
+const LEGACY_BOOKING_POLICY_TEXT = "Bookings cannot be made within 6 hours of the session start, and cancellations are not allowed within 24 hours of the session start."
+const BOOKING_REMINDER_SUBJECT = "Reminder: {sessionTitle} is coming up soon"
+
 export const DEFAULT_EMAIL_TEMPLATES: EmailTemplateConfig = {
   booking_confirmation: {
     subject: "Booked: {sessionTitle}",
-    body: `Hello {memberName},\n\nYour booking for {sessionTitle} is confirmed.\n\nDate: {sessionDate}\nTime: {sessionTime}\n\nBookings cannot be made within 6 hours of the session start, and cancellations are not allowed within 24 hours of the session start. Please talk to the club leaders if you need help.`,
+    body: `Hello {memberName},\n\nYour booking for {sessionTitle} is confirmed.\n\nDate: {sessionDate}\nTime: {sessionTime}\n\n${BOOKING_POLICY_TEXT}`,
   },
   booking_reminder: {
-    subject: "Reminder: {sessionTitle} starts in 24 hours",
-    body: `Hello {memberName},\n\nThis is a reminder that your booking for {sessionTitle} is coming up soon.\n\nDate: {sessionDate}\nTime: {sessionTime}\n\nPlease arrive on time and speak with club leaders if you need help before the session.`,
+    subject: BOOKING_REMINDER_SUBJECT,
+    body: `Hello {memberName},\n\nThis is a reminder that your booking for {sessionTitle} is coming up soon.\n\nDate: {sessionDate}\nTime: {sessionTime}\n\nPlease arrive on time and speak with club leaders if you need help before the session.\n\n${BOOKING_POLICY_TEXT}`,
   },
   booking_cancellation: {
     subject: "Booking cancelled: {sessionTitle}",
@@ -72,9 +76,23 @@ export function mergeEmailTemplateConfig(value: unknown): EmailTemplateConfig {
 
   return Object.fromEntries(keys.map((key) => {
     const template = stored[key]
+    let body = typeof template?.body === "string" ? template.body : DEFAULT_EMAIL_TEMPLATES[key].body
+    let subject = typeof template?.subject === "string" ? template.subject : DEFAULT_EMAIL_TEMPLATES[key].subject
+    if (key === "booking_confirmation") {
+      body = body.replace(LEGACY_BOOKING_POLICY_TEXT, BOOKING_POLICY_TEXT)
+      if (!body.includes(BOOKING_POLICY_TEXT)) {
+        body = `${body.trim()}\n\n${BOOKING_POLICY_TEXT}`
+      }
+    }
+    if (key === "booking_reminder" && !body.includes(BOOKING_POLICY_TEXT)) {
+      body = `${body.trim()}\n\n${BOOKING_POLICY_TEXT}`
+    }
+    if (key === "booking_reminder" && subject === "Reminder: {sessionTitle} starts in 24 hours") {
+      subject = BOOKING_REMINDER_SUBJECT
+    }
     return [key, {
-      subject: typeof template?.subject === "string" ? template.subject : DEFAULT_EMAIL_TEMPLATES[key].subject,
-      body: typeof template?.body === "string" ? template.body : DEFAULT_EMAIL_TEMPLATES[key].body,
+      subject,
+      body,
     }]
   })) as EmailTemplateConfig
 }

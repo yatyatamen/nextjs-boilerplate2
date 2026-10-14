@@ -1,27 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
 import { getSessionBookingRules, parseSessionStart } from "@/lib/scheduling"
+import { isSessionVisibleToLevel } from "@/lib/session-visibility"
 import { sendSessionBookingCancellationEmail, sendSessionBookingConfirmationEmail, sendSessionBookingReminderEmail } from "@/lib/supabase/email"
 import type { EmailTemplate } from "@/lib/email-templates"
-
-function isSessionVisibleToLevel(visibilityTiers: unknown, memberLevel: unknown): boolean {
-  if (!Array.isArray(visibilityTiers) || visibilityTiers.length === 0) {
-    return true
-  }
-
-  const normalizedLevel = typeof memberLevel === "number" ? memberLevel : Number(memberLevel)
-  if (!Number.isFinite(normalizedLevel)) {
-    return true
-  }
-
-  return visibilityTiers.some((tier) => {
-    if (typeof tier !== "object" || tier === null) return false
-    const value = tier as { level?: number | string; visible?: boolean }
-    const tierLevel = typeof value.level === "number" ? value.level : Number(value.level)
-    if (!Number.isFinite(tierLevel)) return false
-    return tierLevel <= normalizedLevel && value.visible !== false
-  })
-}
 
 function isEmailTemplate(value: unknown): value is EmailTemplate {
   return Boolean(
@@ -283,12 +265,13 @@ export async function DELETE(request: NextRequest) {
       .eq("id", userData.user.id)
       .maybeSingle()
     const canCancelAnyBooking = profile?.role === "staff"
+    const isAdminRemoval = canCancelAnyBooking && booking?.user_id !== userData.user.id
 
     if (!booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 })
     }
 
-    if (!canCancelAnyBooking && booking.user_id !== userData.user.id) {
+    if (!isAdminRemoval && booking.user_id !== userData.user.id) {
       return NextResponse.json({ error: "You can only cancel your own bookings" }, { status: 403 })
     }
 
@@ -300,11 +283,10 @@ export async function DELETE(request: NextRequest) {
         .maybeSingle()
       : { data: null }
 
-    if (session && !canCancelAnyBooking) {
-      const start = parseSessionStart(session.date, session.time)
-      const cutoff = start ? new Date(start.getTime() - 24 * 60 * 60 * 1000) : null
-      if (cutoff && new Date() >= cutoff) {
-        return NextResponse.json({ error: "Cancellation is disabled within 24 hours of the session start. Please talk to the club leaders if you need help." }, { status: 409 })
+    if (session && !isAdminRemoval) {
+      const rules = getSessionBookingRules(session, 0, new Date())
+      if (rules.isCancellationBlocked) {
+        return NextResponse.json({ error: rules.cancellationBlockReason }, { status: 409 })
       }
     }
 
@@ -325,7 +307,6 @@ export async function DELETE(request: NextRequest) {
 
     let email: { status: "accepted" | "failed" | "skipped"; error?: string } = { status: "skipped" }
     if (session) {
-      const isAdminRemoval = canCancelAnyBooking && booking.user_id !== userData.user.id
       const { data: recipientProfile } = isAdminRemoval && booking.user_id
         ? await supabase
           .from("profiles")
