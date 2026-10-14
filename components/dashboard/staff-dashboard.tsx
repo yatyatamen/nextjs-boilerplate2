@@ -1776,10 +1776,11 @@ export function StaffDashboard({
                           {formatDate(session.date)} · {session.time ?? "TBD"} · {getWeekdayLabel(session.date)}
                         </p>
                       </div>
-                      <div className="mb-3 flex items-center justify-end">
+                      <div className="mb-3 flex flex-col items-stretch justify-end gap-2 sm:flex-row sm:items-center">
                         <Button
                           size="sm"
                           variant="secondary"
+                          className="w-full sm:w-auto"
                           onClick={() => {
                             const toSave = rows.filter((row) => {
                               const booking = row.booking
@@ -1829,7 +1830,46 @@ export function StaffDashboard({
                       {rows.length === 0 ? (
                         <p className="text-sm text-muted-foreground">No matching attendance rows for this filter.</p>
                       ) : (
-                        <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950">
+                        <>
+                          <div className="space-y-2 md:hidden">
+                            {rows.map(({ booking, member, attendance, displayName }) => (
+                              <div key={booking.id} className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
+                                  className="break-words text-left text-sm font-medium text-zinc-100 underline-offset-2 hover:underline"
+                                >
+                                  {displayName}
+                                </button>
+                                <div role="group" aria-label={`Attendance status for ${displayName}`} className="grid grid-cols-3 gap-2">
+                                  {(["present", "late", "absent"] as const).map((opt) => {
+                                    const selected = (attendanceSelection[booking.id] ?? (attendance?.status ?? "present")) === opt
+                                    const selectedClass = opt === "present"
+                                      ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
+                                      : opt === "late"
+                                        ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
+                                        : "border-rose-500/50 bg-rose-500/15 text-rose-300"
+                                    return (
+                                      <button
+                                        key={opt}
+                                        type="button"
+                                        aria-pressed={selected}
+                                        onClick={() => setAttendanceSelection((prev) => ({ ...prev, [booking.id]: opt }))}
+                                        className={`min-h-11 min-w-0 rounded-lg border px-1 text-xs font-medium capitalize transition-colors ${
+                                          selected
+                                            ? selectedClass
+                                            : "border-zinc-700 text-zinc-400 hover:bg-zinc-900"
+                                        }`}
+                                      >
+                                        {opt}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="hidden overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950 md:block">
                           <table className="min-w-full text-left text-sm">
                             <thead className="border-b border-zinc-800 bg-zinc-900 text-zinc-300">
                               <tr>
@@ -1889,7 +1929,8 @@ export function StaffDashboard({
                               ))}
                             </tbody>
                           </table>
-                        </div>
+                          </div>
+                        </>
                       )}
                     </Card>
                   )
