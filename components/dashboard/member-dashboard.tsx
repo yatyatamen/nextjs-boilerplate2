@@ -2324,9 +2324,13 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                             <GalleryCarousel images={galleryImages} alt={g.title} className="h-32 w-32 shrink-0" />
                                                                             <div className="min-w-0 flex-1">
                                                                               <div className="flex min-w-0 flex-col gap-2">
-                                                                                <div className="flex min-w-0 items-center gap-2">
+                                                                                <div className="flex min-w-0 flex-col items-start gap-1">
                                                                                   <p className={`truncate text-xs ${theme.textSecondary}`}>{g.category || "Gear"}</p>
-                                                                                  <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{g.recommended_for_tier}</Badge>
+                                                                                  <Badge className="max-w-full flex-col items-start bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-normal">
+                                                                                    {g.recommended_for_tier?.split(",").map((tier, index) => (
+                                                                                      <span key={`${tier}-${index}`} className="break-words">{tier.trim()}</span>
+                                                                                    ))}
+                                                                                  </Badge>
                                                                                 </div>
                                                                                 <h4 className={`text-base font-bold ${theme.headingColor}`}>{g.title}</h4>
                                                                                 <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted}`}>{g.category || "Gear"}</p>
