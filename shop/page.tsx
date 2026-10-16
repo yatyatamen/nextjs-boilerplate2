@@ -91,12 +91,12 @@ export default function OrderRequestPage() {
           <select className="mt-1 w-full p-2 rounded bg-zinc-900 border border-zinc-800" value={contactMethod} onChange={(e) => setContactMethod(e.target.value)}>
             <option value="whatsapp">WhatsApp</option>
             <option value="email">Email</option>
-            <option value="instagram">Instagram DM</option>
+            <option value="instagram">Instagram</option>
           </select>
         </div>
 
         <div>
-          <label className="block text-sm font-medium">Contact info (number, email, or IG handle)</label>
+          <label className="block text-sm font-medium">Contact info (number, email, or IG username)</label>
           <input className="mt-1 w-full p-2 rounded bg-zinc-900 border border-zinc-800" value={contactValue} onChange={(e) => setContactValue(e.target.value)} />
         </div>
 
