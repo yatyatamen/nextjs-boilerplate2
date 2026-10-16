@@ -2224,7 +2224,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   <p className={`text-[11px] ${theme.textMuted} mt-1`}>Filter by category or search text to find the right gear faster.</p>
                                                                 </div>
                                                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                                                                  <div className="flex items-center gap-1 rounded-sm border border-zinc-700 bg-zinc-950/40 p-1">
+                                                                  <div className="flex items-center gap-1 p-1">
                                                                     {([
                                                                       { value: "compact", label: "Small" },
                                                                       { value: "large", label: "Large" },
@@ -2365,7 +2365,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                               <Badge className="bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] text-[10px] px-2 py-1 rounded-sm uppercase">{g.recommended_for_tier}</Badge>
                                                                             </div>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary}`}>{g.category || "Gear"}</p>
-                                                                            <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
+                                                                            <div className="mt-2 rounded-sm border border-zinc-800/60 p-2.5">
                                                                               <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
                                                                               <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed whitespace-pre-wrap break-words`}>{g.specs || "No specs provided."}</p>
                                                                             </div>
@@ -2434,7 +2434,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                               </div>
                                                                             </div>
                                                                           </div>
-                                                                          <div className="mt-4 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-3">
+                                                                          <div className="mt-4 rounded-sm border border-zinc-800/60 p-3">
                                                                             <p className={`text-[10px] font-mono uppercase tracking-[0.2em] ${theme.textSecondary}`}>Specs</p>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary} leading-relaxed whitespace-pre-wrap break-words`}>{g.specs || "No specs provided."}</p>
                                                                           </div>
@@ -2505,7 +2505,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   <p className={`text-[11px] ${theme.textMuted} mt-1`}>Filter by category or name to find the right item quickly.</p>
                                                                 </div>
                                                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                                                                  <div className="flex items-center gap-1 rounded-sm border border-zinc-700 bg-zinc-950/40 p-1">
+                                                                  <div className="flex items-center gap-1 p-1">
                                                                     {([
                                                                       { value: "compact", label: "Small" },
                                                                       { value: "large", label: "Large" },
@@ -2990,7 +2990,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 )}
 
                                                                 {selectedProduct.specs && (
-                                                                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                                                                  <div className="rounded-lg border border-zinc-800 p-3">
                                                                     <p className="text-xs font-bold uppercase tracking-[0.24em] text-zinc-400">Specs</p>
                                                                     <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-200">{formatProductText(selectedProduct.specs)}</p>
                                                                   </div>
