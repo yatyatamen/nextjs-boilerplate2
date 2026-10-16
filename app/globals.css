@@ -10,3 +10,41 @@ select option {
 	background-color: Canvas;
 	color: CanvasText;
 }
+
+.member-dashboard button {
+	border: 1px solid #294a48;
+	border-radius: 0.625rem;
+	background-color: #1b2424;
+	color: #40938c;
+	font-family: inherit;
+	font-weight: 600;
+	transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.member-dashboard button:hover:not(:disabled) {
+	border-color: #40938c;
+	background-color: #22302f;
+	color: #62bcb4;
+}
+
+.member-dashboard button:focus-visible {
+	outline: 2px solid #40938c;
+	outline-offset: 2px;
+}
+
+.member-dashboard button:disabled {
+	cursor: not-allowed;
+	opacity: 0.55;
+}
+
+.member-dashboard button[aria-current="page"],
+.member-dashboard button[aria-pressed="true"] {
+	border-color: #40938c;
+	background-color: #22302f;
+	color: #62bcb4;
+}
+
+.member-dashboard button[aria-label^="View image"] {
+	border-radius: 9999px;
+	background-color: #1b2424;
+}

@@ -1522,7 +1522,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   }, [profile.id, supabase])
 
                                                   return (
-                                                    <div className={`w-full min-h-screen ${theme.bg} ${theme.textPrimary} transition-colors duration-200`} style={{ colorScheme: isDarkMode ? "dark" : "light" }}>
+                                                    <div className={`member-dashboard w-full min-h-screen ${theme.bg} ${theme.textPrimary} transition-colors duration-200`} style={{ colorScheme: isDarkMode ? "dark" : "light" }}>
                                                       <DashboardShell
                                                         navItems={visibleDashboardNav}
                                                         activeKey={active}
@@ -1987,6 +1987,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                                     <button
                                                                                       key={status}
                                                                                       type="button"
+                                                                                      aria-pressed={record?.status === status}
                                                                                       disabled={attendanceSaving[String(booking.id)]}
                                                                                       onClick={() => void markBookingAttendance(booking, status)}
                                                                                       className={`rounded-sm border px-2.5 py-1 text-[10px] font-mono uppercase tracking-wide transition-all disabled:opacity-50 ${record?.status === status ? status === "present" ? "border-green-500/40 bg-green-500/10 font-bold text-green-400" : status === "absent" ? "border-red-500/40 bg-red-500/10 font-bold text-red-400" : "border-yellow-500/40 bg-yellow-500/10 font-bold text-yellow-400" : `border-zinc-800 bg-transparent ${theme.textMuted}`}`}
@@ -2013,6 +2014,8 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   {(["all", "present", "absent", "late"] as const).map((filterOpt) => (
                                                                     <button 
                                                                       key={filterOpt}
+                                                                      type="button"
+                                                                      aria-pressed={attendanceFilter === filterOpt}
                                                                       onClick={() => setAttendanceFilter(filterOpt)}
                                                                       className={`px-2 py-0.5 text-[10px] font-mono uppercase rounded-xs tracking-wider transition-all ${attendanceFilter === filterOpt ? "bg-[#40938c] text-black font-bold" : `${theme.textSecondary}`}`}
                                                                     >
@@ -2035,6 +2038,8 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                         {(["present", "absent", "late"] as const).map((statusType) => (
                                                                           <button
                                                                             key={statusType}
+                                                                            type="button"
+                                                                            aria-pressed={record.status === statusType}
                                                                             onClick={() => toggleAttendance(record.id, statusType)}
                                                                             className={`px-2.5 py-1 rounded-sm text-[10px] font-mono uppercase tracking-wide border transition-all ${
                                                                               record.status === statusType 
@@ -2136,6 +2141,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                       <button
                                                                         key={option.value}
                                                                         type="button"
+                                                                        aria-pressed={gearLayout === option.value}
                                                                         onClick={() => setGearLayout(option.value)}
                                                                         className={`rounded-sm px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] transition ${gearLayout === option.value ? "bg-[#40938c] text-black font-bold" : "text-zinc-300 hover:bg-zinc-800"}`}
                                                                       >
@@ -2416,6 +2422,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                       <button
                                                                         key={option.value}
                                                                         type="button"
+                                                                        aria-pressed={shopLayout === option.value}
                                                                         onClick={() => setShopLayout(option.value)}
                                                                         className={`rounded-sm px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] transition ${shopLayout === option.value ? "bg-[#40938c] text-black font-bold" : "text-zinc-300 hover:bg-zinc-800"}`}
                                                                       >
@@ -2762,7 +2769,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     />
                                                                   </div>
                                                                   <Button size="sm" onClick={handleSaveProfileName} disabled={isSavingName} className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-2 px-4 rounded-sm border-none shrink-0">
-                                                                    {isSavingName ? "Saving..." : "Commit Change"}
+                                                                    {isSavingName ? "Saving..." : "Save Display Name"}
                                                                   </Button>
                                                                 </div>
                                                               </Card>

@@ -48,6 +48,7 @@ export function DashboardShell({
             return (
               <button
                 key={item.key}
+                aria-current={active ? "page" : undefined}
                 onClick={() => onChange(item.key)}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
@@ -98,6 +99,7 @@ export function DashboardShell({
               return (
                 <button
                   key={item.key}
+                  aria-current={active ? "page" : undefined}
                   onClick={() => onChange(item.key)}
                   className={cn(
                     "flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
