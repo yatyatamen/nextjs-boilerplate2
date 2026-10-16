@@ -1184,7 +1184,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                     const normalizedProductName = productName ?? "this item"
                                                     const normalizedCategory = category ?? ""
                                                     const displayName = normalizedCategory ? `${normalizedProductName} (${normalizedCategory})` : normalizedProductName
-                                                    const instagramDmUrl = "https://www.instagram.com/m/wci_badminton_club"
+                                                    const instagramDmUrl = "https://www.instagram.com/wci_badminton_club"
                                                     window.open(instagramDmUrl, "_blank", "noopener,noreferrer")
                                                     return displayName
                                                   }
@@ -2730,10 +2730,10 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                       </button>
                                                                       <button
                                                                         type="button"
-                                                                        onClick={() => window.open("https://www.instagram.com/m/wci_badminton_club", "_blank", "noopener,noreferrer")}
+                                                                        onClick={() => window.open("https://www.instagram.com/wci_badminton_club", "_blank", "noopener,noreferrer")}
                                                                         className="inline-flex items-center justify-center rounded-sm border border-[#40938c] bg-[#40938c] px-3 py-2 text-[10px] font-mono uppercase text-black font-bold"
                                                                       >
-                                                                        DM on Instagram
+                                                                        View Instagram Profile
                                                                       </button>
                                                                     </div>
                                                                     <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-2 rounded-sm border-none self-end">
