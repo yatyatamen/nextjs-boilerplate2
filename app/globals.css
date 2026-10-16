@@ -17,27 +17,30 @@ select option {
 
 .member-dashboard[data-theme="dark"] {
 	--member-accent: hsl(var(--member-accent-hue) 39% 68%);
-	--member-button-bg: hsl(var(--member-accent-hue) 18% 12%);
-	--member-button-border: hsl(var(--member-accent-hue) 28% 32%);
-	--member-button-hover-bg: hsl(var(--member-accent-hue) 22% 18%);
-	--member-button-selected-bg: hsl(var(--member-accent-hue) 25% 21%);
+	--member-button-border: hsl(var(--member-accent-hue) 39% 68% / 55%);
+	--member-button-hover-bg: hsl(var(--member-accent-hue) 39% 68% / 12%);
+	--member-button-selected-bg: hsl(var(--member-accent-hue) 39% 68% / 18%);
 }
 
 .member-dashboard[data-theme="light"] {
 	--member-accent: hsl(var(--member-accent-hue) 39% 29%);
-	--member-button-bg: hsl(var(--member-accent-hue) 24% 97%);
-	--member-button-border: hsl(var(--member-accent-hue) 28% 72%);
-	--member-button-hover-bg: hsl(var(--member-accent-hue) 30% 92%);
-	--member-button-selected-bg: hsl(var(--member-accent-hue) 32% 88%);
+	--member-button-border: hsl(var(--member-accent-hue) 39% 29% / 55%);
+	--member-button-hover-bg: hsl(var(--member-accent-hue) 39% 29% / 8%);
+	--member-button-selected-bg: hsl(var(--member-accent-hue) 39% 29% / 13%);
 }
 
 .member-dashboard button {
 	border: 1px solid var(--member-button-border);
 	border-radius: 0.625rem;
-	background-color: var(--member-button-bg);
+	background-color: transparent;
+	color: var(--member-accent);
 	font-family: inherit;
 	font-weight: 600;
-	transition: background-color 150ms ease, border-color 150ms ease;
+	transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.member-dashboard button svg {
+	color: inherit;
 }
 
 .member-dashboard button:hover:not(:disabled) {
@@ -59,17 +62,6 @@ select option {
 .member-dashboard button[aria-pressed="true"] {
 	border-color: var(--member-accent);
 	background-color: var(--member-button-selected-bg);
-}
-
-.member-dashboard button[class*="text-black"],
-.member-dashboard button[class*="text-primary-foreground"] {
-	border-color: var(--member-accent-fill);
-	background-color: var(--member-accent-fill);
-}
-
-.member-dashboard[data-theme="light"] button[class*="text-white"],
-.member-dashboard[data-theme="light"] button[class*="text-zinc-"] {
-	background-color: hsl(var(--member-accent-hue) 18% 16%);
 }
 
 .member-dashboard button[aria-label^="View image"] {
