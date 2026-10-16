@@ -9,6 +9,53 @@ export type SessionBookingRuleResult = {
   sessionNotes: string
 }
 
+const SESSION_TIME_ZONE = "America/Toronto"
+const sessionTimeFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: SESSION_TIME_ZONE,
+  calendar: "iso8601",
+  numberingSystem: "latn",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+})
+
+function createSessionDateTime(date: Date, hour: number, minute: number): Date | null {
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null
+
+  const targetAsUtc = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute)
+  let timestamp = targetAsUtc
+
+  // Schedule entries use Toronto wall time; iterating applies the correct DST offset.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const parts = sessionTimeFormatter.formatToParts(new Date(timestamp))
+    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]))
+    const formattedAsUtc = Date.UTC(
+      Number(values.year),
+      Number(values.month) - 1,
+      Number(values.day),
+      Number(values.hour),
+      Number(values.minute),
+      Number(values.second),
+    )
+    const correctedTimestamp = targetAsUtc - (formattedAsUtc - timestamp)
+    if (correctedTimestamp === timestamp) break
+    timestamp = correctedTimestamp
+  }
+
+  return new Date(timestamp)
+}
+
+function getSessionDayEnd(date: Date): Date | null {
+  const nextDay = new Date(date)
+  nextDay.setDate(nextDay.getDate() + 1)
+  const nextMidnight = createSessionDateTime(nextDay, 0, 0)
+  return nextMidnight ? new Date(nextMidnight.getTime() - 1) : null
+}
+
 export function parseSessionDate(dateValue: string | null | undefined): Date | null {
   if (!dateValue) return null
   const match = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/)
@@ -28,9 +75,7 @@ export function parseSessionStart(dateValue: string | null | undefined, timeValu
 
   const timeString = String(timeValue ?? "").trim()
   if (!timeString) {
-    const start = new Date(sessionDate)
-    start.setHours(0, 0, 0, 0)
-    return start
+    return createSessionDateTime(sessionDate, 0, 0)
   }
 
   const firstTimeMatch = timeString.match(/(\d{1,2}):(\d{2})/)
@@ -46,9 +91,7 @@ export function parseSessionStart(dateValue: string | null | undefined, timeValu
     return hour
   })()
 
-  const start = new Date(sessionDate)
-  start.setHours(normalizedHour, minute, 0, 0)
-  return Number.isNaN(start.getTime()) ? null : start
+  return createSessionDateTime(sessionDate, normalizedHour, minute)
 }
 
 export function parseSessionEnd(dateValue: string | null | undefined, timeValue: string | null | undefined): Date | null {
@@ -57,9 +100,7 @@ export function parseSessionEnd(dateValue: string | null | undefined, timeValue:
 
   const timeString = String(timeValue ?? "").trim()
   if (!timeString) {
-    const end = new Date(sessionDate)
-    end.setHours(23, 59, 59, 999)
-    return end
+    return getSessionDayEnd(sessionDate)
   }
 
   const rangeMatch = timeString.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?\s*-\s*(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
@@ -74,9 +115,7 @@ export function parseSessionEnd(dateValue: string | null | undefined, timeValue:
       return endHour
     })()
 
-    const end = new Date(sessionDate)
-    end.setHours(normalizedHour, endMinute, 0, 0)
-    return Number.isNaN(end.getTime()) ? null : end
+    return createSessionDateTime(sessionDate, normalizedHour, endMinute)
   }
 
   const singleTimeMatch = timeString.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
@@ -90,14 +129,11 @@ export function parseSessionEnd(dateValue: string | null | undefined, timeValue:
       return hour
     })()
 
-    const end = new Date(sessionDate)
-    end.setHours(normalizedHour, minute + 90, 0, 0)
-    return Number.isNaN(end.getTime()) ? null : end
+    const start = createSessionDateTime(sessionDate, normalizedHour, minute)
+    return start ? new Date(start.getTime() + 90 * 60 * 1000) : null
   }
 
-  const end = new Date(sessionDate)
-  end.setHours(23, 59, 59, 999)
-  return end
+  return getSessionDayEnd(sessionDate)
 }
 
 export function isSessionEnded(
