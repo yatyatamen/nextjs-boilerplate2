@@ -11,24 +11,42 @@ select option {
 	color: CanvasText;
 }
 
+.member-dashboard {
+	--member-accent-fill: hsl(var(--member-accent-hue) 39.3% 41.4%);
+}
+
+.member-dashboard[data-theme="dark"] {
+	--member-accent: hsl(var(--member-accent-hue) 39% 68%);
+	--member-button-bg: hsl(var(--member-accent-hue) 18% 12%);
+	--member-button-border: hsl(var(--member-accent-hue) 28% 32%);
+	--member-button-hover-bg: hsl(var(--member-accent-hue) 22% 18%);
+	--member-button-selected-bg: hsl(var(--member-accent-hue) 25% 21%);
+}
+
+.member-dashboard[data-theme="light"] {
+	--member-accent: hsl(var(--member-accent-hue) 39% 29%);
+	--member-button-bg: hsl(var(--member-accent-hue) 24% 97%);
+	--member-button-border: hsl(var(--member-accent-hue) 28% 72%);
+	--member-button-hover-bg: hsl(var(--member-accent-hue) 30% 92%);
+	--member-button-selected-bg: hsl(var(--member-accent-hue) 32% 88%);
+}
+
 .member-dashboard button {
-	border: 1px solid #294a48;
+	border: 1px solid var(--member-button-border);
 	border-radius: 0.625rem;
-	background-color: #1b2424;
-	color: #40938c;
+	background-color: var(--member-button-bg);
 	font-family: inherit;
 	font-weight: 600;
-	transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+	transition: background-color 150ms ease, border-color 150ms ease;
 }
 
 .member-dashboard button:hover:not(:disabled) {
-	border-color: #40938c;
-	background-color: #22302f;
-	color: #62bcb4;
+	border-color: var(--member-accent);
+	background-color: var(--member-button-hover-bg);
 }
 
 .member-dashboard button:focus-visible {
-	outline: 2px solid #40938c;
+	outline: 2px solid var(--member-accent);
 	outline-offset: 2px;
 }
 
@@ -39,12 +57,115 @@ select option {
 
 .member-dashboard button[aria-current="page"],
 .member-dashboard button[aria-pressed="true"] {
-	border-color: #40938c;
-	background-color: #22302f;
-	color: #62bcb4;
+	border-color: var(--member-accent);
+	background-color: var(--member-button-selected-bg);
+}
+
+.member-dashboard button[class*="text-black"],
+.member-dashboard button[class*="text-primary-foreground"] {
+	border-color: var(--member-accent-fill);
+	background-color: var(--member-accent-fill);
+}
+
+.member-dashboard[data-theme="light"] button[class*="text-white"],
+.member-dashboard[data-theme="light"] button[class*="text-zinc-"] {
+	background-color: hsl(var(--member-accent-hue) 18% 16%);
 }
 
 .member-dashboard button[aria-label^="View image"] {
 	border-radius: 9999px;
-	background-color: #1b2424;
+}
+
+.member-dashboard .member-accent-hue-picker {
+	appearance: none;
+	height: 0.75rem;
+	border: 0;
+	padding: 0;
+}
+
+.member-dashboard .member-accent-hue-picker::-webkit-slider-thumb {
+	appearance: none;
+	width: 1.25rem;
+	height: 1.25rem;
+	border: 2px solid white;
+	border-radius: 9999px;
+	background: hsl(var(--member-accent-hue) 39.3% 41.4%);
+	box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+}
+
+.member-dashboard .member-accent-hue-picker::-moz-range-thumb {
+	width: 1rem;
+	height: 1rem;
+	border: 2px solid white;
+	border-radius: 9999px;
+	background: hsl(var(--member-accent-hue) 39.3% 41.4%);
+	box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+}
+
+.leader-management[data-theme="light"] {
+	color-scheme: light;
+}
+
+.leader-management[data-theme="light"] [class~="bg-zinc-950"],
+.leader-management[data-theme="light"] [class~="bg-zinc-950/40"],
+.leader-management[data-theme="light"] [class~="bg-zinc-950/50"] {
+	background-color: #fff;
+}
+
+.leader-management[data-theme="light"] [class~="bg-zinc-900"],
+.leader-management[data-theme="light"] [class~="bg-zinc-900/40"] {
+	background-color: #f4f4f5;
+}
+
+.leader-management[data-theme="light"] [class~="hover:bg-zinc-900"]:hover {
+	background-color: #f4f4f5;
+}
+
+.leader-management[data-theme="light"] [class~="bg-card"],
+.leader-management[data-theme="light"] [class~="bg-background"] {
+	background-color: #fff;
+}
+
+.leader-management[data-theme="light"] [class~="text-zinc-100"],
+.leader-management[data-theme="light"] [class~="text-zinc-200"],
+.leader-management[data-theme="light"] [class~="text-zinc-300"],
+.leader-management[data-theme="light"] [class~="text-zinc-400"],
+.leader-management[data-theme="light"] [class~="text-zinc-500"],
+.leader-management[data-theme="light"] [class~="text-foreground"],
+.leader-management[data-theme="light"] [class~="text-muted-foreground"] {
+	color: #27272a;
+}
+
+.leader-management[data-theme="light"] [class~="text-emerald-100"],
+.leader-management[data-theme="light"] [class~="text-emerald-300"] {
+	color: #166534;
+}
+
+.leader-management[data-theme="light"] [class~="text-amber-300"] {
+	color: #92400e;
+}
+
+.leader-management[data-theme="light"] [class~="text-rose-300"] {
+	color: #9f1239;
+}
+
+.leader-management[data-theme="light"] [class~="border-zinc-700"],
+.leader-management[data-theme="light"] [class~="border-zinc-800"],
+.leader-management[data-theme="light"] [class~="border-border"],
+.leader-management[data-theme="light"] [class~="border-input"] {
+	border-color: #d4d4d8;
+}
+
+.leader-management[data-theme="light"] input:not([type="checkbox"]),
+.leader-management[data-theme="light"] select,
+.leader-management[data-theme="light"] textarea {
+	border-color: #d4d4d8;
+	background-color: #fff;
+	color: #18181b;
+	color-scheme: light;
+}
+
+.leader-management[data-theme="light"] input::placeholder,
+.leader-management[data-theme="light"] textarea::placeholder {
+	color: #71717a;
 }

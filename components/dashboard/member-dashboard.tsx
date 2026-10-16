@@ -193,7 +193,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                               type="button"
                                                               aria-label={`View image ${index + 1}`}
                                                               onClick={() => setActiveIndex(index)}
-                                                              className={`h-2.5 w-2.5 rounded-full border transition ${index === activeIndex ? "border-[#40938c] bg-[#40938c]" : "border-white/75 bg-white/40"}`}
+                                                              className={`h-2.5 w-2.5 rounded-full border transition ${index === activeIndex ? "border-[var(--member-accent)] bg-[var(--member-accent-fill)]" : "border-white/75 bg-white/40"}`}
                                                             />
                                                           ))}
                                                           </div>
@@ -225,6 +225,10 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                 function isFeatureAnnouncement(title: string | null | undefined) {
                                                   const normalized = String(title ?? "").toLowerCase()
                                                   return normalized.includes("website") || normalized.includes("feature")
+                                                }
+
+                                                type MemberDashboardStyle = React.CSSProperties & {
+                                                  "--member-accent-hue": number
                                                 }
 
                                                 export function MemberDashboard({
@@ -278,6 +282,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   const [chatInput, setChatInput] = useState("")
                                                   const [pendingId, setPendingId] = useState<string | null>(null)
                                                   const [isDarkMode, setIsDarkMode] = useState(true)
+                                                  const [buttonThemeHue, setButtonThemeHue] = useState(175)
+                                                  const [isLoadingButtonThemeHue, setIsLoadingButtonThemeHue] = useState(true)
+                                                  const [isSavingButtonThemeHue, setIsSavingButtonThemeHue] = useState(false)
+                                                  const [buttonThemeLoadError, setButtonThemeLoadError] = useState("")
+                                                  const [buttonThemeSaveError, setButtonThemeSaveError] = useState("")
                                                   const [customName, setCustomName] = useState(profile.full_name || "")
                                                   const [isSavingName, setIsSavingName] = useState(false)
                                                   const [marketingEmails, setMarketingEmails] = useState(Boolean(profile.marketing_emails ?? true))
@@ -353,9 +362,52 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   const displayName = customName.trim() || profile.email || "Member"
                                                   const isStaff = profile.role === "staff"
                                                   const isLeader = profile.role === "leader"
+                                                  const canCustomizeButtonHue = profile.role === "member" || isLeader
                                                   const canManageAttendance = isStaff || isLeader
                                                   const dashboardNav = NAV.filter(item => item.key !== "grading-manager" || isStaff)
                                                   const visibleDashboardNav = isLeader ? [...dashboardNav, ...LEADER_MANAGEMENT_NAV] : dashboardNav
+                                                  const dashboardStyle: MemberDashboardStyle = {
+                                                    colorScheme: isDarkMode ? "dark" : "light",
+                                                    "--member-accent-hue": buttonThemeHue,
+                                                  }
+
+                                                  useEffect(() => {
+                                                    if (!canCustomizeButtonHue) return
+                                                    let active = true
+                                                    setIsLoadingButtonThemeHue(true)
+                                                    void (async () => {
+                                                      try {
+                                                        const response = await fetch("/api/preferences", {
+                                                          credentials: "same-origin",
+                                                          cache: "no-store",
+                                                        })
+                                                        const result = await response.json().catch(() => ({}))
+                                                        if (!response.ok) {
+                                                          throw new Error(result.error || "Unable to load button color preference.")
+                                                        }
+                                                        if (
+                                                          active &&
+                                                          Number.isInteger(result.buttonThemeHue) &&
+                                                          result.buttonThemeHue >= 0 &&
+                                                          result.buttonThemeHue <= 359
+                                                        ) {
+                                                          setButtonThemeHue(result.buttonThemeHue)
+                                                        }
+                                                      } catch (error) {
+                                                        console.error("Button color preference load failed:", error)
+                                                        if (active) {
+                                                          setButtonThemeLoadError(
+                                                            error instanceof Error ? error.message : "Unable to load button color preference.",
+                                                          )
+                                                        }
+                                                      } finally {
+                                                        if (active) setIsLoadingButtonThemeHue(false)
+                                                      }
+                                                    })()
+                                                    return () => {
+                                                      active = false
+                                                    }
+                                                  }, [canCustomizeButtonHue, profile.id])
 
                                                   function getProfileDisplayName(profileEntry: Partial<Profile> | null | undefined) {
                                                     if (!profileEntry) return "Member"
@@ -715,6 +767,34 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                       showToast(error instanceof Error ? error.message : "Unable to update email settings.")
                                                     } finally {
                                                       setIsSavingEmailPrefs(false)
+                                                    }
+                                                  }
+
+                                                  async function saveButtonThemeHue() {
+                                                    setIsSavingButtonThemeHue(true)
+                                                    setButtonThemeSaveError("")
+                                                    try {
+                                                      const response = await fetch("/api/preferences", {
+                                                        method: "PATCH",
+                                                        credentials: "same-origin",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({ buttonThemeHue }),
+                                                      })
+                                                      const result = await response.json().catch(() => ({}))
+                                                      if (!response.ok) {
+                                                        throw new Error(result.error || "Unable to save button color.")
+                                                      }
+                                                      if (!Number.isInteger(result.buttonThemeHue)) {
+                                                        throw new Error("The saved button color was not returned.")
+                                                      }
+                                                      setButtonThemeHue(result.buttonThemeHue)
+                                                      showToast("Button color saved")
+                                                    } catch (error) {
+                                                      const message = error instanceof Error ? error.message : "Unable to save button color."
+                                                      console.error("Button color preference save failed:", error)
+                                                      setButtonThemeSaveError(message)
+                                                    } finally {
+                                                      setIsSavingButtonThemeHue(false)
                                                     }
                                                   }
 
@@ -1522,7 +1602,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   }, [profile.id, supabase])
 
                                                   return (
-                                                    <div className={`member-dashboard w-full min-h-screen ${theme.bg} ${theme.textPrimary} transition-colors duration-200`} style={{ colorScheme: isDarkMode ? "dark" : "light" }}>
+                                                    <div
+                                                      className={`member-dashboard w-full min-h-screen ${theme.bg} ${theme.textPrimary} transition-colors duration-200`}
+                                                      data-theme={isDarkMode ? "dark" : "light"}
+                                                      style={dashboardStyle}
+                                                    >
                                                       <DashboardShell
                                                         navItems={visibleDashboardNav}
                                                         activeKey={active}
@@ -1537,7 +1621,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                         <div className={`w-full ${theme.bg} p-6 box-border`}>
                                                           
                                                           {active === "leader-schedule" && isLeader && (
-                                                            <div className="w-full rounded-sm bg-[#0B0B0C] p-4 text-zinc-100" style={{ colorScheme: "dark" }}>
+                                                          <div
+                                                            className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}
+                                                            data-theme={isDarkMode ? "dark" : "light"}
+                                                            style={dashboardStyle}
+                                                          >
                                                               {rosterAccessErrors.length > 0 && (
                                                                 <p role="alert" className="mb-4 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
                                                                   Member roster data is unavailable. Supabase reported:
@@ -1559,7 +1647,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                             </div>
                                                           )}
                                                           {active === "leader-attendance" && isLeader && (
-                                                            <div className="w-full rounded-sm bg-[#0B0B0C] p-4 text-zinc-100" style={{ colorScheme: "dark" }}>
+                                                            <div
+                                                              className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}
+                                                              data-theme={isDarkMode ? "dark" : "light"}
+                                                              style={dashboardStyle}
+                                                            >
                                                               {rosterAccessErrors.length > 0 && (
                                                                 <p role="alert" className="mb-4 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
                                                                   Member roster data is unavailable. Supabase reported:
@@ -1585,13 +1677,13 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                           {active === "overview" && (
                                                             <div className="flex flex-col gap-6">
                                                               <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                                                                <p className="text-[10px] font-bold uppercase tracking-widest text-[#40938c]">TRAIN · IMPROVE · COMPETE</p>
+                                                                <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--member-accent)]">TRAIN · IMPROVE · COMPETE</p>
                                                                 <h2 className={`text-3xl font-extrabold ${theme.headingColor} tracking-tight uppercase mt-1`}>
-                                                                  Welcome, <span className="text-[#40938c]">{displayName}</span>
+                                                                  Welcome, <span className="text-[var(--member-accent)]">{displayName}</span>
                                                                 </h2>
                                                                 <div className="mt-4 flex gap-2">
                                                                   {!isStaff && (
-                                                                    <Badge className="bg-[#40938c] text-black font-bold text-xs px-2.5 py-0.5 rounded-sm border-none">
+                                                                    <Badge className="bg-[var(--member-accent-fill)] text-black font-bold text-xs px-2.5 py-0.5 rounded-sm border-none">
                                                                       <Trophy className="mr-1 h-3 w-3 fill-black text-black" /> {profile.level ?? "member"}
                                                                     </Badge>
                                                                   )}
@@ -1601,7 +1693,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
 
                                                               {isStaff && (
                                                                 <Card className={`p-5 border ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
-                                                                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#40938c] mb-3">
+                                                                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--member-accent)] mb-3">
                                                                     <PlusCircle className="h-4 w-4" /> Broadcast Dynamic Club Announcement
                                                                   </div>
                                                                   <div className="flex flex-col gap-3">
@@ -1619,7 +1711,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                       rows={3}
                                                                       className={`px-3 py-2 text-xs font-mono rounded-sm border outline-none ${theme.inputBg}`}
                                                                     />
-                                                                    <Button size="sm" onClick={handlePostAnnouncement} className="bg-[#40938c] text-black font-bold text-xs uppercase font-mono py-2 rounded-sm border-none self-end">Publish Log</Button>
+                                                                    <Button size="sm" onClick={handlePostAnnouncement} className="bg-[var(--member-accent-fill)] text-black font-bold text-xs uppercase font-mono py-2 rounded-sm border-none self-end">Publish Log</Button>
                                                                   </div>
                                                                 </Card>
                                                               )}
@@ -1631,7 +1723,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 <StatCard icon={Ticket} label="Booked Upcoming Sessions" value={upcomingSessionCounts.booked} theme={theme} />
                                                                 <StatCard icon={CalendarDays} label="Sessions Available to Book" value={upcomingSessionCounts.available} theme={theme} />
                                                                 <Card className={`p-4 border ${theme.cardBorder} ${theme.cardBg} rounded-sm flex items-start gap-4`}>
-                                                                  <div className="p-2.5 rounded-sm bg-[#40938c]/10 text-[#40938c]">
+                                                                  <div className="p-2.5 rounded-sm bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)]">
                                                                     <CalendarDays className="h-5 w-5" />
                                                                   </div>
                                                                   <div>
@@ -1651,13 +1743,13 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
 
                                                               <div className="grid gap-4">
                                                                 {latestGeneralAnnouncement && (
-                                                                  <Card className={`p-6 bg-gradient-to-br from-[#40938c]/10 to-[#40938c]/5 border border-[#40938c]/30 rounded-sm`}>
+                                                                  <Card className={`p-6 bg-gradient-to-br from-[var(--member-accent)]/10 to-[var(--member-accent)]/5 border border-[var(--member-accent)]/30 rounded-sm`}>
                                                                     <div className="flex items-start gap-4">
-                                                                      <div className={`flex h-12 w-12 items-center justify-center rounded-lg bg-[#40938c]/20`}>
-                                                                        <Megaphone className="h-6 w-6 text-[#40938c]" />
+                                                                      <div className={`flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--member-accent-fill)]/20`}>
+                                                                        <Megaphone className="h-6 w-6 text-[var(--member-accent)]" />
                                                                       </div>
                                                                       <div className="flex-1">
-                                                                        <p className="text-xs font-semibold text-[#40938c] uppercase tracking-wide">Latest Announcement</p>
+                                                                        <p className="text-xs font-semibold text-[var(--member-accent)] uppercase tracking-wide">Latest Announcement</p>
                                                                         <h3 className={`mt-2 text-2xl font-bold ${theme.headingColor}`}>{latestGeneralAnnouncement.title}</h3>
                                                                         <p className={`mt-3 text-base leading-relaxed ${theme.textPrimary} whitespace-pre-line`}>
                                                                           {latestGeneralAnnouncement.content}
@@ -1740,7 +1832,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                           }
                                                           setConfirmingSession(s)
                                                         }}
-                                                        className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${disabled ? "bg-zinc-700 text-white" : "bg-[#40938c] text-black font-bold"}`}
+                                                        className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${disabled ? "bg-zinc-700 text-white" : "bg-[var(--member-accent-fill)] text-black font-bold"}`}
                                                       >
                                                         {booked ? "Claimed" : hasTimeConflict ? "Time Clash" : ruleSet.isFull ? "Session Full" : ruleSet.isBookingBlocked ? "Booking Closed" : "Join Session"}
                                                       </Button>
@@ -1757,13 +1849,13 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     <p className={`text-[11px] ${theme.textMuted}`}>Please confirm your assignment entry parameters below</p>
                                                                   </div>
                                                                   
-                                                                  <Card className={`p-6 border-2 border-[#40938c]/40 ${theme.cardBg} rounded-sm flex flex-col gap-5`}>
+                                                                  <Card className={`p-6 border-2 border-[var(--member-accent)]/40 ${theme.cardBg} rounded-sm flex flex-col gap-5`}>
                                                                     <div className="border-b border-zinc-800/60 pb-4">
-                                                                      <span className="text-[10px] font-mono text-[#40938c] uppercase tracking-widest">Selected Target Interval</span>
+                                                                      <span className="text-[10px] font-mono text-[var(--member-accent)] uppercase tracking-widest">Selected Target Interval</span>
                                                                       <h3 className={`text-2xl font-black ${theme.headingColor} uppercase tracking-tight mt-1`}>
                                                                         {formatDate(confirmingSession.date)}
                                                                       </h3>
-                                                                      <p className="text-sm font-mono font-bold text-[#40938c] mt-0.5">{confirmingSession.time}</p>
+                                                                      <p className="text-sm font-mono font-bold text-[var(--member-accent)] mt-0.5">{confirmingSession.time}</p>
                                                                     </div>
 
                                                                     <div className="grid grid-cols-2 gap-4 text-xs font-mono">
@@ -1782,7 +1874,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     </div>
 
                                                                     <div className="space-y-2 rounded-sm border border-zinc-800/60 bg-zinc-950/40 p-3">
-                                                                      <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#40938c]">Booking Policy</p>
+                                                                      <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-[var(--member-accent)]">Booking Policy</p>
                                                                       <p className="text-xs leading-relaxed text-zinc-200">
                                                                         Booking policy: members can only book before 3 hours remain until the session start. Please talk to the club leaders if you need help.
                                                                       </p>
@@ -1821,7 +1913,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                           await book(confirmingSession)
                                                                           setConfirmingSession(null)
                                                                         }}
-                                                                        className="bg-[#40938c] text-black font-black font-mono text-xs uppercase px-5 py-2 rounded-sm border-none shadow-md shadow-[#40938c]/10"
+                                                                        className="bg-[var(--member-accent-fill)] text-black font-black font-mono text-xs uppercase px-5 py-2 rounded-sm border-none shadow-md shadow-[var(--member-accent)]/10"
                                                                       >
                                                                         {pendingId ? "Injecting Placement..." : "Confirm & Join"}
                                                                       </Button>
@@ -1883,7 +1975,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     <Card key={as.id} className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                       <div className="border-b border-zinc-800/20 pb-2 mb-2">
                                                                         <div className="flex flex-col">
-                                                                          <span className="text-xs font-mono font-bold text-[#40938c]">Assigned Level Tier: {as.level}</span>
+                                                                          <span className="text-xs font-mono font-bold text-[var(--member-accent)]">Assigned Level Tier: {as.level}</span>
                                                                           {as.score != null && <span className={`text-[11px] font-mono ${theme.textSecondary} mt-0.5`}>Rating Evaluation Score: {as.score}/100</span>}
                                                                         </div>
                                                                       </div>
@@ -1893,7 +1985,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                           href={as.pdf_url}
                                                                           target="_blank"
                                                                           rel="noreferrer"
-                                                                          className="mt-3 inline-flex items-center gap-2 text-xs font-mono font-bold text-[#40938c] underline underline-offset-2"
+                                                                          className="mt-3 inline-flex items-center gap-2 text-xs font-mono font-bold text-[var(--member-accent)] underline underline-offset-2"
                                                                         >
                                                                           View assessment PDF
                                                                         </a>
@@ -1931,7 +2023,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   </div>
                                                                   <div className="flex flex-col gap-1">
                                                                     <label className={`text-[10px] font-mono uppercase ${theme.textSecondary}`}>Numeric Marks Performance Evaluation ({numericScore}/100)</label>
-                                                                    <input type="range" min="0" max="100" value={numericScore} onChange={(e) => setNumericScore(Number(e.target.value))} className="w-full h-8 accent-[#40938c]" />
+                                                                    <input type="range" min="0" max="100" value={numericScore} onChange={(e) => setNumericScore(Number(e.target.value))} className="w-full h-8 accent-[var(--member-accent)]" />
                                                                   </div>
                                                                 </div>
 
@@ -1946,7 +2038,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   />
                                                                 </div>
 
-                                                                <Button size="sm" onClick={submitPerformanceGrade} disabled={isSubmittingGrade || !selectedStudentId || !critiqueFeedbackText} className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-2 self-end rounded-sm border-none">
+                                                                <Button size="sm" onClick={submitPerformanceGrade} disabled={isSubmittingGrade || !selectedStudentId || !critiqueFeedbackText} className="bg-[var(--member-accent-fill)] text-black font-bold font-mono text-xs uppercase py-2 self-end rounded-sm border-none">
                                                                   {isSubmittingGrade ? "Processing Matrix..." : "Emit Tier Grade Record"}
                                                                 </Button>
                                                               </Card>
@@ -2017,7 +2109,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                       type="button"
                                                                       aria-pressed={attendanceFilter === filterOpt}
                                                                       onClick={() => setAttendanceFilter(filterOpt)}
-                                                                      className={`px-2 py-0.5 text-[10px] font-mono uppercase rounded-xs tracking-wider transition-all ${attendanceFilter === filterOpt ? "bg-[#40938c] text-black font-bold" : `${theme.textSecondary}`}`}
+                                                                      className={`px-2 py-0.5 text-[10px] font-mono uppercase rounded-xs tracking-wider transition-all ${attendanceFilter === filterOpt ? "bg-[var(--member-accent-fill)] text-black font-bold" : `${theme.textSecondary}`}`}
                                                                     >
                                                                       {filterOpt}
                                                                     </button>
@@ -2143,7 +2235,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                         type="button"
                                                                         aria-pressed={gearLayout === option.value}
                                                                         onClick={() => setGearLayout(option.value)}
-                                                                        className={`rounded-sm px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] transition ${gearLayout === option.value ? "bg-[#40938c] text-black font-bold" : "text-zinc-300 hover:bg-zinc-800"}`}
+                                                                        className={`rounded-sm px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] transition ${gearLayout === option.value ? "bg-[var(--member-accent-fill)] text-black font-bold" : "text-zinc-300 hover:bg-zinc-800"}`}
                                                                       >
                                                                         {option.label}
                                                                       </button>
@@ -2193,12 +2285,12 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                               <h4 className={`text-lg font-bold ${theme.headingColor}`}>{g.title}</h4>
                                                                               <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{g.category || "Gear"}</p>
                                                                             </div>
-                                                                            <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{g.recommended_for_tier}</Badge>
+                                                                            <Badge className="bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{g.recommended_for_tier}</Badge>
                                                                           </div>
                                                                           <div className="flex items-center justify-between gap-3 border-b border-zinc-800/40 pb-2">
                                                                             <p className={`text-sm ${theme.textSecondary} font-medium`}>{g.category || "Gear"}</p>
                                                                             {g.link && (
-                                                                              <a href={g.link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#40938c] hover:underline">
+                                                                              <a href={g.link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[var(--member-accent)] hover:underline">
                                                                                 View product page
                                                                               </a>
                                                                             )}
@@ -2222,7 +2314,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                                 externalLink: g.link ?? undefined,
                                                                                 images: galleryImages,
                                                                               })}
-                                                                              className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
+                                                                              className="border-[var(--member-accent)]/30 bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] hover:bg-[var(--member-accent-fill)]/20"
                                                                             >
                                                                               Learn more
                                                                             </Button>
@@ -2231,7 +2323,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                               variant="outline"
                                                                               size="sm"
                                                                               onClick={() => openGuideInquiry(g.title, g.category || "Gear")}
-                                                                              className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
+                                                                              className="border-[var(--member-accent)]/30 bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] hover:bg-[var(--member-accent-fill)]/20"
                                                                             >
                                                                               <SendHorizontal className="h-3.5 w-3.5" />
                                                                               Ask about this guide
@@ -2270,7 +2362,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                                 <h4 className={`text-base font-bold ${theme.headingColor}`}>{g.title}</h4>
                                                                                 <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{g.category || "Gear"}</p>
                                                                               </div>
-                                                                              <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase">{g.recommended_for_tier}</Badge>
+                                                                              <Badge className="bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] text-[10px] px-2 py-1 rounded-sm uppercase">{g.recommended_for_tier}</Badge>
                                                                             </div>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary}`}>{g.category || "Gear"}</p>
                                                                             <div className="mt-2 rounded-sm border border-zinc-800/60 bg-zinc-950/30 p-2.5">
@@ -2278,7 +2370,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                               <p className={`mt-1 text-xs ${theme.textSecondary} leading-relaxed whitespace-pre-wrap break-words`}>{g.specs || "No specs provided."}</p>
                                                                             </div>
                                                                             {g.link && (
-                                                                              <a href={g.link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-[#40938c] hover:underline">
+                                                                              <a href={g.link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-[var(--member-accent)] hover:underline">
                                                                                 View product page
                                                                               </a>
                                                                             )}
@@ -2298,7 +2390,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                                 externalLink: g.link ?? undefined,
                                                                                 images: galleryImages,
                                                                               })}
-                                                                              className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
+                                                                              className="border-[var(--member-accent)]/30 bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] hover:bg-[var(--member-accent-fill)]/20"
                                                                             >
                                                                               Learn more
                                                                             </Button>
@@ -2307,7 +2399,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                               variant="outline"
                                                                               size="sm"
                                                                               onClick={() => openGuideInquiry(g.title, g.category || "Gear")}
-                                                                              className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
+                                                                              className="border-[var(--member-accent)]/30 bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] hover:bg-[var(--member-accent-fill)]/20"
                                                                             >
                                                                               <SendHorizontal className="h-3.5 w-3.5" />
                                                                               Ask about this guide
@@ -2331,7 +2423,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                               <div className="flex min-w-0 flex-col gap-2">
                                                                                 <div className="flex min-w-0 flex-col items-start gap-1">
                                                                                   <p className={`truncate text-xs ${theme.textSecondary}`}>{g.category || "Gear"}</p>
-                                                                                  <Badge className="max-w-full flex-col items-start bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-normal">
+                                                                                  <Badge className="max-w-full flex-col items-start bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-normal">
                                                                                     {g.recommended_for_tier?.split(",").map((tier, index) => (
                                                                                       <span key={`${tier}-${index}`} className="break-words">{tier.trim()}</span>
                                                                                     ))}
@@ -2349,7 +2441,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                         </div>
                                                                         <div className="flex flex-wrap items-center gap-2">
                                                                           {g.link && (
-                                                                            <a href={g.link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#40938c] hover:underline">
+                                                                            <a href={g.link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[var(--member-accent)] hover:underline">
                                                                               View product page
                                                                             </a>
                                                                           )}
@@ -2367,7 +2459,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                               externalLink: g.link ?? undefined,
                                                                               images: galleryImages,
                                                                             })}
-                                                                            className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
+                                                                            className="border-[var(--member-accent)]/30 bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] hover:bg-[var(--member-accent-fill)]/20"
                                                                           >
                                                                             Learn more
                                                                           </Button>
@@ -2376,7 +2468,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                             variant="outline"
                                                                             size="sm"
                                                                             onClick={() => openGuideInquiry(g.title, g.category || "Gear")}
-                                                                            className="border-[#40938c]/30 bg-[#40938c]/10 text-[#40938c] hover:bg-[#40938c]/20"
+                                                                            className="border-[var(--member-accent)]/30 bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] hover:bg-[var(--member-accent-fill)]/20"
                                                                           >
                                                                             <SendHorizontal className="h-3.5 w-3.5" />
                                                                             Ask about this guide
@@ -2424,7 +2516,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                         type="button"
                                                                         aria-pressed={shopLayout === option.value}
                                                                         onClick={() => setShopLayout(option.value)}
-                                                                        className={`rounded-sm px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] transition ${shopLayout === option.value ? "bg-[#40938c] text-black font-bold" : "text-zinc-300 hover:bg-zinc-800"}`}
+                                                                        className={`rounded-sm px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] transition ${shopLayout === option.value ? "bg-[var(--member-accent-fill)] text-black font-bold" : "text-zinc-300 hover:bg-zinc-800"}`}
                                                                       >
                                                                         {option.label}
                                                                       </button>
@@ -2484,11 +2576,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                               <h4 className={`text-lg font-bold ${theme.headingColor}`}>{item.name}</h4>
                                                                               <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{item.category || "Item"}</p>
                                                                             </div>
-                                                                            <span className="text-lg font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
+                                                                            <span className="text-lg font-mono font-bold text-[var(--member-accent)]">${item.price ?? 0}</span>
                                                                           </div>
                                                                           <div className="flex items-center justify-between gap-3 border-b border-zinc-800/40 pb-2">
                                                                             <p className={`text-sm ${theme.textSecondary}`}>Stock: {item.stock ?? 0} left</p>
-                                                                            <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
+                                                                            <Badge className="bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
                                                                           </div>
                                                                           <div className="flex flex-wrap items-center gap-2 pt-1">
                                                                             <Button
@@ -2504,14 +2596,14 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                                 externalLink: undefined,
                                                                                 images: galleryImages,
                                                                               })}
-                                                                              className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                                                                              className="bg-[var(--member-accent-fill)] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
                                                                             >
                                                                               View details
                                                                             </Button>
                                                                             <Button
                                                                               size="sm"
                                                                               onClick={() => openGuideInquiry(item.name, item.category ?? "Shop Item")}
-                                                                              className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                                                                              className="bg-[var(--member-accent-fill)] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
                                                                             >
                                                                               Request Purchase
                                                                             </Button>
@@ -2537,8 +2629,8 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                                 <p className={`text-[10px] uppercase tracking-[0.3em] ${theme.textMuted} mt-1`}>{item.category || "Item"}</p>
                                                                               </div>
                                                                               <div className="flex items-center gap-2">
-                                                                                <span className="text-base font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
-                                                                                <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
+                                                                                <span className="text-base font-mono font-bold text-[var(--member-accent)]">${item.price ?? 0}</span>
+                                                                                <Badge className="bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
                                                                               </div>
                                                                             </div>
                                                                             <p className={`mt-2 text-xs ${theme.textSecondary}`}>Stock: {item.stock ?? 0} left</p>
@@ -2557,14 +2649,14 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                                 externalLink: undefined,
                                                                                 images: galleryImages,
                                                                               })}
-                                                                              className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                                                                              className="bg-[var(--member-accent-fill)] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
                                                                             >
                                                                               View details
                                                                             </Button>
                                                                             <Button
                                                                               size="sm"
                                                                               onClick={() => openGuideInquiry(item.name, item.category ?? "Shop Item")}
-                                                                              className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                                                                              className="bg-[var(--member-accent-fill)] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
                                                                             >
                                                                               Request Purchase
                                                                             </Button>
@@ -2589,7 +2681,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                                 <div className="min-w-0 flex-1">
                                                                                   <p className={`truncate text-[10px] uppercase tracking-[0.3em] ${theme.textMuted}`}>{item.category || "Item"}</p>
                                                                                 </div>
-                                                                                <span className="text-xs font-mono font-bold text-[#40938c]">${item.price ?? 0}</span>
+                                                                                <span className="text-xs font-mono font-bold text-[var(--member-accent)]">${item.price ?? 0}</span>
                                                                               </div>
                                                                               <h4 className={`text-sm font-bold ${theme.headingColor}`}>{item.name}</h4>
                                                                             </div>
@@ -2597,7 +2689,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                         </div>
                                                                         <div className="flex items-center justify-between gap-2 border-t border-zinc-800/30 pt-2 mt-1">
                                                                           <span className={`text-[10px] ${theme.textSecondary}`}>Stock: {item.stock ?? 0} left</span>
-                                                                          <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
+                                                                          <Badge className="bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{item.category || "Item"}</Badge>
                                                                         </div>
                                                                         <div className="flex flex-wrap gap-2 mt-3">
                                                                           <Button
@@ -2613,14 +2705,14 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                               externalLink: undefined,
                                                                               images: galleryImages,
                                                                             })}
-                                                                            className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                                                                            className="bg-[var(--member-accent-fill)] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
                                                                           >
                                                                             View details
                                                                           </Button>
                                                                           <Button
                                                                             size="sm"
                                                                             onClick={() => openGuideInquiry(item.name, item.category ?? "Shop Item")}
-                                                                            className="bg-[#40938c] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
+                                                                            className="bg-[var(--member-accent-fill)] text-black text-[10px] font-mono uppercase px-3 py-1 rounded-sm border-none"
                                                                           >
                                                                             Request Purchase
                                                                           </Button>
@@ -2639,7 +2731,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                               <Card className={`overflow-hidden p-0 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                 <div className="grid gap-0 md:grid-cols-[1.2fr_0.8fr]">
                                                                   <div className="p-6">
-                                                                    <h3 className="text-2xl font-bold uppercase tracking-wide text-[#40938c]">About Wolves Badminton Club</h3>
+                                                                    <h3 className="text-2xl font-bold uppercase tracking-wide text-[var(--member-accent)]">About Wolves Badminton Club</h3>
                                                                     <p className={`text-base ${theme.textSecondary} leading-relaxed mt-3 font-mono`}>
                                                                       Wolves Badminton Club is dedicated to developing student-athletes and competitive players through structured training, technical skill-building, and tournament prep. We focus on continuous athletic progression, on-court agility, and game strategy to help every member reach their full potential. Beyond competitive play, we foster a welcoming space for social sessions, friendly open-court matches, and fun recreational games. Whether you are aiming for team selection or simply looking to stay active, build lasting friendships, and enjoy the sport, our club offers a supportive community for players of all experience levels.
                                                                     </p>
@@ -2698,7 +2790,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                             <div className="grid grid-cols-1 gap-6">
                                                               <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                 <div className="mb-5">
-                                                                  <h3 className="text-sm font-bold uppercase tracking-wide text-[#40938c]">Share advice or feedback</h3>
+                                                                  <h3 className="text-sm font-bold uppercase tracking-wide text-[var(--member-accent)]">Share advice or feedback</h3>
                                                                   <p className={`text-[11px] ${theme.textMuted} font-mono mt-0.5`}>Send a short comment or suggestion for the club staff to review.</p>
                                                                 </div>
 
@@ -2730,12 +2822,12 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                       <button
                                                                         type="button"
                                                                         onClick={() => window.open("https://www.instagram.com/wci_badminton_club", "_blank", "noopener,noreferrer")}
-                                                                        className="inline-flex items-center justify-center rounded-sm border border-[#40938c] bg-[#40938c] px-3 py-2 text-[10px] font-mono uppercase text-black font-bold"
+                                                                        className="inline-flex items-center justify-center rounded-sm border border-[var(--member-accent)] bg-[var(--member-accent-fill)] px-3 py-2 text-[10px] font-mono uppercase text-black font-bold"
                                                                       >
                                                                         View Club Profile on Instagram
                                                                       </button>
                                                                     </div>
-                                                                    <Button type="submit" size="sm" className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-2 rounded-sm border-none self-end">
+                                                                    <Button type="submit" size="sm" className="bg-[var(--member-accent-fill)] text-black font-bold font-mono text-xs uppercase py-2 rounded-sm border-none self-end">
                                                                       Submit comment
                                                                     </Button>
                                                                   </div>
@@ -2755,7 +2847,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                             <div className="flex flex-col gap-4">
                                                               <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col gap-4`}>
                                                                 <div>
-                                                                  <h3 className="text-sm font-bold uppercase tracking-wide text-[#40938c]">Account Configuration</h3>
+                                                                  <h3 className="text-sm font-bold uppercase tracking-wide text-[var(--member-accent)]">Account Configuration</h3>
                                                                   <p className={`text-[11px] ${theme.textMuted}`}>   </p>
                                                                 </div>
                                                                 <div className="flex flex-col sm:flex-row items-end gap-3 max-w-md">
@@ -2768,11 +2860,61 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                       className={`px-3 py-2 text-xs font-mono rounded-sm border outline-none ${theme.inputBg}`} 
                                                                     />
                                                                   </div>
-                                                                  <Button size="sm" onClick={handleSaveProfileName} disabled={isSavingName} className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-2 px-4 rounded-sm border-none shrink-0">
+                                                                  <Button size="sm" onClick={handleSaveProfileName} disabled={isSavingName} className="bg-[var(--member-accent-fill)] text-black font-bold font-mono text-xs uppercase py-2 px-4 rounded-sm border-none shrink-0">
                                                                     {isSavingName ? "Saving..." : "Save Display Name"}
                                                                   </Button>
                                                                 </div>
                                                               </Card>
+
+                                                              {canCustomizeButtonHue && (
+                                                                <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col gap-4`}>
+                                                                  <div>
+                                                                    <h4 className={`text-xs font-bold uppercase tracking-wide ${theme.textSecondary}`}>Button and accent color</h4>
+                                                                    <p className={`text-[11px] ${theme.textMuted} font-mono`}>
+                                                                      Choose a hue. Brightness and saturation stay fixed for readable contrast in both display modes.
+                                                                    </p>
+                                                                  </div>
+                                                                  <div className="flex items-center gap-3">
+                                                                    <input
+                                                                      type="range"
+                                                                      min="0"
+                                                                      max="359"
+                                                                      step="1"
+                                                                      value={buttonThemeHue}
+                                                                      aria-label="Button and accent hue"
+                                                                      aria-valuetext={`Hue ${buttonThemeHue} degrees`}
+                                                                      disabled={isLoadingButtonThemeHue}
+                                                                      onChange={(event) => {
+                                                                        setButtonThemeHue(Number(event.target.value))
+                                                                        setButtonThemeSaveError("")
+                                                                      }}
+                                                                      className="member-accent-hue-picker h-3 min-w-0 flex-1 cursor-pointer rounded-full accent-[var(--member-accent)]"
+                                                                      style={{
+                                                                        background: "linear-gradient(90deg, hsl(0 39.3% 41.4%), hsl(60 39.3% 41.4%), hsl(120 39.3% 41.4%), hsl(180 39.3% 41.4%), hsl(240 39.3% 41.4%), hsl(300 39.3% 41.4%), hsl(359 39.3% 41.4%))",
+                                                                      }}
+                                                                    />
+                                                                    <span
+                                                                      aria-hidden="true"
+                                                                      className="h-7 w-7 shrink-0 rounded-md border border-black/20"
+                                                                      style={{ backgroundColor: "hsl(var(--member-accent-hue) 39.3% 41.4%)" }}
+                                                                    />
+                                                                    <Button
+                                                                      size="sm"
+                                                                      onClick={saveButtonThemeHue}
+                                                                      disabled={isLoadingButtonThemeHue || isSavingButtonThemeHue}
+                                                                      className="shrink-0 bg-[var(--member-accent-fill)] px-4 text-black"
+                                                                    >
+                                                                      {isSavingButtonThemeHue ? "Saving..." : "Save color"}
+                                                                    </Button>
+                                                                  </div>
+                                                                  {buttonThemeLoadError && (
+                                                                    <p role="alert" className="text-xs text-red-500">{buttonThemeLoadError}</p>
+                                                                  )}
+                                                                  {buttonThemeSaveError && (
+                                                                    <p role="alert" className="text-xs text-red-500">{buttonThemeSaveError}</p>
+                                                                  )}
+                                                                </Card>
+                                                              )}
 
                                                               <Card className={`p-5 ${theme.cardBorder} ${theme.cardBg} rounded-sm flex flex-col gap-4`}>
                                                                 <div>
@@ -2782,10 +2924,10 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 <div className="space-y-3">
                                                                   <label className="flex items-center justify-between gap-3 text-sm">
                                                                     <span>Shop updates</span>
-                                                                    <input type="checkbox" checked={marketingEmails} onChange={(e) => setMarketingEmails(e.target.checked)} className="h-4 w-4 accent-[#40938c]" />
+                                                                    <input type="checkbox" checked={marketingEmails} onChange={(e) => setMarketingEmails(e.target.checked)} className="h-4 w-4 accent-[var(--member-accent)]" />
                                                                   </label>
                                                                 </div>
-                                                                <Button size="sm" onClick={saveEmailPreferences} disabled={isSavingEmailPrefs} className="bg-[#40938c] text-black font-bold font-mono text-xs uppercase py-2 px-4 rounded-sm border-none self-start">
+                                                                <Button size="sm" onClick={saveEmailPreferences} disabled={isSavingEmailPrefs} className="bg-[var(--member-accent-fill)] text-black font-bold font-mono text-xs uppercase py-2 px-4 rounded-sm border-none self-start">
                                                                   {isSavingEmailPrefs ? "Saving..." : "Save email settings"}
                                                                 </Button>
                                                               </Card>
@@ -2797,7 +2939,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 </div>
                                                                 <button 
                                                                   onClick={() => setIsDarkMode(!isDarkMode)} 
-                                                                  className="p-2 border border-zinc-800 rounded-sm bg-zinc-950/40 text-[#40938c] hover:bg-zinc-950"
+                                                                  className="p-2 border border-zinc-800 rounded-sm bg-zinc-950/40 text-[var(--member-accent)] hover:bg-zinc-950"
                                                                 >
                                                                   {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                                                                 </button>
@@ -2828,17 +2970,17 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 <div className="flex min-w-0 flex-col gap-2">
                                                                   <div className="flex min-w-0 items-center gap-2">
                                                                     {selectedProduct.badge && (
-                                                                      <Badge className="bg-[#40938c]/10 text-[#40938c] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{selectedProduct.badge}</Badge>
+                                                                      <Badge className="bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)] text-[10px] px-2 py-1 rounded-sm uppercase whitespace-nowrap">{selectedProduct.badge}</Badge>
                                                                     )}
                                                                   </div>
-                                                                  <p className="text-[10px] uppercase tracking-[0.3em] text-[#40938c]">{selectedProduct.category || "Product"}</p>
+                                                                  <p className="text-[10px] uppercase tracking-[0.3em] text-[var(--member-accent)]">{selectedProduct.category || "Product"}</p>
                                                                   <h3 className="text-2xl font-black tracking-tight text-white">{selectedProduct.title}</h3>
                                                                 </div>
 
                                                                 {selectedProduct.price !== undefined && (
                                                                   <div className="flex flex-wrap items-center gap-3 border-b border-zinc-800 pb-3">
                                                                     {selectedProduct.price !== null && (
-                                                                      <span className="text-lg font-mono font-bold text-[#40938c]">${Number(selectedProduct.price).toFixed(2)}</span>
+                                                                      <span className="text-lg font-mono font-bold text-[var(--member-accent)]">${Number(selectedProduct.price).toFixed(2)}</span>
                                                                     )}
                                                                   </div>
                                                                 )}
@@ -2867,7 +3009,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                       href={selectedProduct.externalLink}
                                                                       target="_blank"
                                                                       rel="noreferrer"
-                                                                      className="inline-flex items-center justify-center rounded-md border border-[#40938c] bg-[#40938c] px-4 py-2 text-sm font-semibold text-black hover:bg-[#5cc7bb]"
+                                                                      className="inline-flex items-center justify-center rounded-md border border-[var(--member-accent)] bg-[var(--member-accent-fill)] px-4 py-2 text-sm font-semibold text-black hover:bg-[var(--member-accent-fill)]"
                                                                     >
                                                                       View product page
                                                                     </a>
@@ -2880,7 +3022,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                       openGuideInquiry(itemName, category)
                                                                       setSelectedProduct(null)
                                                                     }}
-                                                                    className="bg-[#40938c] text-black hover:bg-[#5cc7bb]"
+                                                                    className="bg-[var(--member-accent-fill)] text-black hover:bg-[var(--member-accent-fill)]"
                                                                   >
                                                                     Ask about this product
                                                                   </Button>
@@ -2925,7 +3067,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                 function StatCard({ icon: Icon, label, value, theme }: { icon: any, label: string, value: number, theme: any }) {
                                                   return (
                                                     <Card className={`p-4 border ${theme.cardBorder} ${theme.cardBg} rounded-sm flex items-center gap-4`}>
-                                                      <div className="p-2.5 rounded-sm bg-[#40938c]/10 text-[#40938c]">
+                                                      <div className="p-2.5 rounded-sm bg-[var(--member-accent-fill)]/10 text-[var(--member-accent)]">
                                                         <Icon className="h-5 w-5" />
                                                       </div>
                                                       <div>
@@ -2992,7 +3134,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                           <Button type="button" variant="outline" onClick={onCancel} className="px-4">
                                                             Cancel
                                                           </Button>
-                                                          <Button type="button" onClick={onSend} className="px-4 bg-[#40938c] text-black hover:bg-[#40938c]/90">
+                                                          <Button type="button" onClick={onSend} className="px-4 bg-[var(--member-accent-fill)] text-black hover:bg-[var(--member-accent-fill)]/90">
                                                             Send
                                                           </Button>
                                                         </div>

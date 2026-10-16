@@ -2737,7 +2737,6 @@ function ScheduleForm({
           <form
           className="grid grid-cols-1 gap-4 sm:grid-cols-2"
           onSubmit={handleSubmit}
-            style={{ colorScheme: "dark" }}
         >
           <div className="flex flex-col gap-1.5 sm:col-span-2">
             <Label htmlFor="s-title">Session Title</Label>
@@ -2759,7 +2758,7 @@ function ScheduleForm({
             <Select id="s-time" value={time} onChange={(e) => setTime(e.target.value)} required>
               <option value="">Select time slot</option>
               {TIME_SLOTS.map((slot) => (
-                <option className="bg-zinc-900 text-zinc-100" key={slot} value={slot}>{slot}</option>
+                <option key={slot} value={slot}>{slot}</option>
               ))}
             </Select>
           </div>
