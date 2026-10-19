@@ -2220,7 +2220,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                             <div>
                                                               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                                 <div>
-                                                                  <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Pro Recommended Equipment</h2>
+                                                                  <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Leader Recommended Equipment</h2>
                                                                   <p className={`text-[11px] ${theme.textMuted} mt-1`}>Filter by category or search text to find the right gear faster.</p>
                                                                 </div>
                                                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
