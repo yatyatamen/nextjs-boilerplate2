@@ -362,11 +362,13 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
 
                                                   const displayName = customName.trim() || profile.email || "Member"
                                                   const isStaff = profile.role === "staff"
+                                                  const isTeacher = profile.role === "teacher"
                                                   const isLeader = profile.role === "leader"
-                                                  const canCustomizeButtonHue = profile.role === "member" || isLeader
-                                                  const canManageAttendance = isStaff || isLeader
+                                                  const isManagementRole = isStaff || isTeacher || isLeader
+                                                  const canCustomizeButtonHue = profile.role === "member" || isLeader || isTeacher
+                                                  const canManageAttendance = isStaff || isLeader || isTeacher
                                                   const dashboardNav = NAV.filter(item => item.key !== "grading-manager" || isStaff)
-                                                  const visibleDashboardNav = isLeader ? [...dashboardNav, ...LEADER_MANAGEMENT_NAV] : dashboardNav
+                                                  const visibleDashboardNav = isManagementRole ? [...dashboardNav, ...LEADER_MANAGEMENT_NAV] : dashboardNav
                                                   const dashboardStyle: MemberDashboardStyle = {
                                                     colorScheme: isDarkMode ? "dark" : "light",
                                                     "--member-accent-hue": buttonThemeHue,
@@ -1617,11 +1619,19 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                         }}
                                                         displayName={displayName}
                                                         subtitle={profile.email ?? ""}
-                                                        badgeLabel={isStaff ? "Status: Management Staff" : isLeader ? "Status: Club Leader" : `Tier: ${profile.level ?? "member"}`}
+                                                        badgeLabel={
+                                                          isStaff
+                                                            ? "Status: Management Staff"
+                                                            : isLeader
+                                                              ? "Status: Club Leader"
+                                                              : isTeacher
+                                                                ? "Status: Teacher"
+                                                                : `Tier: ${profile.level ?? "member"}`
+                                                        }
                                                       >
                                                         <div className={`w-full ${theme.bg} p-6 box-border`}>
                                                           
-                                                          {active === "leader-schedule" && isLeader && (
+                                                          {active === "leader-schedule" && isManagementRole && (
                                                           <div
                                                             className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}
                                                             data-theme={isDarkMode ? "dark" : "light"}
@@ -1647,7 +1657,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                               />
                                                             </div>
                                                           )}
-                                                          {active === "leader-attendance" && isLeader && (
+                                                          {active === "leader-attendance" && isManagementRole && (
                                                             <div
                                                               className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}
                                                               data-theme={isDarkMode ? "dark" : "light"}
@@ -1673,7 +1683,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                               />
                                                             </div>
                                                           )}
-                                                          {active === "leader-announcements" && isLeader && (
+                                                          {active === "leader-announcements" && isManagementRole && (
                                                             <div
                                                               className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}
                                                               data-theme={isDarkMode ? "dark" : "light"}

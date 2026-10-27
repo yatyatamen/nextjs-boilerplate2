@@ -18,14 +18,9 @@ export function TeacherDashboard({
   initialBookings: Booking[]
   initialAttendanceRecords?: AttendanceRecord[]
 }) {
-  const leaderProfile: Profile = {
-    ...profile,
-    role: "leader",
-  }
-
   return (
     <MemberDashboard
-      profile={leaderProfile}
+      profile={profile}
       schedule={initialSchedule}
       initialBookings={initialBookings}
       announcements={initialAnnouncements}
