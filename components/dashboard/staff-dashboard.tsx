@@ -196,6 +196,31 @@ function getMonthLabel(dateValue: string | null | undefined) {
   return new Intl.DateTimeFormat("en-US", { month: "long" }).format(date)
 }
 
+function sortAttendanceRows<T extends { member?: Profile | null; displayName?: string; booking?: { created_at?: string | null } | null }>(rows: T[]) {
+  const hasTeacher = rows.some((row) => row.member?.role === "teacher")
+  if (!hasTeacher) return rows
+
+  return [...rows].sort((left, right) => {
+    const roleOrder = (role: string | null | undefined) => {
+      if (role === "teacher") return 0
+      if (role === "leader") return 1
+      if (role === "staff") return 2
+      return 3
+    }
+
+    const roleDelta = roleOrder(left.member?.role) - roleOrder(right.member?.role)
+    if (roleDelta !== 0) return roleDelta
+
+    const leftName = String(left.displayName ?? left.member?.full_name ?? left.member?.email ?? "").trim().toLowerCase()
+    const rightName = String(right.displayName ?? right.member?.full_name ?? right.member?.email ?? "").trim().toLowerCase()
+    if (leftName && rightName && leftName !== rightName) return leftName.localeCompare(rightName)
+
+    const leftCreatedAt = left.booking?.created_at ?? ""
+    const rightCreatedAt = right.booking?.created_at ?? ""
+    return leftCreatedAt.localeCompare(rightCreatedAt)
+  })
+}
+
 export function StaffDashboard({
   profile,
   initialMembers,
@@ -1732,30 +1757,32 @@ export function StaffDashboard({
                     ).values(),
                   )
 
-                  const rows = uniqueBookings
-                    .map((booking) => {
-                      const member = members.find((m) => String(m.id) === String(booking.user_id))
-                      const attendance = attendanceRecords.find(
-                        (record) => String(record.session_id) === String(booking.session_id) && String(record.user_id) === String(booking.user_id),
-                      )
-                      const savedName = attendance?.user_name?.trim()
-                      const displayName = member?.full_name?.trim()
-                        || [member?.first_name, member?.last_name].filter(Boolean).join(" ")
-                        || (savedName && !["unknown", "unknown member", "member"].includes(savedName.toLowerCase()) ? savedName : "")
-                        || member?.email
-                        || "Name unavailable"
-                      const status = attendance?.status ?? "not marked"
-                      return { booking, member, attendance, status, displayName }
-                    })
-                    .filter((row) => {
-                      const matchesStatus = attendanceFilter === "all" || row.status === attendanceFilter
-                      const matchesMember = selectedMemberFilter === null || String(row.booking.user_id) === String(selectedMemberFilter)
-                      const matchesDay = attendanceDayFilter === "all" || getWeekdayLabel(session.date) === attendanceDayFilter
-                      const matchesMonth = attendanceMonthFilter === "all" || getMonthLabel(session.date) === attendanceMonthFilter
-                      const matchesTier = attendanceTierFilter === "all" || row.member?.level === attendanceTierFilter
-                      const matchesDate = attendanceDateFilter === "all" || session.date === attendanceDateFilter
-                      return matchesStatus && matchesMember && matchesDay && matchesMonth && matchesTier && matchesDate
-                    })
+                  const rows = sortAttendanceRows(
+                    uniqueBookings
+                      .map((booking) => {
+                        const member = members.find((m) => String(m.id) === String(booking.user_id))
+                        const attendance = attendanceRecords.find(
+                          (record) => String(record.session_id) === String(booking.session_id) && String(record.user_id) === String(booking.user_id),
+                        )
+                        const savedName = attendance?.user_name?.trim()
+                        const displayName = member?.full_name?.trim()
+                          || [member?.first_name, member?.last_name].filter(Boolean).join(" ")
+                          || (savedName && !["unknown", "unknown member", "member"].includes(savedName.toLowerCase()) ? savedName : "")
+                          || member?.email
+                          || "Name unavailable"
+                        const status = attendance?.status ?? "not marked"
+                        return { booking, member, attendance, status, displayName }
+                      })
+                      .filter((row) => {
+                        const matchesStatus = attendanceFilter === "all" || row.status === attendanceFilter
+                        const matchesMember = selectedMemberFilter === null || String(row.booking.user_id) === String(selectedMemberFilter)
+                        const matchesDay = attendanceDayFilter === "all" || getWeekdayLabel(session.date) === attendanceDayFilter
+                        const matchesMonth = attendanceMonthFilter === "all" || getMonthLabel(session.date) === attendanceMonthFilter
+                        const matchesTier = attendanceTierFilter === "all" || row.member?.level === attendanceTierFilter
+                        const matchesDate = attendanceDateFilter === "all" || session.date === attendanceDateFilter
+                        return matchesStatus && matchesMember && matchesDay && matchesMonth && matchesTier && matchesDate
+                      }),
+                  )
 
                   return (
                     <Card key={session.id} className="p-4 mb-4">
@@ -1823,14 +1850,21 @@ export function StaffDashboard({
                         <>
                           <div className="space-y-2 md:hidden">
                             {rows.map(({ booking, member, attendance, displayName }) => (
-                              <div key={booking.id} className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
-                                  className="break-words text-left text-sm font-medium text-zinc-100 underline-offset-2 hover:underline"
-                                >
-                                  {displayName}
-                                </button>
+                              <div key={booking.id} className={`flex flex-col gap-2 rounded-xl border p-3 ${member?.role === "teacher" ? "border-emerald-500/30 bg-emerald-500/5" : "border-zinc-800 bg-zinc-950"}`}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
+                                    className="break-words text-left text-sm font-medium text-zinc-100 underline-offset-2 hover:underline"
+                                  >
+                                    {displayName}
+                                  </button>
+                                  {member?.role === "teacher" && (
+                                    <span className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-emerald-200">
+                                      Teacher
+                                    </span>
+                                  )}
+                                </div>
                                 <div role="group" aria-label={`Attendance status for ${displayName}`} className="grid grid-cols-3 gap-2">
                                   {(["present", "late", "absent"] as const).map((opt) => {
                                     const selected = (attendanceSelection[booking.id] ?? attendance?.status) === opt
@@ -1874,21 +1908,34 @@ export function StaffDashboard({
                             </thead>
                             <tbody className="divide-y divide-zinc-800">
                               {rows.map(({ booking, member, attendance, status, displayName }) => (
-                                <tr key={booking.id} className="hover:bg-zinc-900">
+                                <tr key={booking.id} className={member?.role === "teacher" ? "border-l border-emerald-500/30 bg-emerald-500/[0.04] hover:bg-emerald-500/[0.06]" : "hover:bg-zinc-900"}>
                                   <td className="px-4 py-3 align-top">
-                                    <p className="font-medium text-zinc-100">
-                                      <button
-                                        type="button"
-                                        onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
-                                        className="text-left p-0 m-0 underline-offset-2 hover:underline"
-                                      >
-                                        {displayName}
-                                      </button>
-                                    </p>
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium text-zinc-100">
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
+                                          className="text-left p-0 m-0 underline-offset-2 hover:underline"
+                                        >
+                                          {displayName}
+                                        </button>
+                                      </p>
+                                      {member?.role === "teacher" && (
+                                        <span className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-emerald-200">
+                                          Teacher
+                                        </span>
+                                      )}
+                                    </div>
                                     <p className="text-xs text-zinc-400">{member?.email || "Email unavailable"}</p>
                                   </td>
                                   <td className="px-4 py-3 align-top text-xs text-zinc-400">
-                                    {[member?.role, member?.level].filter(Boolean).join(" · ") || "N/A"}
+                                    {member?.role === "teacher" ? (
+                                      <span className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-emerald-200">
+                                        Teacher
+                                      </span>
+                                    ) : (
+                                      [member?.role, member?.level].filter(Boolean).join(" · ") || "N/A"
+                                    )}
                                   </td>
                                   <td className="px-4 py-3 align-top text-xs text-zinc-300">
                                     <div className="font-medium text-zinc-100">{session.title ?? "Untitled Session"}</div>
@@ -1983,17 +2030,42 @@ export function StaffDashboard({
                           const matchesDate = attendanceDateFilter === "all" || session?.date === attendanceDateFilter
                           return matchesStatus && matchesMember && matchesDay && matchesMonth && matchesTier && matchesDate
                         })
-                        .sort((a, b) => new Date(b.marked_at).getTime() - new Date(a.marked_at).getTime())
+                        .sort((a, b) => {
+                          const teacherA = members.find((member) => String(member.id) === String(a.user_id))?.role === "teacher"
+                          const teacherB = members.find((member) => String(member.id) === String(b.user_id))?.role === "teacher"
+
+                          if (teacherA !== teacherB) {
+                            return teacherA ? -1 : 1
+                          }
+
+                          return new Date(b.marked_at).getTime() - new Date(a.marked_at).getTime()
+                        })
                         .map((record) => {
                           const session = schedule.find(s => String(s.id) === String(record.session_id))
+                          const member = members.find((m) => String(m.id) === String(record.user_id))
                           const bookingNote = bookings.find((booking) => String(booking.session_id) === String(record.session_id) && String(booking.user_id) === String(record.user_id))?.notes
                           return (
-                            <tr key={record.id} className="hover:bg-zinc-900">
+                            <tr key={record.id} className={member?.role === "teacher" ? "border-l border-emerald-500/30 bg-emerald-500/[0.04] hover:bg-emerald-500/[0.06]" : "hover:bg-zinc-900"}>
                               <td className="px-4 py-3">
-                                <p className="font-medium text-zinc-100">{record.user_name}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium text-zinc-100">{record.user_name}</p>
+                                  {member?.role === "teacher" && (
+                                    <span className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-emerald-200">
+                                      Teacher
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-xs text-zinc-400">{record.user_id}</p>
                               </td>
-                              <td className="px-4 py-3 text-xs text-zinc-400">{record.user_level}</td>
+                              <td className="px-4 py-3 text-xs text-zinc-400">
+                                {member?.role === "teacher" ? (
+                                  <span className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-emerald-200">
+                                    Teacher
+                                  </span>
+                                ) : (
+                                  record.user_level
+                                )}
+                              </td>
                               <td className="px-4 py-3 text-xs text-zinc-300">
                                 <div>{formatDate(session?.date ?? null)}</div>
                                 <div className="text-zinc-400">{session?.title ?? "Unknown Session"}</div>
