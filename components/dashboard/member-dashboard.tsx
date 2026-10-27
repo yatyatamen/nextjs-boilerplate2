@@ -367,7 +367,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   const isManagementRole = isStaff || isTeacher || isLeader
                                                   const canCustomizeButtonHue = profile.role === "member" || isLeader || isTeacher
                                                   const canManageAttendance = isStaff || isLeader || isTeacher
-                                                  const dashboardNav = NAV.filter(item => item.key !== "grading-manager" || isStaff)
+                                                  const dashboardNav = NAV.filter((item) => {
+                                                    if (item.key === "grading-manager") return isStaff
+                                                    if (item.key === "assessments") return !isTeacher && !isLeader
+                                                    return true
+                                                  })
                                                   const visibleDashboardNav = isManagementRole ? [...dashboardNav, ...LEADER_MANAGEMENT_NAV] : dashboardNav
                                                   const dashboardStyle: MemberDashboardStyle = {
                                                     colorScheme: isDarkMode ? "dark" : "light",
@@ -1993,8 +1997,29 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                             </div>
                                                           )}
 
-                                                          {/* ASSESSMENT MODULE */}
-                                                          {active === "assessments" && (
+                                                          {active === "assessments" && isManagementRole && (
+                                                            <div
+                                                              className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}
+                                                              data-theme={isDarkMode ? "dark" : "light"}
+                                                              style={dashboardStyle}
+                                                            >
+                                                              <StaffDashboard
+                                                                profile={profile}
+                                                                initialMembers={allProfiles}
+                                                                initialSchedule={schedule}
+                                                                initialAnnouncements={announcements}
+                                                                initialBlogPosts={[]}
+                                                                initialAssessments={assessments}
+                                                                initialShopItems={shopItemsState}
+                                                                initialGearGuides={gearGuides}
+                                                                initialBookings={leaderBookings}
+                                                                initialAttendanceRecords={attendanceList}
+                                                                embeddedSection="assessments"
+                                                              />
+                                                            </div>
+                                                          )}
+
+                                                          {active === "assessments" && !isManagementRole && (
                                                             <div>
                                                               <div className="mb-4"><h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>My Performance Assessment</h2></div>
                                                               {assessments.length === 0 ? (
@@ -2245,8 +2270,30 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                             </div>
                                                           )}
 
+                                                          {active === "gear" && isManagementRole && (
+                                                            <div
+                                                              className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}
+                                                              data-theme={isDarkMode ? "dark" : "light"}
+                                                              style={dashboardStyle}
+                                                            >
+                                                              <StaffDashboard
+                                                                profile={profile}
+                                                                initialMembers={allProfiles}
+                                                                initialSchedule={schedule}
+                                                                initialAnnouncements={announcements}
+                                                                initialBlogPosts={[]}
+                                                                initialAssessments={assessments}
+                                                                initialShopItems={shopItemsState}
+                                                                initialGearGuides={gearGuides}
+                                                                initialBookings={leaderBookings}
+                                                                initialAttendanceRecords={attendanceList}
+                                                                embeddedSection="gear"
+                                                              />
+                                                            </div>
+                                                          )}
+
                                                           {/* GEAR RECOMMENDATIONS */}
-                                                          {active === "gear" && (
+                                                          {active === "gear" && !isManagementRole && (
                                                             <div>
                                                               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                                 <div>
@@ -2526,8 +2573,29 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                             </div>
                                                           )}
 
-                                                          {/* WOLVES SHOP MODULE */}
-                                                          {active === "shop" && (
+                                                          {active === "shop" && isManagementRole && (
+                                                            <div
+                                                              className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}
+                                                              data-theme={isDarkMode ? "dark" : "light"}
+                                                              style={dashboardStyle}
+                                                            >
+                                                              <StaffDashboard
+                                                                profile={profile}
+                                                                initialMembers={allProfiles}
+                                                                initialSchedule={schedule}
+                                                                initialAnnouncements={announcements}
+                                                                initialBlogPosts={[]}
+                                                                initialAssessments={assessments}
+                                                                initialShopItems={shopItemsState}
+                                                                initialGearGuides={gearGuides}
+                                                                initialBookings={leaderBookings}
+                                                                initialAttendanceRecords={attendanceList}
+                                                                embeddedSection="shop"
+                                                              />
+                                                            </div>
+                                                          )}
+
+                                                          {active === "shop" && !isManagementRole && (
                                                             <div>
                                                               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                                 <div>

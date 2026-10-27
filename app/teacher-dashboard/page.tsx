@@ -34,12 +34,20 @@ export default async function TeacherDashboardPage() {
     announcementsRes,
     bookingsRes,
     attendanceRes,
+    shopItemsRes,
+    assessmentsRes,
+    gearGuidesRes,
+    supportTicketsRes,
   ] = await Promise.all([
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
     supabase.from("schedule").select("*").order("date", { ascending: true }),
     supabase.from("announcements").select("*").order("created_at", { ascending: false }),
     supabase.from("bookings").select("*").order("created_at", { ascending: false }),
     supabase.from("attendance").select("*").order("marked_at", { ascending: false }),
+    supabase.from("shop_items").select("*").order("name", { ascending: true }),
+    supabase.from("assessments").select("*").order("date", { ascending: false }),
+    supabase.from("equipment_recommendations").select("*").order("title", { ascending: true }),
+    supabase.from("support_tickets").select("*").order("created_at", { ascending: false }),
   ])
 
   return (
@@ -50,6 +58,10 @@ export default async function TeacherDashboardPage() {
       initialAnnouncements={announcementsRes.data ?? []}
       initialBookings={bookingsRes.data ?? []}
       initialAttendanceRecords={attendanceRes.data ?? []}
+      initialShopItems={(shopItemsRes.data ?? []).filter((item: any) => !(item.is_hidden === true || item.hidden === true || item.visible === false))}
+      initialAssessments={assessmentsRes.data ?? []}
+      initialGearGuides={(gearGuidesRes.data ?? []).filter((item: any) => !(item.is_hidden === true || item.hidden === true || item.visible === false))}
+      initialSupportTickets={supportTicketsRes.data ?? []}
     />
   )
 }

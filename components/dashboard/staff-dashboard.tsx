@@ -246,7 +246,7 @@ export function StaffDashboard({
   initialGearGuides?: EquipmentRecommendation[]
   initialAttendanceRecords?: AttendanceRecord[]
   initialMessages?: SupportTicket[]
-  embeddedSection?: "schedule" | "attendance" | "announcements"
+  embeddedSection?: "schedule" | "attendance" | "announcements" | "shop" | "gear" | "assessments"
   onScheduleChange?: (change: { type: "upsert"; session: ScheduleSession } | { type: "delete"; id: string }) => void
 }) {
   const supabase = createClient()

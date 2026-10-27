@@ -10,6 +10,10 @@ export function TeacherDashboard({
   initialAnnouncements,
   initialBookings,
   initialAttendanceRecords = [],
+  initialShopItems = [],
+  initialAssessments = [],
+  initialGearGuides = [],
+  initialSupportTickets = [],
 }: {
   profile: Profile
   initialMembers: Profile[]
@@ -17,6 +21,10 @@ export function TeacherDashboard({
   initialAnnouncements: Announcement[]
   initialBookings: Booking[]
   initialAttendanceRecords?: AttendanceRecord[]
+  initialShopItems?: any[]
+  initialAssessments?: any[]
+  initialGearGuides?: any[]
+  initialSupportTickets?: any[]
 }) {
   return (
     <MemberDashboard
@@ -24,13 +32,13 @@ export function TeacherDashboard({
       schedule={initialSchedule}
       initialBookings={initialBookings}
       announcements={initialAnnouncements}
-      shopItems={[]}
-      assessments={[]}
+      shopItems={initialShopItems}
+      assessments={initialAssessments}
       attendanceRecords={initialAttendanceRecords}
-      gearGuides={[]}
+      gearGuides={initialGearGuides}
       allProfiles={initialMembers}
       leaderBookings={initialBookings}
-      supportTickets={[]}
+      supportTickets={initialSupportTickets}
     />
   )
 }
