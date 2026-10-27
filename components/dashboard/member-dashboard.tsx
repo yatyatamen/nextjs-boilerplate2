@@ -65,6 +65,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
 const LEADER_MANAGEMENT_NAV: NavItem[] = [
   { key: "leader-schedule", label: "Session Management", icon: CalendarDays },
   { key: "leader-attendance", label: "Attendance Management", icon: UserCheck },
+  { key: "leader-announcements", label: "Announcements", icon: Megaphone },
 ]
 
                                                 const PLAYER_TIERS = LEVELS
@@ -1669,6 +1670,25 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 initialBookings={leaderBookings}
                                                                 initialAttendanceRecords={attendanceList}
                                                                 embeddedSection="attendance"
+                                                              />
+                                                            </div>
+                                                          )}
+                                                          {active === "leader-announcements" && isLeader && (
+                                                            <div
+                                                              className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}
+                                                              data-theme={isDarkMode ? "dark" : "light"}
+                                                              style={dashboardStyle}
+                                                            >
+                                                              <StaffDashboard
+                                                                profile={profile}
+                                                                initialMembers={allProfiles}
+                                                                initialSchedule={schedule}
+                                                                initialAnnouncements={announcements}
+                                                                initialBlogPosts={[]}
+                                                                initialAssessments={[]}
+                                                                initialBookings={leaderBookings}
+                                                                initialAttendanceRecords={attendanceList}
+                                                                embeddedSection="announcements"
                                                               />
                                                             </div>
                                                           )}

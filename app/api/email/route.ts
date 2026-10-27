@@ -46,12 +46,13 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}))
     const event = body?.event as EmailEvent
     const isSessionAlert = event === "session_alert" || event === "session_alert_batch"
+    const isAnnouncement = event === "announcement"
     const canSendEmail =
       profile?.role === "staff" ||
       profile?.role === "admin" ||
-      (profile?.role === "leader" && isSessionAlert)
+      (profile?.role === "leader" && (isAnnouncement || isSessionAlert))
     if (!canSendEmail) {
-      return NextResponse.json({ error: "Only staff can send these emails" }, { status: 403 })
+      return NextResponse.json({ error: "Only staff or leader accounts can send these emails" }, { status: 403 })
     }
 
     const to = requiredString(body?.to).trim()

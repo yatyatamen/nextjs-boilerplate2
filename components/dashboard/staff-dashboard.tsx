@@ -93,7 +93,7 @@ const NAV: NavItem[] = [
   { key: "assessments", label: "Assessments", icon: ClipboardList },
   { key: "comments", label: "Comments", icon: MessageSquareText },
 ]
-const LEADER_NAV = NAV.filter((item) => item.key === "schedule" || item.key === "attendance")
+const LEADER_NAV = NAV.filter((item) => item.key === "schedule" || item.key === "attendance" || item.key === "announcements")
 const ALL_TIERS = [...LEVELS]
 const TIME_SLOTS = ["3:20-4:30 PM", "3:20-4:45 PM", "3:20-5:00 PM", "3:20-5:15 PM"] as const
 const ATTENDANCE_FILTERS = ["all", "present", "absent", "late"] as const
@@ -221,7 +221,7 @@ export function StaffDashboard({
   initialGearGuides?: EquipmentRecommendation[]
   initialAttendanceRecords?: AttendanceRecord[]
   initialMessages?: SupportTicket[]
-  embeddedSection?: "schedule" | "attendance"
+  embeddedSection?: "schedule" | "attendance" | "announcements"
   onScheduleChange?: (change: { type: "upsert"; session: ScheduleSession } | { type: "delete"; id: string }) => void
 }) {
   const supabase = createClient()
