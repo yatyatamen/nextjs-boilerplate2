@@ -2124,74 +2124,76 @@ export function StaffDashboard({
         <div className="space-y-6">
           <SectionHeader title="Announcements" desc="   " />
 
-          <Card className="p-5 border-dashed border-primary/30 bg-primary/5">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary mb-3">
-              <Megaphone className="h-4 w-4" />
-              Website Feature Update
-            </div>
-            <div className="flex flex-col gap-3">
-              <Textarea
-                value={websiteFeatureText}
-                onChange={(e) => setWebsiteFeatureText(e.target.value)}
-                className="min-h-28"
-                placeholder="Write the website feature update, such as a new tool, dashboard improvement, or release note..."
-              />
-              <div className="flex flex-wrap justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    showConfirmation(
-                      "Hide website feature announcement?",
-                      "This will hide the current website feature announcement from the dashboard until you post a new one.",
-                      async () => {
-                        closeConfirmation()
-                        await hideLatestAnnouncement(true)
-                      },
-                    )
-                  }}
-                  className="border-zinc-700 bg-zinc-950 text-white hover:bg-zinc-900"
-                >
-                  No Website Feature
-                </Button>
-                <Button
-                  type="button"
-                  onClick={async () => {
-                    if (!websiteFeatureText.trim()) return
-                    const { data, error } = await supabase
-                      .from("announcements")
-                      .insert({
-                        title: "Website Feature Update",
-                        content: websiteFeatureText.trim(),
-                      })
-                      .select()
-
-                    if (error) {
-                      alert(`Announcement DB Error: ${error.message} (${error.code})`)
-                      console.error("Full Error Details:", error)
-                      return
-                    }
-
-                    if (data && data[0]) {
-                      setAnnouncements((prev) => [data[0] as Announcement, ...prev])
-                      setShowNoFeatureAnnouncement(false)
-                      setWebsiteFeatureText("")
-                      const emailResult = await sendConfiguredEmails(
-                        "announcement",
-                        members
-                          .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher")
-                          .map((member) => ({ to: member.email!, payload: { title: "Website Feature Update", content: websiteFeatureText.trim() } })),
-                      )
-                      showEmailBatchResult("Website feature update posted", emailResult)
-                    }
-                  }}
-                  className="bg-[#40938c] text-black font-bold"
-                >
-                  Post Website Feature
-                </Button>
+          {!isLeader && (
+            <Card className="p-5 border-dashed border-primary/30 bg-primary/5">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary mb-3">
+                <Megaphone className="h-4 w-4" />
+                Website Feature Update
               </div>
-            </div>
-          </Card>
+              <div className="flex flex-col gap-3">
+                <Textarea
+                  value={websiteFeatureText}
+                  onChange={(e) => setWebsiteFeatureText(e.target.value)}
+                  className="min-h-28"
+                  placeholder="Write the website feature update, such as a new tool, dashboard improvement, or release note..."
+                />
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      showConfirmation(
+                        "Hide website feature announcement?",
+                        "This will hide the current website feature announcement from the dashboard until you post a new one.",
+                        async () => {
+                          closeConfirmation()
+                          await hideLatestAnnouncement(true)
+                        },
+                      )
+                    }}
+                    className="border-zinc-700 bg-zinc-950 text-white hover:bg-zinc-900"
+                  >
+                    No Website Feature
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={async () => {
+                      if (!websiteFeatureText.trim()) return
+                      const { data, error } = await supabase
+                        .from("announcements")
+                        .insert({
+                          title: "Website Feature Update",
+                          content: websiteFeatureText.trim(),
+                        })
+                        .select()
+
+                      if (error) {
+                        alert(`Announcement DB Error: ${error.message} (${error.code})`)
+                        console.error("Full Error Details:", error)
+                        return
+                      }
+
+                      if (data && data[0]) {
+                        setAnnouncements((prev) => [data[0] as Announcement, ...prev])
+                        setShowNoFeatureAnnouncement(false)
+                        setWebsiteFeatureText("")
+                        const emailResult = await sendConfiguredEmails(
+                          "announcement",
+                          members
+                            .filter((member) => member.email && member.role !== "staff" && member.role !== "teacher")
+                            .map((member) => ({ to: member.email!, payload: { title: "Website Feature Update", content: websiteFeatureText.trim() } })),
+                        )
+                        showEmailBatchResult("Website feature update posted", emailResult)
+                      }
+                    }}
+                    className="bg-[#40938c] text-black font-bold"
+                  >
+                    Post Website Feature
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
 
           <div className="flex justify-end">
             <Button
