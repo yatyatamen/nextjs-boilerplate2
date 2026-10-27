@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { MemberDashboard } from "@/components/dashboard/member-dashboard"
 import type { Announcement, AttendanceRecord, Booking, Profile, ScheduleSession } from "@/lib/types"
@@ -39,8 +39,3 @@ export function TeacherDashboard({
     />
   )
 }
-
-
- 
-
-

@@ -1,3 +1,3 @@
 git add .
-git commit -m "fix: 1"
+git commit -m "update all"
 git push origin main
