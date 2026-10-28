@@ -367,6 +367,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   const isManagementRole = isStaff || isTeacher || isLeader
                                                   const canCustomizeButtonHue = profile.role === "member" || isLeader || isTeacher
                                                   const canManageAttendance = isStaff || isLeader || isTeacher
+                                                  const canUseManagementShopAndGear = isStaff || isTeacher
                                                   const dashboardNav = NAV.filter((item) => {
                                                     if (item.key === "grading-manager") return isStaff
                                                     if (item.key === "assessments") return !isTeacher && !isLeader
@@ -2270,7 +2271,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                             </div>
                                                           )}
 
-                                                          {active === "gear" && isManagementRole && (
+                                                          {active === "gear" && canUseManagementShopAndGear && (
                                                             <div
                                                               className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}
                                                               data-theme={isDarkMode ? "dark" : "light"}
@@ -2293,7 +2294,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                           )}
 
                                                           {/* GEAR RECOMMENDATIONS */}
-                                                          {active === "gear" && !isManagementRole && (
+                                                          {active === "gear" && !canUseManagementShopAndGear && (
                                                             <div>
                                                               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                                 <div>
@@ -2573,7 +2574,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                             </div>
                                                           )}
 
-                                                          {active === "shop" && isManagementRole && (
+                                                          {active === "shop" && canUseManagementShopAndGear && (
                                                             <div
                                                               className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}
                                                               data-theme={isDarkMode ? "dark" : "light"}
@@ -2595,7 +2596,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                             </div>
                                                           )}
 
-                                                          {active === "shop" && !isManagementRole && (
+                                                          {active === "shop" && !canUseManagementShopAndGear && (
                                                             <div>
                                                               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                                 <div>
