@@ -1884,7 +1884,14 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     <p className={`text-[11px] ${theme.textMuted}`}>Please confirm your assignment entry parameters below</p>
                                                                   </div>
                                                                   
-                                                                  <Card className={`p-6 border-2 border-[var(--member-accent)]/40 ${theme.cardBg} rounded-sm flex flex-col gap-5`}>
+                                                                  <Card className={`p-4 sm:p-6 border-2 border-[var(--member-accent)]/40 ${theme.cardBg} rounded-sm flex flex-col gap-5`}>
+                                                                    <div className="min-w-0">
+                                                                      <span className={`${theme.textMuted} block uppercase text-[9px] font-mono`}>Training Context</span>
+                                                                      <p className="mt-1 break-words text-xs font-mono font-bold text-zinc-200">
+                                                                        {confirmingSession.title || "Standard Training Session"}
+                                                                      </p>
+                                                                    </div>
+
                                                                     <div className="border-b border-zinc-800/60 pb-4">
                                                                       <span className="text-[10px] font-mono text-[var(--member-accent)] uppercase tracking-widest">Selected Target Interval</span>
                                                                       <h3 className={`text-2xl font-black ${theme.headingColor} uppercase tracking-tight mt-1`}>
@@ -1893,19 +1900,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                       <p className="text-sm font-mono font-bold text-[var(--member-accent)] mt-0.5">{confirmingSession.time}</p>
                                                                     </div>
 
-                                                                    <div className="grid grid-cols-2 gap-4 text-xs font-mono">
-                                                                      <div className="p-3 bg-zinc-950/40 border border-zinc-800/60 rounded-xs">
-                                                                        <span className={`${theme.textMuted} block uppercase text-[9px]`}>Training Context</span>
-                                                                        <span className="text-zinc-200 font-bold block mt-1 truncate">
-                                                                          {confirmingSession.title || "Standard Training Session"}
-                                                                        </span>
-                                                                      </div>
-                                                                      <div className="p-3 bg-zinc-950/40 border border-zinc-800/60 rounded-xs">
-                                                                        <span className={`${theme.textMuted} block uppercase text-[9px]`}>Session Description</span>
-                                                                        <span className="text-zinc-200 font-bold block mt-1 whitespace-pre-line">
-                                                                          {confirmingSession.notes || "Session details will be provided by staff."}
-                                                                        </span>
-                                                                      </div>
+                                                                    <div className="min-w-0 p-3 bg-zinc-950/40 border border-zinc-800/60 rounded-xs font-mono text-xs">
+                                                                      <span className={`${theme.textMuted} block uppercase text-[9px]`}>Session Description</span>
+                                                                      <p className="mt-1 break-words whitespace-pre-line leading-relaxed font-bold text-zinc-200">
+                                                                        {confirmingSession.notes || "Session details will be provided by staff."}
+                                                                      </p>
                                                                     </div>
 
                                                                     <div className="space-y-2 rounded-sm border border-zinc-800/60 bg-zinc-950/40 p-3">
