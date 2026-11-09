@@ -1886,8 +1886,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   
                                                                   <Card className={`p-4 sm:p-6 border-2 border-[var(--member-accent)]/40 ${theme.cardBg} rounded-sm flex flex-col gap-5`}>
                                                                     <div className="min-w-0">
-                                                                      <span className={`${theme.textMuted} block uppercase text-[9px] font-mono`}>Training Context</span>
-                                                                      <p className="mt-1 break-words text-xs font-mono font-bold text-zinc-200">
+                                                                      <p className="break-words text-xl font-mono font-bold text-zinc-200">
                                                                         {confirmingSession.title || "Standard Training Session"}
                                                                       </p>
                                                                     </div>
