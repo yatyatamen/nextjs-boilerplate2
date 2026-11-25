@@ -10,7 +10,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  if (isMaintenanceActive()) {
+  if (process.env.NODE_ENV === "production" && isMaintenanceActive()) {
     if (pathname === "/maintenance") {
       return NextResponse.next()
     }

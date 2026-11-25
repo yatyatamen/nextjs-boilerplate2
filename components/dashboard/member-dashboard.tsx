@@ -4,6 +4,7 @@
                                                 import { createClient } from "@/lib/supabase/client"
                                                 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
                                                 import { StaffDashboard } from "@/components/dashboard/staff-dashboard"
+                                                import { ScheduleCalendar } from "@/components/dashboard/schedule-calendar"
                                                 import { Badge, Button, Card, Input } from "@/components/ui/primitives"
                                                 import type {
                                                   Profile,
@@ -55,6 +56,7 @@ type AttendanceRiskEntry = {
   risk_percent: number
   month_start: string
   suspended_session_ids: string[]
+  suspension_reasons: string[]
 }
 
                                                 const NAV: NavItem[] = [
@@ -271,6 +273,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   const supabase = createClient()
                                                   const [active, setActive] = useState("overview")
                                                   const [schedule, setSchedule] = useState<ScheduleSession[]>(initialSchedule)
+                                                  const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">("list")
                                                   const [bookings, setBookings] = useState<Booking[]>(initialBookings)
                                                   const [bookingCounts, setBookingCounts] = useState<Record<string, number>>({})
                                                   const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
@@ -959,6 +962,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
           ...previous[userId],
           ...saved,
           suspended_session_ids: previous[userId]?.suspended_session_ids ?? [],
+          suspension_reasons: previous[userId]?.suspension_reasons ?? [],
         },
       }))
       setAttendanceRiskEdits((previous) => ({ ...previous, [userId]: String(saved.risk_percent) }))
@@ -1486,6 +1490,56 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                     }
                                                   }
 
+                                                  function renderMemberScheduleSession(session: ScheduleSession) {
+                                                    const booked = bookedSessionIds.has(String(session.id))
+                                                    const ruleSet = getSessionBookingRules(session, sessionBookingCount(session.id), new Date())
+                                                    const hasTimeConflict = hasMemberSessionTimeConflict(session, bookings, profile.id, scheduleById)
+                                                    const riskEntry = attendanceRiskByMember[profile.id]
+                                                    const attendanceSuspended = riskEntry?.suspended_session_ids.includes(String(session.id)) ?? false
+                                                    const disabled = booked || pendingId === String(session.id) || ruleSet.isBookingBlocked || ruleSet.isFull || hasTimeConflict || attendanceSuspended
+                                                    const suspensionReason = riskEntry?.suspension_reasons.length
+                                                      ? riskEntry.suspension_reasons.join(", ")
+                                                      : "your current suspension chance"
+
+                                                    return (
+                                                      <Card key={session.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
+                                                        <div>
+                                                          <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>
+                                                            {formatDate(session.date)} · <span className={`font-mono text-sm font-bold ${theme.headingColor}`}>{session.time}</span>
+                                                          </p>
+                                                          <p className={`mt-1 text-[13px] font-semibold ${theme.textSecondary}`}>{session.title || "Standard Class Roster"}</p>
+                                                          <p className={`text-xs ${theme.textMuted} mt-1 whitespace-pre-line`}>
+                                                            {getSessionBookingNotes(session, sessionBookingCount(session.id))}
+                                                          </p>
+                                                          {attendanceSuspended && (
+                                                            <p className="mt-2 text-xs font-medium text-rose-400">
+                                                              Booking suspended for this session because of {suspensionReason}. Current suspension chance: {(riskEntry?.risk_percent ?? 0).toFixed(2)}%. Contact a club leader if you have questions.
+                                                            </p>
+                                                          )}
+                                                        </div>
+                                                        <Button
+                                                          size="sm"
+                                                          type="button"
+                                                          disabled={disabled}
+                                                          onClick={() => {
+                                                            if (ruleSet.isFull || ruleSet.isBookingBlocked) {
+                                                              alert(ruleSet.bookingBlockReason || "This session is full or booking is closed.")
+                                                              return
+                                                            }
+                                                            if (hasTimeConflict) {
+                                                              alert("You already have a booking at the same date and time. Please choose another session.")
+                                                              return
+                                                            }
+                                                            setConfirmingSession(session)
+                                                          }}
+                                                          className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${disabled ? "bg-zinc-700 text-white" : "bg-[var(--member-accent-fill)] text-black font-bold"}`}
+                                                        >
+                                                          {booked ? "Claimed" : attendanceSuspended ? "Suspended" : hasTimeConflict ? "Time Clash" : ruleSet.isFull ? "Session Full" : ruleSet.isBookingBlocked ? "Booking Closed" : "Join Session"}
+                                                        </Button>
+                                                      </Card>
+                                                    )
+                                                  }
+
                                                   async function deleteBookingRemotely(booking: Booking) {
                                                     const payload = {
                                                       booking_id: booking.id,
@@ -1796,7 +1850,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                               <div className="mb-5">
                                                                 <h2 className={`text-lg font-bold ${theme.headingColor}`}>Session Booking Eligibility</h2>
                                                                 <p className={`mt-1 text-sm ${theme.textMuted}`}>
-                                                                  Late adds a random 10–20 points, absence adds 15–30, and present attendance removes 15–30. The score is a per-session suspension chance, resets monthly, and is capped between 0% and 100%. Only one uncompleted session can be suspended at a time.
+                                                                  Late arrival adds 10–20 points, absence adds 15–30, and a staff-added missed sign-up adds 10–20. Present attendance removes 15–30. The score is a per-session suspension chance, resets monthly, and is capped between 0% and 100%. Only one uncompleted session can be suspended at a time.
                                                                 </p>
                                                               </div>
                                                               {attendanceRiskLoadError && (
@@ -1915,6 +1969,25 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 </div>
                                                               </Card>
 
+                                                              {profile.role === "member" && (
+                                                                <Card className={`p-5 border ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                  <div className="flex items-start gap-3">
+                                                                    <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-[var(--member-accent)]" />
+                                                                    <div>
+                                                                      <p className={`text-xs font-bold uppercase tracking-wider ${theme.textSecondary}`}>
+                                                                        Booking suspension chance
+                                                                      </p>
+                                                                      <p className={`mt-1 text-2xl font-bold ${theme.headingColor}`}>
+                                                                        {(attendanceRiskByMember[profile.id]?.risk_percent ?? 0).toFixed(2)}%
+                                                                      </p>
+                                                                      <p className={`mt-2 text-xs leading-relaxed ${theme.textMuted}`}>
+                                                                        Absence raises your chance by 15–30%, late arrival by 10–20%, and being added after forgetting to sign up by 10–20%. Present attendance lowers it by 15–30%. Each new booking has this chance of being suspended for one session; the rate cannot go below 0% and resets monthly.
+                                                                      </p>
+                                                                    </div>
+                                                                  </div>
+                                                                </Card>
+                                                              )}
+
                                                               {isStaff && (
                                                                 <Card className={`p-5 border ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                   <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--member-accent)] mb-3">
@@ -2020,7 +2093,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   </p>
                                                                   {profile.role === "member" && (
                                                                     <p className={`mt-2 text-xs ${theme.textSecondary}`}>
-                                                                      Attendance suspension chance: {attendanceRiskByMember[profile.id]?.risk_percent ?? 0}% for each new session booking. A failed check suspends only that session; only one uncompleted suspension is active at a time. Present attendance lowers your chance, and it resets monthly.
+                                                                      Attendance suspension chance: {(attendanceRiskByMember[profile.id]?.risk_percent ?? 0).toFixed(2)}% per new booking. Absence, late arrival, or being added after forgetting to sign up increases the chance; present attendance lowers it. A failed check suspends one session, and the chance resets monthly.
                                                                     </p>
                                                                   )}
                                                                   {profile.role === "member" && attendanceRiskLoadError && (
@@ -2030,56 +2103,35 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   )}
                                                                 </Card>
 
-                                                                <div className="mb-4">
+                                                                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                                                                   <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.textSecondary}`}>Session Schedule</h2>
+                                                                  <div className="flex gap-2">
+                                                                    <Button
+                                                                      type="button"
+                                                                      size="sm"
+                                                                      variant={scheduleViewMode === "list" ? "secondary" : "outline"}
+                                                                      onClick={() => setScheduleViewMode("list")}
+                                                                    >
+                                                                      List view
+                                                                    </Button>
+                                                                    <Button
+                                                                      type="button"
+                                                                      size="sm"
+                                                                      variant={scheduleViewMode === "calendar" ? "secondary" : "outline"}
+                                                                      onClick={() => setScheduleViewMode("calendar")}
+                                                                    >
+                                                                      Calendar view
+                                                                    </Button>
+                                                                  </div>
                                                                 </div>
 
+                                                                {scheduleViewMode === "calendar" ? (
+                                                                  <ScheduleCalendar sessions={visibleSchedule} renderSession={renderMemberScheduleSession} />
+                                                                ) : (
                                                                   <div className="flex flex-col gap-3">
-                                                                    {visibleSchedule.map((s) => {
-                                                  const booked = bookedSessionIds.has(String(s.id))
-                                                  const ruleSet = getSessionBookingRules(s, sessionBookingCount(s.id), new Date())
-                                                  const hasTimeConflict = hasMemberSessionTimeConflict(s, bookings, profile.id, scheduleById)
-                                                  const attendanceSuspended = attendanceRiskByMember[profile.id]?.suspended_session_ids.includes(String(s.id)) ?? false
-                                                  const disabled = booked || pendingId === String(s.id) || ruleSet.isBookingBlocked || ruleSet.isFull || hasTimeConflict || attendanceSuspended
-                                                  return (
-                                                    <Card key={s.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
-                                                      <div>
-                                                        <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>
-                                                          {formatDate(s.date)} · <span className={`font-mono text-sm font-bold ${theme.headingColor}`}>{s.time}</span>
-                                                        </p>
-                                                        <p className={`mt-1 text-[13px] font-semibold ${theme.textSecondary}`}>{s.title || "Standard Class Roster"}</p>
-                                                        <p className={`text-xs ${theme.textMuted} mt-1 whitespace-pre-line`}>
-                                                          {getSessionBookingNotes(s, sessionBookingCount(s.id))}
-                                                        </p>
-                                                        {attendanceSuspended && (
-                                                          <p className="mt-2 text-xs font-medium text-rose-400">
-                                                            Booking suspended for this session due to attendance. Contact a club leader if you have questions.
-                                                          </p>
-                                                        )}
-                                                      </div>
-                                                      <Button
-                                                        size="sm"
-                                                        type="button"
-                                                        disabled={disabled}
-                                                        onClick={() => {
-                                                          if (ruleSet.isFull || ruleSet.isBookingBlocked) {
-                                                            alert(ruleSet.bookingBlockReason || "This session is full or booking is closed.")
-                                                            return
-                                                          }
-                                                          if (hasTimeConflict) {
-                                                            alert("You already have a booking at the same date and time. Please choose another session.")
-                                                            return
-                                                          }
-                                                          setConfirmingSession(s)
-                                                        }}
-                                                        className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${disabled ? "bg-zinc-700 text-white" : "bg-[var(--member-accent-fill)] text-black font-bold"}`}
-                                                      >
-                                                        {booked ? "Claimed" : attendanceSuspended ? "Suspended" : hasTimeConflict ? "Time Clash" : ruleSet.isFull ? "Session Full" : ruleSet.isBookingBlocked ? "Booking Closed" : "Join Session"}
-                                                      </Button>
-                                                    </Card>
-                                                  )
-                                                })}
+                                                                    {visibleSchedule.map(renderMemberScheduleSession)}
                                                                   </div>
+                                                                )}
                                                                 </>
                                                               ) : (
                                                                 /* INTERMEDIARY VERIFICATION CONFIRMATION VIEW */

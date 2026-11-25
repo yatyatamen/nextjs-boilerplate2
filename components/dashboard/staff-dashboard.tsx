@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
+import { ScheduleCalendar } from "@/components/dashboard/schedule-calendar"
 import {
   Badge,
   Button,
@@ -103,6 +104,11 @@ const ATTENDANCE_MONTH_FILTERS = ["all", "January", "February", "March", "April"
 type AttendanceFilter = typeof ATTENDANCE_FILTERS[number]
 type AttendanceDayFilter = typeof ATTENDANCE_DAY_FILTERS[number]
 type AttendanceMonthFilter = typeof ATTENDANCE_MONTH_FILTERS[number]
+type ManualAttendanceRosterEntry = {
+  session_id: string
+  user_id: string
+  created_at: string
+}
 
 function SectionHeader({ title, desc }: { title: string; desc: string }) {
   return (
@@ -265,6 +271,7 @@ export function StaffDashboard({
 
   const [members, setMembers] = useState<Profile[]>(initialMembers)
   const [schedule, setSchedule] = useState<ScheduleSession[]>(() => sortSessions(initialSchedule || []))
+  const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">("list")
   const [currentTime, setCurrentTime] = useState(() => new Date())
   const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
   const [websiteFeatureText, setWebsiteFeatureText] = useState("")
@@ -284,6 +291,11 @@ export function StaffDashboard({
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<string | null>(null)
   const [pendingAttendance, setPendingAttendance] = useState<Record<string, boolean>>({})
   const [attendanceSaveError, setAttendanceSaveError] = useState<string | null>(null)
+  const [manualAttendanceRoster, setManualAttendanceRoster] = useState<ManualAttendanceRosterEntry[]>([])
+  const [manualAttendanceRosterLoading, setManualAttendanceRosterLoading] = useState(false)
+  const [manualAttendanceRosterError, setManualAttendanceRosterError] = useState<string | null>(null)
+  const [manualAttendanceMemberBySession, setManualAttendanceMemberBySession] = useState<Record<string, string>>({})
+  const [manualAttendanceSavingSession, setManualAttendanceSavingSession] = useState<string | null>(null)
   const [resources, setResources] = useState<Resource[]>([])
   const [newResourceTitle, setNewResourceTitle] = useState("")
   const [newResourceUrl, setNewResourceUrl] = useState("")
@@ -310,6 +322,33 @@ export function StaffDashboard({
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
   const { toast, showToast } = useToast()
   const [confirmLoading, setConfirmLoading] = useState(false)
+
+  useEffect(() => {
+    if (active !== "attendance") return
+
+    let isMounted = true
+    setManualAttendanceRosterLoading(true)
+    void fetch("/api/attendance-roster", { credentials: "same-origin", cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(result.error || "Unable to load manually added attendance members.")
+        if (isMounted) {
+          setManualAttendanceRoster(Array.isArray(result.data) ? result.data : [])
+          setManualAttendanceRosterError(null)
+        }
+      })
+      .catch((error) => {
+        console.error("Manual attendance roster load failed:", error)
+        if (isMounted) {
+          setManualAttendanceRosterError(error instanceof Error ? error.message : "Unable to load manually added attendance members.")
+        }
+      })
+      .finally(() => {
+        if (isMounted) setManualAttendanceRosterLoading(false)
+      })
+
+    return () => { isMounted = false }
+  }, [active])
 
   useEffect(() => {
     let mounted = true
@@ -1170,6 +1209,55 @@ export function StaffDashboard({
     }
   }
 
+  async function addManualAttendanceMember(session: ScheduleSession) {
+    const userId = manualAttendanceMemberBySession[String(session.id)]
+    if (!userId) {
+      showToast("Choose a member to add to attendance.")
+      return
+    }
+
+    setManualAttendanceSavingSession(String(session.id))
+    setManualAttendanceRosterError(null)
+    try {
+      const response = await fetch("/api/attendance-roster", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: String(session.id), user_id: userId }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || !result.data) {
+        throw new Error(result.error || "Unable to add member to attendance.")
+      }
+
+      const entry = result.data as ManualAttendanceRosterEntry & {
+        added?: boolean
+        change_percent?: number
+        risk_percent?: number
+      }
+      setManualAttendanceRoster((previous) => (
+        previous.some((item) => item.session_id === entry.session_id && item.user_id === entry.user_id)
+          ? previous
+          : [...previous, entry]
+      ))
+      setManualAttendanceMemberBySession((previous) => ({ ...previous, [String(session.id)]: "" }))
+      const memberName = getMemberDisplayName(members.find((member) => String(member.id) === userId))
+      if (entry.added === false) {
+        showToast(`${memberName} is already on this attendance list.`)
+      } else {
+        showToast(
+          `${memberName} added. Their suspension chance increased by ${Number(entry.change_percent ?? 0).toFixed(2)}% for forgetting to sign up.`,
+        )
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to add member to attendance."
+      setManualAttendanceRosterError(message)
+      showToast(message)
+    } finally {
+      setManualAttendanceSavingSession(null)
+    }
+  }
+
   const selectedAttendanceMember = members.find(
     (member) => String(member.id) === String(selectedAttendanceMemberId),
   )
@@ -1438,7 +1526,29 @@ export function StaffDashboard({
               showEmailBatchResult("Session posted", emailResult.data, "eligible members")
             }}
           />
-          <div className="mt-6 flex flex-col gap-3">
+          <div className="mt-4 flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={scheduleViewMode === "list" ? "secondary" : "outline"}
+              onClick={() => setScheduleViewMode("list")}
+            >
+              List view
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={scheduleViewMode === "calendar" ? "secondary" : "outline"}
+              onClick={() => setScheduleViewMode("calendar")}
+            >
+              Calendar view
+            </Button>
+          </div>
+          <div className="mt-6">
+            {scheduleViewMode === "calendar" ? (
+              <ScheduleCalendar sessions={schedule} />
+            ) : (
+              <div className="flex flex-col gap-3">
             {(() => {
               const activeSessions = getActiveSessions(schedule)
               const archivedSessions = getArchivedSessions(schedule)
@@ -1494,6 +1604,8 @@ export function StaffDashboard({
                 </>
               )
             })()}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1629,6 +1741,11 @@ export function StaffDashboard({
               {attendanceSaveError}
             </Card>
           )}
+          {manualAttendanceRosterError && (
+            <Card role="alert" className="mb-4 border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
+              {manualAttendanceRosterError}
+            </Card>
+          )}
           
           {/* View Mode Toggle */}
           <div className="mb-6 flex gap-2">
@@ -1745,7 +1862,7 @@ export function StaffDashboard({
                   <p className="text-muted-foreground">No sessions available to mark attendance.</p>
                 </Card>
               ) : (
-                getActiveSessions(schedule).map((session) => {
+                schedule.map((session) => {
                   const sessionBookings = bookings.filter((b) => b.session_id === session.id)
                   const uniqueBookings = Array.from(
                     new Map(
@@ -1759,9 +1876,64 @@ export function StaffDashboard({
                     ).values(),
                   )
 
+                  const listedUserIds = new Set([
+                    ...uniqueBookings.map((booking) => String(booking.user_id)),
+                    ...attendanceRecords
+                      .filter((record) => String(record.session_id) === String(session.id))
+                      .map((record) => String(record.user_id)),
+                    ...manualAttendanceRoster
+                      .filter((entry) => String(entry.session_id) === String(session.id))
+                      .map((entry) => String(entry.user_id)),
+                  ])
+                  const addableMembers = members
+                    .filter((member) => member.role === "member" && !listedUserIds.has(String(member.id)))
+                    .sort((left, right) => getMemberDisplayName(left).localeCompare(getMemberDisplayName(right)))
+
+                  const sessionManualRoster = manualAttendanceRoster.filter(
+                    (entry) => String(entry.session_id) === String(session.id),
+                  )
+                  const manuallyAddedUserIds = new Set(sessionManualRoster.map((entry) => String(entry.user_id)))
+                  const sessionRosterRows = new Map<string, { booking: Booking; manuallyAdded: boolean }>()
+                  for (const booking of uniqueBookings) {
+                    sessionRosterRows.set(String(booking.user_id), {
+                      booking,
+                      manuallyAdded: manuallyAddedUserIds.has(String(booking.user_id)),
+                    })
+                  }
+                  for (const record of attendanceRecords.filter((item) => String(item.session_id) === String(session.id))) {
+                    const userId = String(record.user_id)
+                    if (sessionRosterRows.has(userId)) continue
+                    sessionRosterRows.set(userId, {
+                      booking: {
+                        id: `attendance:${record.id}`,
+                        session_id: String(session.id),
+                        user_id: userId,
+                        status: "confirmed",
+                        notes: record.notes,
+                        created_at: record.marked_at,
+                      },
+                      manuallyAdded: manuallyAddedUserIds.has(userId),
+                    })
+                  }
+                  for (const entry of sessionManualRoster) {
+                    const userId = String(entry.user_id)
+                    if (sessionRosterRows.has(userId)) continue
+                    sessionRosterRows.set(userId, {
+                      booking: {
+                        id: `manual:${session.id}:${userId}`,
+                        session_id: String(session.id),
+                        user_id: userId,
+                        status: "confirmed",
+                        notes: "Forgot to sign up; added to attendance manually.",
+                        created_at: entry.created_at,
+                      },
+                      manuallyAdded: true,
+                    })
+                  }
+
                   const rows = sortAttendanceRows(
-                    uniqueBookings
-                      .map((booking) => {
+                    Array.from(sessionRosterRows.values())
+                      .map(({ booking, manuallyAdded }) => {
                         const member = members.find((m) => String(m.id) === String(booking.user_id))
                         const attendance = attendanceRecords.find(
                           (record) => String(record.session_id) === String(booking.session_id) && String(record.user_id) === String(booking.user_id),
@@ -1773,7 +1945,7 @@ export function StaffDashboard({
                           || member?.email
                           || "Name unavailable"
                         const status = attendance?.status ?? "not marked"
-                        return { booking, member, attendance, status, displayName }
+                        return { booking, member, attendance, status, displayName, manuallyAdded }
                       })
                       .filter((row) => {
                         const matchesStatus = attendanceFilter === "all" || row.status === attendanceFilter
@@ -1792,6 +1964,46 @@ export function StaffDashboard({
                         <h4 className="font-semibold text-foreground">{session.title ?? "Untitled Session"}</h4>
                         <p className="text-sm text-muted-foreground mt-1">
                           {formatDate(session.date)} · {session.time ?? "TBD"} · {getWeekdayLabel(session.date)}
+                        </p>
+                      </div>
+                      <div className="mb-4 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                          <div className="min-w-0 flex-1">
+                            <Label htmlFor={`attendance-add-${session.id}`} className="mb-2 block text-xs text-muted-foreground">
+                              Add a player who forgot to sign up
+                            </Label>
+                            <Select
+                              id={`attendance-add-${session.id}`}
+                              value={manualAttendanceMemberBySession[String(session.id)] ?? ""}
+                              disabled={manualAttendanceRosterLoading || addableMembers.length === 0}
+                              onChange={(event) => setManualAttendanceMemberBySession((previous) => ({
+                                ...previous,
+                                [String(session.id)]: event.target.value,
+                              }))}
+                            >
+                              <option value="">
+                                {manualAttendanceRosterLoading ? "Loading members..." : addableMembers.length ? "Select a member" : "No additional members"}
+                              </option>
+                              {addableMembers.map((member) => (
+                                <option key={member.id} value={member.id}>{getMemberDisplayName(member)}</option>
+                              ))}
+                            </Select>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={
+                              !manualAttendanceMemberBySession[String(session.id)]
+                              || manualAttendanceRosterLoading
+                              || manualAttendanceSavingSession === String(session.id)
+                            }
+                            onClick={() => void addManualAttendanceMember(session)}
+                          >
+                            {manualAttendanceSavingSession === String(session.id) ? "Adding..." : "Add player"}
+                          </Button>
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Adding them records that they missed sign-up and raises their suspension chance by 10–20%.
                         </p>
                       </div>
                       <div className="mb-3 flex flex-col items-stretch justify-end gap-2 sm:flex-row sm:items-center">
@@ -1851,16 +2063,19 @@ export function StaffDashboard({
                       ) : (
                         <>
                           <div className="space-y-2 md:hidden">
-                            {rows.map(({ booking, member, attendance, displayName }) => (
+                            {rows.map(({ booking, member, attendance, displayName, manuallyAdded }) => (
                               <div key={booking.id} className={`flex flex-col gap-2 rounded-xl border p-3 ${member?.role === "teacher" ? "border-emerald-500/30 bg-emerald-500/5" : "border-zinc-800 bg-zinc-950"}`}>
                                 <div className="flex items-center justify-between gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
-                                    className="attendance-member-name break-words text-left text-sm font-medium text-zinc-100 underline-offset-2 hover:underline"
-                                  >
-                                    {displayName}
-                                  </button>
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
+                                      className="attendance-member-name break-words text-left text-sm font-medium text-zinc-100 underline-offset-2 hover:underline"
+                                    >
+                                      {displayName}
+                                    </button>
+                                    {manuallyAdded && <span className="shrink-0 text-[10px] text-amber-300">Forgot signup</span>}
+                                  </div>
                                   {member?.role === "teacher" && (
                                     <span className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-emerald-200">
                                       Teacher
@@ -1909,7 +2124,7 @@ export function StaffDashboard({
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-800">
-                              {rows.map(({ booking, member, attendance, status, displayName }) => (
+                              {rows.map(({ booking, member, attendance, status, displayName, manuallyAdded }) => (
                                 <tr key={booking.id} className={member?.role === "teacher" ? "border-l border-emerald-500/30 bg-emerald-500/[0.04] hover:bg-emerald-500/[0.06]" : "hover:bg-zinc-900"}>
                                   <td className="px-4 py-3 align-top">
                                     <div className="flex items-center gap-2">
@@ -1922,6 +2137,7 @@ export function StaffDashboard({
                                           {displayName}
                                         </button>
                                       </p>
+                                      {manuallyAdded && <span className="text-[10px] text-amber-300">Forgot signup</span>}
                                       {member?.role === "teacher" && (
                                         <span className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-emerald-200">
                                           Teacher

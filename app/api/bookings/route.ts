@@ -5,6 +5,12 @@ import { isSessionVisibleToLevel } from "@/lib/session-visibility"
 import { sendSessionBookingCancellationEmail, sendSessionBookingConfirmationEmail, sendSessionBookingReminderEmail } from "@/lib/supabase/email"
 import type { EmailTemplate } from "@/lib/email-templates"
 
+const ATTENDANCE_RISK_REASON_LABELS: Record<string, string> = {
+  absent: "absence",
+  late: "late arrival",
+  forgot_signup: "forgetting to sign up",
+}
+
 function isEmailTemplate(value: unknown): value is EmailTemplate {
   return Boolean(
     value &&
@@ -178,13 +184,28 @@ export async function POST(request: NextRequest) {
 
       if (attendanceRisk?.allowed === false) {
         const riskPercent = Number(attendanceRisk.risk_percent) || 0
+        const { data: riskEvents, error: riskEventsError } = await supabase
+          .from("attendance_booking_risk_events")
+          .select("status")
+          .eq("user_id", userData.user.id)
+          .eq("month_start", String(attendanceRisk.month_start))
+        if (riskEventsError) throw riskEventsError
+        const suspensionReasons = [...new Set(
+          (riskEvents ?? [])
+            .map((event) => ATTENDANCE_RISK_REASON_LABELS[String(event.status)])
+            .filter((reason): reason is string => Boolean(reason)),
+        )]
+        const reasonText = suspensionReasons.length
+          ? suspensionReasons.join(", ")
+          : "your leader-adjusted suspension chance"
         return NextResponse.json({
-          error: `This session is suspended because of your attendance record. Your current suspension chance is ${riskPercent}%. You can choose another session or contact a leader.`,
+          error: `This session is suspended because of ${reasonText}. Your current suspension chance is ${riskPercent}%. You can choose another session or contact a leader.`,
           attendance_risk: {
             user_id: userData.user.id,
             risk_percent: riskPercent,
             month_start: attendanceRisk.month_start,
             suspended_session_ids: [sessionId],
+            suspension_reasons: suspensionReasons,
           },
         }, { status: 409 })
       }

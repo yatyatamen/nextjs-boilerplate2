@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
 const MANAGEMENT_ROLES = new Set(["leader", "staff", "teacher"])
+const RISK_REASON_LABELS: Record<string, string> = {
+  absent: "absence",
+  late: "late arrival",
+  forgot_signup: "forgot to sign up",
+}
 
 function getCurrentMonthStart() {
   const now = new Date()
@@ -15,7 +20,7 @@ function getErrorMessage(error: unknown, fallback: string) {
     && "code" in error
     && (error.code === "PGRST202" || error.code === "PGRST205")
   ) {
-    return "Attendance booking eligibility isn't configured. Apply supabase/migration/20261125090000_attendance_booking_risk.sql, then reload."
+    return "Attendance booking eligibility isn't configured. Apply supabase/migration/20261125090000_attendance_booking_risk.sql and supabase/migration/20261125100000_manual_attendance_roster.sql, then reload."
   }
   if (error instanceof Error) return error.message
   if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
@@ -53,18 +58,29 @@ export async function GET() {
       .select("user_id, session_id, month_start")
       .eq("allowed", false)
       .eq("month_start", monthStart)
+    let eventQuery = supabase
+      .from("attendance_booking_risk_events")
+      .select("user_id, status")
+      .eq("month_start", monthStart)
 
     if (!isManagement) {
       riskQuery = riskQuery.eq("user_id", userData.user.id)
       checkQuery = checkQuery.eq("user_id", userData.user.id)
+      eventQuery = eventQuery.eq("user_id", userData.user.id)
     }
 
-    const [{ data: risks, error: riskError }, { data: checks, error: checksError }] = await Promise.all([
+    const [
+      { data: risks, error: riskError },
+      { data: checks, error: checksError },
+      { data: events, error: eventsError },
+    ] = await Promise.all([
       riskQuery,
       checkQuery,
+      eventQuery,
     ])
     if (riskError) throw riskError
     if (checksError) throw checksError
+    if (eventsError) throw eventsError
 
     const blockedSessions = new Map<string, string[]>()
     for (const check of checks ?? []) {
@@ -72,11 +88,21 @@ export async function GET() {
       blockedSessions.set(userId, [...(blockedSessions.get(userId) ?? []), String(check.session_id)])
     }
 
+    const reasonsByUser = new Map<string, string[]>()
+    for (const event of events ?? []) {
+      const label = RISK_REASON_LABELS[String(event.status)]
+      if (!label) continue
+      const userId = String(event.user_id)
+      const reasons = reasonsByUser.get(userId) ?? []
+      if (!reasons.includes(label)) reasonsByUser.set(userId, [...reasons, label])
+    }
+
     const data = (risks ?? []).map((risk) => ({
       user_id: String(risk.user_id),
       risk_percent: risk.month_start === monthStart ? Number(risk.risk_percent) : 0,
       month_start: monthStart,
       suspended_session_ids: blockedSessions.get(String(risk.user_id)) ?? [],
+      suspension_reasons: reasonsByUser.get(String(risk.user_id)) ?? [],
     }))
 
     if (!isManagement && data.length === 0) {
@@ -85,6 +111,7 @@ export async function GET() {
         risk_percent: 0,
         month_start: monthStart,
         suspended_session_ids: blockedSessions.get(userData.user.id) ?? [],
+        suspension_reasons: reasonsByUser.get(userData.user.id) ?? [],
       })
     }
 
