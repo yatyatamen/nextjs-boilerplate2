@@ -3,7 +3,7 @@ import { MaintenanceCountdown } from "@/components/maintenance-countdown"
 import { MAINTENANCE_REOPEN_AT, MAINTENANCE_REOPEN_LABEL } from "@/lib/maintenance"
 
 export const metadata: Metadata = {
-  title: "Scheduled Maintenance | Westmount Badminton Club",
+  title: "Scheduled Maintenance | WCI Badminton Club",
   description: `The website is temporarily unavailable and will reopen at ${MAINTENANCE_REOPEN_LABEL}.`,
 }
 
@@ -20,7 +20,7 @@ export default function MaintenancePage() {
 
         <h1 className="text-3xl font-bold tracking-tight sm:text-5xl">We’ll be back soon.</h1>
         <p className="mt-4 max-w-xl text-sm leading-6 text-zinc-400 sm:text-base">
-          We’re making updates to the Westmount Badminton Club website. The site is temporarily closed while we work.
+          We’re making updates to the WCI Badminton Club website. The site is temporarily closed while we work.
         </p>
 
         <div className="mt-8 rounded-xl border border-zinc-800 bg-black/40 p-5 sm:p-6">
