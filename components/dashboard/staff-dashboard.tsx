@@ -362,7 +362,7 @@ export function StaffDashboard({
     void fetch("/api/attendance-roster", { credentials: "same-origin", cache: "no-store" })
       .then(async (response) => {
         const result = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(result.error || "Unable to load manually added attendance members.")
+        if (!response.ok) throw new Error(result.error || "Unable to load manually added attendance players.")
         if (isMounted) {
           setManualAttendanceRoster(Array.isArray(result.data) ? result.data : [])
           setManualAttendanceRosterError(null)
@@ -371,7 +371,7 @@ export function StaffDashboard({
       .catch((error) => {
         console.error("Manual attendance roster load failed:", error)
         if (isMounted) {
-          setManualAttendanceRosterError(error instanceof Error ? error.message : "Unable to load manually added attendance members.")
+          setManualAttendanceRosterError(error instanceof Error ? error.message : "Unable to load manually added attendance players.")
         }
       })
       .finally(() => {
@@ -389,7 +389,7 @@ export function StaffDashboard({
     void fetch("/api/attendance-risk", { credentials: "same-origin", cache: "no-store" })
       .then(async (response) => {
         const result = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(result.error || "Unable to load member suspension rates.")
+        if (!response.ok) throw new Error(result.error || "Unable to load member and leader suspension rates.")
         const entries = Array.isArray(result.data) ? result.data as AttendanceRiskEntry[] : []
         if (!isMounted) return
         setAttendanceRiskByMember(Object.fromEntries(entries.map((entry) => [entry.user_id, entry])))
@@ -399,7 +399,7 @@ export function StaffDashboard({
       .catch((error) => {
         console.error("Member attendance risk load failed:", error)
         if (isMounted) {
-          setAttendanceRiskLoadError(error instanceof Error ? error.message : "Unable to load member suspension rates.")
+          setAttendanceRiskLoadError(error instanceof Error ? error.message : "Unable to load member and leader suspension rates.")
         }
       })
       .finally(() => {
@@ -1339,8 +1339,8 @@ export function StaffDashboard({
   async function addManualAttendanceMember(session: ScheduleSession) {
     const userId = manualAttendanceMemberBySession[String(session.id)]
     if (!userId) {
-      showToast("Choose a member to add to attendance.")
-      return
+    showToast("Choose a member or leader to add to attendance.")
+    return
     }
 
     setManualAttendanceSavingSession(String(session.id))
@@ -1354,19 +1354,36 @@ export function StaffDashboard({
       })
       const result = await response.json().catch(() => ({}))
       if (!response.ok || !result.data) {
-        throw new Error(result.error || "Unable to add member to attendance.")
+        throw new Error(result.error || "Unable to add member or leader to attendance.")
       }
 
       const entry = result.data as ManualAttendanceRosterEntry & {
         added?: boolean
         change_percent?: number
         risk_percent?: number
+        month_start?: string
       }
       setManualAttendanceRoster((previous) => (
         previous.some((item) => item.session_id === entry.session_id && item.user_id === entry.user_id)
           ? previous
           : [...previous, entry]
       ))
+      const updatedRiskPercent = Number(entry.risk_percent)
+      const updatedMonthStart = entry.month_start
+      if (Number.isFinite(updatedRiskPercent) && updatedMonthStart) {
+        setAttendanceRiskByMember((previous) => ({
+          ...previous,
+          [userId]: {
+            ...previous[userId],
+            user_id: userId,
+            risk_percent: updatedRiskPercent,
+            month_start: updatedMonthStart,
+            suspended_session_ids: previous[userId]?.suspended_session_ids ?? [],
+            suspension_reasons: previous[userId]?.suspension_reasons ?? [],
+          },
+        }))
+        setAttendanceRiskEdits((previous) => ({ ...previous, [userId]: String(updatedRiskPercent) }))
+      }
       setManualAttendanceMemberBySession((previous) => ({ ...previous, [String(session.id)]: "" }))
       const memberName = getMemberDisplayName(members.find((member) => String(member.id) === userId))
       if (entry.added === false) {
@@ -1377,7 +1394,7 @@ export function StaffDashboard({
         )
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to add member to attendance."
+      const message = error instanceof Error ? error.message : "Unable to add member or leader to attendance."
       setManualAttendanceRosterError(message)
       showToast(message)
     } finally {
@@ -2103,7 +2120,7 @@ export function StaffDashboard({
                       .map((entry) => String(entry.user_id)),
                   ])
                   const addableMembers = members
-                    .filter((member) => member.role === "member" && !listedUserIds.has(String(member.id)))
+                    .filter((member) => (member.role === "member" || member.role === "leader") && !listedUserIds.has(String(member.id)))
                     .sort((left, right) => getMemberDisplayName(left).localeCompare(getMemberDisplayName(right)))
 
                   const sessionManualRoster = manualAttendanceRoster.filter(
@@ -2198,7 +2215,7 @@ export function StaffDashboard({
                               }))}
                             >
                               <option value="">
-                                {manualAttendanceRosterLoading ? "Loading members..." : addableMembers.length ? "Select a member" : "No additional members"}
+                                {manualAttendanceRosterLoading ? "Loading players..." : addableMembers.length ? "Select a player" : "No additional players"}
                               </option>
                               {addableMembers.map((member) => (
                                 <option key={member.id} value={member.id}>{getMemberDisplayName(member)}</option>
@@ -2339,7 +2356,7 @@ export function StaffDashboard({
                           <table className="min-w-full text-left text-sm">
                             <thead className="border-b border-zinc-800 bg-zinc-900 text-zinc-300">
                               <tr>
-                                <th className="px-4 py-3">Member</th>
+                                <th className="px-4 py-3">Member / Leader</th>
                                 <th className="px-4 py-3">Role / Level</th>
                                 <th className="px-4 py-3">Session</th>
                                 <th className="px-4 py-3">Status</th>
@@ -2542,7 +2559,7 @@ export function StaffDashboard({
         <div>
           <SectionHeader
             title="Booking Eligibility"
-            desc="Review and adjust each member’s attendance-based suspension chance. Changes apply to future session bookings."
+            desc="Review and adjust member and leader attendance-based suspension chances. Changes apply to future session bookings."
           />
           <Card className="mb-4 border border-amber-500/25 bg-amber-500/5 p-4 text-sm text-muted-foreground">
             Late arrival adds 10–20%, absence adds 15–30%, and adding a player who forgot to sign up adds 10–20%. Present attendance lowers the chance by 15–30%. Rates are capped from 0% to 100% and reset monthly.
@@ -2553,9 +2570,9 @@ export function StaffDashboard({
             </Card>
           )}
           {attendanceRiskLoading ? (
-            <Card className="p-6 text-center text-muted-foreground">Loading member suspension rates...</Card>
-          ) : members.filter((member) => member.role === "member").length === 0 ? (
-            <Card className="p-6 text-center text-muted-foreground">No member profiles are available.</Card>
+            <Card className="p-6 text-center text-muted-foreground">Loading member and leader suspension rates...</Card>
+          ) : members.filter((member) => member.role === "member" || member.role === "leader").length === 0 ? (
+            <Card className="p-6 text-center text-muted-foreground">No member or leader profiles are available.</Card>
           ) : (
             <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950">
               <table className="min-w-full text-left text-sm">
@@ -2569,12 +2586,12 @@ export function StaffDashboard({
                 </thead>
                 <tbody className="divide-y divide-zinc-800">
                   {members
-                    .filter((member) => member.role === "member")
+                    .filter((member) => member.role === "member" || member.role === "leader")
                     .sort((left, right) => {
                       const riskDifference =
                         (attendanceRiskByMember[right.id]?.risk_percent ?? 0)
                         - (attendanceRiskByMember[left.id]?.risk_percent ?? 0)
-                      return riskDifference || getMemberDisplayName(left).localeCompare(getMemberDisplayName(right))
+                      return riskDifference || getMemberDisplayName(left).localeCompare(getMemberDisplayName(right), undefined, { sensitivity: "base" })
                     })
                     .map((member) => {
                       const risk = attendanceRiskByMember[member.id]
@@ -2927,22 +2944,24 @@ export function StaffDashboard({
               ) : (
                 filteredAnnouncements.map((item: Announcement) => (
                   <Card key={item.id} className="p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <p className="font-semibold text-white">{item.title || "Announcement"}</p>
-                          <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">{formatDate(item.created_at)}</span>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words font-semibold text-white">{item.title || "Announcement"}</p>
+                          <span className="mt-1 block text-[10px] uppercase tracking-[0.2em] text-zinc-400">{formatDate(item.created_at)}</span>
                         </div>
-                        <p className="text-sm text-white whitespace-pre-line leading-relaxed">{item.content}</p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 border-white bg-white text-black hover:bg-zinc-100"
+                          onClick={() => confirmDelete("announcement", async () => { await deleteAnnouncementItem(item.id) })}
+                        >
+                          Delete
+                        </Button>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-white bg-white text-black hover:bg-zinc-100"
-                        onClick={() => confirmDelete("announcement", async () => { await deleteAnnouncementItem(item.id) })}
-                      >
-                        Delete
-                      </Button>
+                      <div className="w-full rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+                        <p className="break-words whitespace-pre-wrap text-sm leading-relaxed text-white">{item.content}</p>
+                      </div>
                     </div>
                   </Card>
                 ))

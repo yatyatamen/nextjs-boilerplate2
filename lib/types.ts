@@ -67,6 +67,7 @@ export type Booking = {
   status: string | null
   notes?: string | null
   created_at?: string | null
+  is_manual_roster?: boolean
 }
 
 export type Announcement = {

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { MemberDashboard } from "@/components/dashboard/member-dashboard"
-import type { Profile } from "@/lib/types"
+import type { Booking, Profile } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
 
@@ -51,7 +51,8 @@ export default async function MemberDashboardPage() {
     attendance,
     gearGuides,
     allProfiles,
-    supportTickets
+    supportTickets,
+    manualRoster
   ] = await Promise.all([
     supabase.from("schedule").select("*").order("date", { ascending: true }),
     supabase.from("bookings").select("*").eq("user_id", user.id),
@@ -61,7 +62,8 @@ export default async function MemberDashboardPage() {
     supabase.from("attendance").select("*"), 
     supabase.from("equipment_recommendations").select("*"),
     supabase.from("profiles").select("*").order("full_name", { ascending: true }),
-    supabase.from("support_tickets").select("*").eq("user_id", user.id).order("created_at", { ascending: false })
+    supabase.from("support_tickets").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+    supabase.from("attendance_manual_roster").select("session_id, user_id, created_at").eq("user_id", user.id)
   ])
 
   // Safely bridge the database columns to whatever keys your UI component expects!
@@ -69,12 +71,22 @@ export default async function MemberDashboardPage() {
   if (schedule.error) console.error("❌ Schedule Fetch Error:", schedule.error.message)
   if (bookings.error) console.error("❌ Bookings Fetch Error:", bookings.error.message)
   if (announcements.error) console.error("❌ Announcements Fetch Error:", announcements.error.message)
+  if (manualRoster.error) console.error("❌ Manual Attendance Roster Fetch Error:", manualRoster.error.message)
+
+  const manualRosterBookings: Booking[] = (manualRoster.data ?? []).map((entry) => ({
+    id: `manual-roster:${entry.session_id}:${entry.user_id}`,
+    user_id: entry.user_id,
+    session_id: entry.session_id,
+    status: "confirmed",
+    created_at: entry.created_at,
+    is_manual_roster: true,
+  }))
 
   return (
     <MemberDashboard
       profile={activeProfile}
       schedule={schedule.data ?? []}
-      initialBookings={bookings.data ?? []}
+      initialBookings={[...(bookings.data ?? []), ...manualRosterBookings]}
       announcements={announcements.data ?? []}
       shopItems={(shopItems.data ?? []).filter((item: any) => !(item.is_hidden === true || item.hidden === true || item.visible === false))}
       assessments={assessments.data ?? []}

@@ -20,7 +20,7 @@ function getErrorMessage(error: unknown, fallback: string) {
     && "code" in error
     && (error.code === "PGRST202" || error.code === "PGRST205")
   ) {
-    return "Attendance booking eligibility isn't configured. Apply supabase/migration/20261125090000_attendance_booking_risk.sql and supabase/migration/20261125100000_manual_attendance_roster.sql, then reload."
+    return "Attendance booking eligibility isn't configured. Apply supabase/migration/20261125090000_attendance_booking_risk.sql, supabase/migration/20261125100000_manual_attendance_roster.sql, and supabase/migration/20261125150000_track_leader_attendance_risk.sql, then reload."
   }
   if (error instanceof Error) return error.message
   if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
@@ -111,6 +111,17 @@ export async function GET() {
       suspension_reasons: reasonsByUser.get(String(risk.user_id)) ?? [],
     }))
 
+    if (profile?.role === "leader" && !data.some((entry) => entry.user_id === userData.user.id)) {
+      data.push({
+        user_id: userData.user.id,
+        risk_percent: 0,
+        month_start: monthStart,
+        suspended_session_ids: blockedSessions.get(userData.user.id) ?? [],
+        suspended_session_risk_percent_by_id: blockedSessionRiskPercents.get(userData.user.id) ?? {},
+        suspension_reasons: reasonsByUser.get(userData.user.id) ?? [],
+      })
+    }
+
     if (!isManagement && data.length === 0) {
       data.push({
         user_id: userData.user.id,
@@ -138,7 +149,7 @@ export async function PATCH(request: NextRequest) {
     const userId = typeof body?.user_id === "string" ? body.user_id.trim() : ""
     const riskPercent = typeof body?.risk_percent === "number" ? body.risk_percent : Number.NaN
     if (!userId || !Number.isFinite(riskPercent) || riskPercent < 0 || riskPercent > 100) {
-      return NextResponse.json({ error: "A member and percentage between 0 and 100 are required." }, { status: 400 })
+      return NextResponse.json({ error: "A tracked member or leader and percentage between 0 and 100 are required." }, { status: 400 })
     }
 
     const supabase = await createClient()

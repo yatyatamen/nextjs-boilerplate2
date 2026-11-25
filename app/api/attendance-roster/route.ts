@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 
 const ATTENDANCE_ROLES = new Set(["leader", "staff", "teacher"])
 const MIGRATION_ERROR =
-  "Manual attendance additions aren't configured. Apply supabase/migration/20261125090000_attendance_booking_risk.sql, then supabase/migration/20261125100000_manual_attendance_roster.sql."
+  "Manual attendance additions aren't configured. Apply supabase/migration/20261125090000_attendance_booking_risk.sql, supabase/migration/20261125100000_manual_attendance_roster.sql, and supabase/migration/20261125150000_track_leader_attendance_risk.sql."
 
 function getErrorMessage(error: unknown) {
   if (typeof error === "object" && error !== null && "code" in error) {
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     const sessionId = typeof body?.session_id === "string" ? body.session_id.trim() : ""
     const userId = typeof body?.user_id === "string" ? body.user_id.trim() : ""
     if (!sessionId || !userId) {
-      return NextResponse.json({ error: "A session and member are required." }, { status: 400 })
+      return NextResponse.json({ error: "A session and member or leader are required." }, { status: 400 })
     }
 
     const manager = await getAttendanceManager()
@@ -79,7 +79,11 @@ export async function POST(request: NextRequest) {
     console.error("Manual attendance roster update failed:", error)
     const message = getErrorMessage(error)
     const errorCode = typeof error === "object" && error !== null && "code" in error ? error.code : null
-    const status = message === MIGRATION_ERROR ? 503 : errorCode === "P0001" ? 409 : 500
-    return NextResponse.json({ error: message }, { status })
+    const leaderTrackingUnavailable = message === "Member not found"
+    const responseMessage = leaderTrackingUnavailable
+      ? "Leader attendance tracking isn't configured. Apply supabase/migration/20261125150000_track_leader_attendance_risk.sql."
+      : message
+    const status = message === MIGRATION_ERROR || leaderTrackingUnavailable ? 503 : errorCode === "P0001" ? 409 : 500
+    return NextResponse.json({ error: responseMessage }, { status })
   }
 }

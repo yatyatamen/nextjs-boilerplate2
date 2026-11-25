@@ -66,53 +66,55 @@ export function DashboardShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Header */}
-        <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-background/85 px-4 py-3 backdrop-blur sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="lg:hidden">
-              <Logo showText={false} />
+        <div className="sticky top-0 z-30 lg:static lg:z-auto">
+          {/* Header */}
+          <header className="flex items-center justify-between gap-3 border-b border-border bg-background/85 px-4 py-3 backdrop-blur sm:px-6 lg:sticky lg:top-0 lg:z-20">
+            <div className="flex items-center gap-3">
+              <div className="lg:hidden">
+                <Logo showText={false} />
+              </div>
+              <div>
+                <h1 className="text-base font-semibold text-foreground sm:text-lg">
+                  {activeLabel}
+                </h1>
+                <p className="hidden text-xs text-muted-foreground sm:block">
+                  {subtitle}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-base font-semibold text-foreground sm:text-lg">
-                {activeLabel}
-              </h1>
-              <p className="hidden text-xs text-muted-foreground sm:block">
-                {subtitle}
-              </p>
+            <div className="flex items-center gap-2">
+              {badgeLabel && (
+                <Badge variant="accent" className="hidden sm:inline-flex">
+                  {badgeLabel}
+                </Badge>
+              )}
+              <LogoutButton />
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {badgeLabel && (
-              <Badge variant="accent" className="hidden sm:inline-flex">
-                {badgeLabel}
-              </Badge>
-            )}
-            <LogoutButton />
-          </div>
-        </header>
+          </header>
 
-        {/* Mobile tab bar */}
-        <div className="border-b border-border bg-background lg:hidden">
-          <div className="flex gap-1 overflow-x-auto px-3 py-2 scrollbar-none shadow-inner">
-            {navItems.map((item) => {
-              const active = item.key === activeKey
-              return (
-                <button
-                  key={item.key}
-                  aria-current={active ? "page" : undefined}
-                  onClick={() => onChange(item.key)}
-                  className={cn(
-                    "flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-                    active
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-muted",
-                  )}
-                >
-                  <item.icon className="h-3.5 w-3.5" />
-                  {item.label}
-                </button>
-              )
-            })}
+          {/* Mobile tab bar */}
+          <div className="border-b border-border bg-background lg:hidden">
+            <div className="flex gap-1 overflow-x-auto px-3 py-2 scrollbar-none shadow-inner">
+              {navItems.map((item) => {
+                const active = item.key === activeKey
+                return (
+                  <button
+                    key={item.key}
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => onChange(item.key)}
+                    className={cn(
+                      "flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                      active
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    <item.icon className="h-3.5 w-3.5" />
+                    {item.label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
 

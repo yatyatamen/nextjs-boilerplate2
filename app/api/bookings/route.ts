@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (memberRole === "member") {
+    if (memberRole === "member" || memberRole === "leader") {
       const { data: attendanceRisk, error: attendanceRiskError } = await supabase.rpc(
         "evaluate_attendance_booking_risk",
         { p_session_id: sessionId },
@@ -186,9 +186,10 @@ export async function POST(request: NextRequest) {
         console.error("Attendance booking risk check failed:", attendanceRiskError)
         const migrationMissing = attendanceRiskError.code === "PGRST202"
           || attendanceRiskError.code === "PGRST205"
+        const leaderTrackingMissing = memberRole === "leader" && attendanceRiskError.message === "Member booking access required"
         return NextResponse.json({
-          error: migrationMissing
-            ? "Attendance booking eligibility isn't configured. Apply supabase/migration/20261125090000_attendance_booking_risk.sql, supabase/migration/20261125120000_scheduled_events_and_email_controls.sql, and supabase/migration/20261125130000_session_booking_eligibility_snapshots.sql, then retry."
+          error: migrationMissing || leaderTrackingMissing
+            ? "Attendance booking eligibility isn't configured. Apply supabase/migration/20261125090000_attendance_booking_risk.sql, supabase/migration/20261125120000_scheduled_events_and_email_controls.sql, supabase/migration/20261125130000_session_booking_eligibility_snapshots.sql, and supabase/migration/20261125150000_track_leader_attendance_risk.sql, then retry."
             : "Unable to check attendance booking eligibility.",
         }, { status: 500 })
       }

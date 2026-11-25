@@ -437,7 +437,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   useEffect(() => {
                                                     if (profile.role !== "member" && profile.role !== "leader") return
                                                     let active = true
-                                                    void (async () => {
+                                                    const loadAttendanceRisk = async () => {
                                                       try {
                                                         const response = await fetch("/api/attendance-risk", {
                                                           credentials: "same-origin",
@@ -464,9 +464,17 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                           setAttendanceRiskLoadError(error instanceof Error ? error.message : "Unable to load attendance booking risk.")
                                                         }
                                                       }
-                                                    })()
+                                                    }
+                                                    const handleFocus = () => {
+                                                      if (document.visibilityState === "visible") void loadAttendanceRisk()
+                                                    }
+                                                    void loadAttendanceRisk()
+                                                    window.addEventListener("focus", handleFocus)
+                                                    document.addEventListener("visibilitychange", handleFocus)
                                                     return () => {
                                                       active = false
+                                                      window.removeEventListener("focus", handleFocus)
+                                                      document.removeEventListener("visibilitychange", handleFocus)
                                                     }
                                                   }, [active, profile.id, profile.role, isManagementRole])
 
@@ -1551,6 +1559,9 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                       )
                                                     }
                                                     const booked = memberBookedSessionIds.has(String(session.id))
+                                                    const manuallyAdded = bookings.some(
+                                                      (booking) => booking.is_manual_roster && String(booking.session_id) === String(session.id),
+                                                    )
                                                     const ruleSet = getSessionBookingRules(session, sessionBookingCount(session.id), new Date())
                                                     const hasTimeConflict = hasMemberSessionTimeConflict(session, bookings, profile.id, scheduleById)
                                                     const riskEntry = attendanceRiskByMember[profile.id]
@@ -1573,7 +1584,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                           </p>
                                                           {attendanceSuspended && (
                                                             <p className="mt-2 text-xs font-medium text-rose-400">
-                                                              Booking suspended for this session because of {suspensionReason}. Suspension chance of this session: {(sessionRiskPercent ?? riskEntry?.risk_percent ?? 0).toFixed(2)}%.
+                                                              Booking suspended for this session because of {suspensionReason}. Suspension chance when this session was posted: {(sessionRiskPercent ?? riskEntry?.risk_percent ?? 0).toFixed(2)}%.
                                                               <br />
                                                               Contact a club leader if you have questions.
                                                             </p>
@@ -1596,7 +1607,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                           }}
                                                           className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${disabled ? "bg-zinc-700 text-white" : "bg-[var(--member-accent-fill)] text-black font-bold"}`}
                                                         >
-                                                          {booked ? "Claimed" : attendanceSuspended ? "Suspended" : hasTimeConflict ? "Time Clash" : ruleSet.isFull ? "Session Full" : ruleSet.isBookingBlocked ? "Booking Closed" : "Join Session"}
+                                                          {booked ? (manuallyAdded ? "Added by leader/staff" : "Claimed") : attendanceSuspended ? "Suspended" : hasTimeConflict ? "Time Clash" : ruleSet.isFull ? "Session Full" : ruleSet.isBookingBlocked ? "Booking Closed" : "Join Session"}
                                                         </Button>
                                                       </Card>
                                                     )
@@ -1626,6 +1637,10 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   }
 
                                                   async function cancel(booking: Booking) {
+                                                    if (booking.is_manual_roster) {
+                                                      showToast("This session was added by a club leader or staff member. Contact them to change it.")
+                                                      return
+                                                    }
                                                     const sessionDetail = booking.session_id ? scheduleById.get(String(booking.session_id)) : null
                                                     const sessionInfo = sessionDetail ? `${formatDate(sessionDetail.date)} at ${formatSessionTime(sessionDetail.time)}` : "this session"
                                                     const currentBookingCount = sessionDetail ? sessionBookingCount(sessionDetail.id) : 0
@@ -1722,7 +1737,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   
 
                                                 async function cleanupExpiredBookings() {
-                                                  const expiredBookingIds: string[] = []
+                                                const expiredBookings: Booking[] = []
                                                   
                                                   bookings.forEach((booking) => {
                                                     // Convert to string safely to match Map<string, ScheduleSession>
@@ -1731,17 +1746,18 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                     
                                                     // If the session doesn't exist at all, or if it's expired, mark it for cleanup
                                                     if (!session || isSessionEnded(session)) {
-                                                      expiredBookingIds.push(booking.id)
+                                                      expiredBookings.push(booking)
                                                     }
                                                   })
                                                   
-                                                  if (expiredBookingIds.length > 0) {
-                                                    // Delete expired bookings from database
-                                                    for (const bookingId of expiredBookingIds) {
-                                                      await supabase.from("bookings").delete().eq("id", bookingId)
+                                                  if (expiredBookings.length > 0) {
+                                                    for (const booking of expiredBookings) {
+                                                      if (!booking.is_manual_roster) {
+                                                        await supabase.from("bookings").delete().eq("id", booking.id)
+                                                      }
                                                     }
-                                                    // Update local state
-                                                    setBookings((prev) => prev.filter((b) => !expiredBookingIds.includes(b.id)))
+                                                    const expiredBookingIds = new Set(expiredBookings.map((booking) => booking.id))
+                                                    setBookings((prev) => prev.filter((booking) => !expiredBookingIds.has(booking.id)))
                                                   }
                                                 }
 
@@ -1918,7 +1934,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                               <div className="mb-5">
                                                                 <h2 className={`text-lg font-bold ${theme.headingColor}`}>Member Booking Eligibility</h2>
                                                                 <p className={`mt-1 text-sm ${theme.textMuted}`}>
-                                                                  Review and adjust each member’s suspension chance. Late arrival adds 10–20 points, absence adds 15–30, and a staff-added missed sign-up adds 10–20. Present attendance removes 15–30. The score resets monthly and is capped between 0% and 100%.
+                                                                  Review and adjust member and leader suspension chances. Late arrival adds 10–20 points, absence adds 15–30, and a staff-added missed sign-up adds 10–20. Present attendance removes 15–30. The score resets monthly and is capped between 0% and 100%.
                                                                 </p>
                                                               </div>
                                                               {attendanceRiskLoadError && (
@@ -1926,7 +1942,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   {attendanceRiskLoadError}
                                                                 </p>
                                                               )}
-                                                              {allProfiles.filter((member) => member.role === "member").length === 0 ? (
+                                                              {allProfiles.filter((member) => member.role === "member" || member.role === "leader").length === 0 ? (
                                                                 <Card className="p-6 text-center">
                                                                   <p className={theme.textMuted}>No member profiles are available.</p>
                                                                 </Card>
@@ -1935,7 +1951,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   <table className="min-w-full text-left text-sm">
                                                                     <thead className="bg-zinc-900 text-zinc-300">
                                                                       <tr>
-                                                                        <th className="px-4 py-3">Member</th>
+                                                                        <th className="px-4 py-3">Member / Leader</th>
                                                                         <th className="px-4 py-3">Suspension chance</th>
                                                                         <th className="px-4 py-3">Eligibility</th>
                                                                         <th className="px-4 py-3">Adjust chance</th>
@@ -1943,12 +1959,12 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     </thead>
                                                                     <tbody className="divide-y divide-zinc-800">
                                                                       {allProfiles
-                                                                        .filter((member) => member.role === "member")
+                                                                        .filter((member) => member.role === "member" || member.role === "leader")
                                                                         .sort((left, right) => {
                                                                           const riskDifference =
                                                                             (attendanceRiskByMember[right.id]?.risk_percent ?? 0)
                                                                             - (attendanceRiskByMember[left.id]?.risk_percent ?? 0)
-                                                                          return riskDifference || getProfileDisplayName(left).localeCompare(getProfileDisplayName(right))
+                                                                          return riskDifference || getProfileDisplayName(left).localeCompare(getProfileDisplayName(right), undefined, { sensitivity: "base" })
                                                                         })
                                                                         .map((member) => {
                                                                           const risk = attendanceRiskByMember[member.id]
@@ -2042,7 +2058,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 </div>
                                                               </Card>
 
-                                                              {profile.role === "member" && (
+                                                              {(profile.role === "member" || isLeader) && (
                                                                 <Card className={`rounded-sm border p-5 ${bookingRiskStatus.cardClass}`}>
                                                                   <div className="flex items-start gap-3">
                                                                     <ShieldAlert className={`mt-0.5 h-5 w-5 shrink-0 ${bookingRiskStatus.textClass}`} />
@@ -2333,19 +2349,26 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                         <div>
                                                                           <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>{s ? formatDate(s.date) : "Training Interval"} {s?.time && `· ${s.time}`}</p>
                                                                           {s?.title && <p className={`text-xs font-mono ${theme.textSecondary} mt-0.5`}>Focus: {s.title}</p>}
+                                                                          {b.is_manual_roster && (
+                                                                            <p className={`mt-1 text-xs ${theme.textMuted}`}>Added to the attendance list by a club leader or staff member.</p>
+                                                                          )}
                                                                           {cancellationBlocked && (
                                                                             <p className={`mt-1 text-xs ${theme.textMuted}`}>Cancellation closes when the session starts.</p>
                                                                           )}
                                                                         </div>
-                                                                        <Button
-                                                                          type="button"
-                                                                          size="sm"
-                                                                          disabled={cancellationBlocked}
-                                                                          onClick={() => cancel(b)}
-                                                                          className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400 font-mono rounded-sm"
-                                                                        >
-                                                                          Cancel Booking
-                                                                        </Button>
+                                                                        {b.is_manual_roster ? (
+                                                                          <span className="text-xs font-mono uppercase text-amber-300">Added by leader/staff</span>
+                                                                        ) : (
+                                                                          <Button
+                                                                            type="button"
+                                                                            size="sm"
+                                                                            disabled={cancellationBlocked}
+                                                                            onClick={() => cancel(b)}
+                                                                            className="border border-zinc-500 bg-transparent text-xs uppercase text-red-400 font-mono rounded-sm"
+                                                                          >
+                                                                            Cancel Booking
+                                                                          </Button>
+                                                                        )}
                                                                       </Card>
                                                                     )
                                                                   })}
