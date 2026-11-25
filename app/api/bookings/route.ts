@@ -160,6 +160,36 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (memberRole === "member") {
+      const { data: attendanceRisk, error: attendanceRiskError } = await supabase.rpc(
+        "evaluate_attendance_booking_risk",
+        { p_session_id: sessionId },
+      )
+      if (attendanceRiskError) {
+        console.error("Attendance booking risk check failed:", attendanceRiskError)
+        const migrationMissing = attendanceRiskError.code === "PGRST202"
+          || attendanceRiskError.code === "PGRST205"
+        return NextResponse.json({
+          error: migrationMissing
+            ? "Attendance booking eligibility isn't configured. Apply supabase/migration/20261125090000_attendance_booking_risk.sql, then retry."
+            : "Unable to check attendance booking eligibility.",
+        }, { status: 500 })
+      }
+
+      if (attendanceRisk?.allowed === false) {
+        const riskPercent = Number(attendanceRisk.risk_percent) || 0
+        return NextResponse.json({
+          error: `This session is suspended because of your attendance record. Your current suspension chance is ${riskPercent}%. You can choose another session or contact a leader.`,
+          attendance_risk: {
+            user_id: userData.user.id,
+            risk_percent: riskPercent,
+            month_start: attendanceRisk.month_start,
+            suspended_session_ids: [sessionId],
+          },
+        }, { status: 409 })
+      }
+    }
+
     const { data, error } = await supabase
       .from("bookings")
       .insert({

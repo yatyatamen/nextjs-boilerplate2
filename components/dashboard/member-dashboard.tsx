@@ -4,7 +4,7 @@
                                                 import { createClient } from "@/lib/supabase/client"
                                                 import { DashboardShell, type NavItem } from "@/components/dashboard/shell"
                                                 import { StaffDashboard } from "@/components/dashboard/staff-dashboard"
-                                                import { Badge, Button, Card } from "@/components/ui/primitives"
+                                                import { Badge, Button, Card, Input } from "@/components/ui/primitives"
                                                 import type {
                                                   Profile,
                                                   ScheduleSession,
@@ -47,7 +47,15 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                   ChevronRight,
                                                   MoreHorizontal,
                                                   LifeBuoy,
+                                                  ShieldAlert,
                                                 } from "lucide-react"
+
+type AttendanceRiskEntry = {
+  user_id: string
+  risk_percent: number
+  month_start: string
+  suspended_session_ids: string[]
+}
 
                                                 const NAV: NavItem[] = [
                                                   { key: "overview", label: "Overview", icon: LayoutDashboard },
@@ -65,6 +73,7 @@ import { getEmailTemplateConfig } from "@/lib/email-templates"
 const LEADER_MANAGEMENT_NAV: NavItem[] = [
   { key: "leader-schedule", label: "Session Management", icon: CalendarDays },
   { key: "leader-attendance", label: "Attendance Management", icon: UserCheck },
+  { key: "leader-attendance-risk", label: "Booking Eligibility", icon: ShieldAlert },
   { key: "leader-announcements", label: "Announcements", icon: Megaphone },
 ]
 
@@ -314,6 +323,10 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   const [attendanceList, setAttendanceList] = useState<AttendanceRecord[]>(attendanceRecords)
                                                   const [attendanceFilter, setAttendanceFilter] = useState<"all" | "present" | "absent" | "late">("all")
                                                   const [attendanceSaving, setAttendanceSaving] = useState<Record<string, boolean>>({})
+                                                  const [attendanceRiskByMember, setAttendanceRiskByMember] = useState<Record<string, AttendanceRiskEntry>>({})
+                                                  const [attendanceRiskEdits, setAttendanceRiskEdits] = useState<Record<string, string>>({})
+                                                  const [attendanceRiskLoadError, setAttendanceRiskLoadError] = useState("")
+                                                  const [attendanceRiskSavingUserId, setAttendanceRiskSavingUserId] = useState<string | null>(null)
                                                   const [resources, setResources] = useState<Resource[]>([])
 
                                                   const latestGeneralAnnouncement = [...announcements]
@@ -373,11 +386,49 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                     if (item.key === "assessments") return !isTeacher && !isLeader
                                                     return true
                                                   })
-                                                  const visibleDashboardNav = isManagementRole ? [...dashboardNav, ...LEADER_MANAGEMENT_NAV] : dashboardNav
+                                                  const visibleDashboardNav = isManagementRole
+                                                    ? [...dashboardNav, ...LEADER_MANAGEMENT_NAV.filter((item) => item.key !== "leader-attendance-risk" || isLeader)]
+                                                    : dashboardNav
                                                   const dashboardStyle: MemberDashboardStyle = {
                                                     colorScheme: isDarkMode ? "dark" : "light",
                                                     "--member-accent-hue": buttonThemeHue,
                                                   }
+
+                                                  useEffect(() => {
+                                                    if (profile.role !== "member" && profile.role !== "leader") return
+                                                    let active = true
+                                                    void (async () => {
+                                                      try {
+                                                        const response = await fetch("/api/attendance-risk", {
+                                                          credentials: "same-origin",
+                                                          cache: "no-store",
+                                                        })
+                                                        const result = await response.json().catch(() => ({}))
+                                                        if (!response.ok) {
+                                                          throw new Error(result.error || "Unable to load attendance booking risk.")
+                                                        }
+                                                        const entries = Array.isArray(result.data) ? result.data as AttendanceRiskEntry[] : []
+                                                        if (!active) return
+                                                        setAttendanceRiskByMember(Object.fromEntries(entries.map((entry) => [entry.user_id, entry])))
+                                                        setAttendanceRiskEdits((previous) => {
+                                                          const next = { ...previous }
+                                                          for (const entry of entries) {
+                                                            if (next[entry.user_id] === undefined) next[entry.user_id] = String(entry.risk_percent)
+                                                          }
+                                                          return next
+                                                        })
+                                                        setAttendanceRiskLoadError("")
+                                                      } catch (error) {
+                                                        console.error("Attendance booking risk load failed:", error)
+                                                        if (active) {
+                                                          setAttendanceRiskLoadError(error instanceof Error ? error.message : "Unable to load attendance booking risk.")
+                                                        }
+                                                      }
+                                                    })()
+                                                    return () => {
+                                                      active = false
+                                                    }
+                                                  }, [active, profile.id, profile.role, isManagementRole])
 
                                                   useEffect(() => {
                                                     if (!canCustomizeButtonHue) return
@@ -884,6 +935,41 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
     }
   }
 
+  async function saveAttendanceRisk(userId: string) {
+    const riskPercent = Number(attendanceRiskEdits[userId])
+    if (!Number.isFinite(riskPercent) || riskPercent < 0 || riskPercent > 100) {
+      showToast("Enter a percentage between 0 and 100.")
+      return
+    }
+
+    setAttendanceRiskSavingUserId(userId)
+    try {
+      const response = await fetch("/api/attendance-risk", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, risk_percent: riskPercent }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || "Unable to update attendance risk.")
+      const saved = result.data as { user_id: string; risk_percent: number; month_start: string }
+      setAttendanceRiskByMember((previous) => ({
+        ...previous,
+        [userId]: {
+          ...previous[userId],
+          ...saved,
+          suspended_session_ids: previous[userId]?.suspended_session_ids ?? [],
+        },
+      }))
+      setAttendanceRiskEdits((previous) => ({ ...previous, [userId]: String(saved.risk_percent) }))
+      showToast(`Booking suspension chance updated to ${saved.risk_percent}%.`)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to update attendance risk.")
+    } finally {
+      setAttendanceRiskSavingUserId(null)
+    }
+  }
+
   async function createSupportTicket(payload: { subject: string; message: string }) {
                                                     const endpoint = typeof window !== "undefined"
                                                       ? new URL("/api/support", window.location.origin).toString()
@@ -1363,6 +1449,17 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                       })
 
                                                       const result = await handleJsonResponse(response)
+                                                      if (result.attendance_risk) {
+                                                        const riskEntry = result.attendance_risk as AttendanceRiskEntry
+                                                        setAttendanceRiskByMember((previous) => ({
+                                                          ...previous,
+                                                          [riskEntry.user_id]: riskEntry,
+                                                        }))
+                                                        setAttendanceRiskEdits((previous) => ({
+                                                          ...previous,
+                                                          [riskEntry.user_id]: String(riskEntry.risk_percent),
+                                                        }))
+                                                      }
                                                       const inserted = Array.isArray(result.data) ? result.data[0] : result.data
 
                                                       if (response.ok && inserted) {
@@ -1371,6 +1468,12 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                         setBookingCounts((prev) => ({ ...prev, [String(session.id)]: currentBookingCount + 1 }))
                                                         setBookingNoteDraft("")
                                                         alert("✓ You've successfully joined the session!")
+                                                        return
+                                                      }
+
+                                                      if (result.attendance_risk) {
+                                                        setConfirmingSession(null)
+                                                        showToast(result.error || "This session is suspended due to your attendance record.")
                                                         return
                                                       }
 
@@ -1688,6 +1791,92 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                               />
                                                             </div>
                                                           )}
+                                                          {active === "leader-attendance-risk" && isLeader && (
+                                                            <div className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}>
+                                                              <div className="mb-5">
+                                                                <h2 className={`text-lg font-bold ${theme.headingColor}`}>Session Booking Eligibility</h2>
+                                                                <p className={`mt-1 text-sm ${theme.textMuted}`}>
+                                                                  Late adds a random 10–20 points, absence adds 15–30, and present attendance removes 15–30. The score is a per-session suspension chance, resets monthly, and is capped between 0% and 100%. Only one uncompleted session can be suspended at a time.
+                                                                </p>
+                                                              </div>
+                                                              {attendanceRiskLoadError && (
+                                                                <p role="alert" className="mb-4 rounded border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-300">
+                                                                  {attendanceRiskLoadError}
+                                                                </p>
+                                                              )}
+                                                              {allProfiles.filter((member) => member.role === "member").length === 0 ? (
+                                                                <Card className="p-6 text-center">
+                                                                  <p className={theme.textMuted}>No member profiles are available.</p>
+                                                                </Card>
+                                                              ) : (
+                                                                <div className="overflow-x-auto rounded-lg border border-zinc-800">
+                                                                  <table className="min-w-full text-left text-sm">
+                                                                    <thead className="bg-zinc-900 text-zinc-300">
+                                                                      <tr>
+                                                                        <th className="px-4 py-3">Member</th>
+                                                                        <th className="px-4 py-3">Suspension chance</th>
+                                                                        <th className="px-4 py-3">Eligibility</th>
+                                                                        <th className="px-4 py-3">Adjust chance</th>
+                                                                      </tr>
+                                                                    </thead>
+                                                                    <tbody className="divide-y divide-zinc-800">
+                                                                      {allProfiles
+                                                                        .filter((member) => member.role === "member")
+                                                                        .sort((left, right) => getProfileDisplayName(left).localeCompare(getProfileDisplayName(right)))
+                                                                        .map((member) => {
+                                                                          const risk = attendanceRiskByMember[member.id]
+                                                                          const riskPercent = risk?.risk_percent ?? 0
+                                                                          const suspendedSession = risk?.suspended_session_ids
+                                                                            .map((sessionId) => schedule.find((session) => String(session.id) === sessionId))
+                                                                            .find((session) => session && !isSessionEnded(session))
+                                                                          return (
+                                                                            <tr key={member.id} className="hover:bg-zinc-900/70">
+                                                                              <td className="px-4 py-3 font-medium text-zinc-100">{getProfileDisplayName(member)}</td>
+                                                                              <td className="px-4 py-3 text-zinc-200">{riskPercent.toFixed(2)}%</td>
+                                                                              <td className="px-4 py-3 text-xs">
+                                                                                {suspendedSession ? (
+                                                                                  <span className="text-rose-300">
+                                                                                    Suspended for {formatDate(suspendedSession.date)} · {suspendedSession.title || "Session"}
+                                                                                  </span>
+                                                                                ) : (
+                                                                                  <span className="text-emerald-300">Can book</span>
+                                                                                )}
+                                                                              </td>
+                                                                              <td className="px-4 py-3">
+                                                                                <div className="flex min-w-48 items-center gap-2">
+                                                                                  <Input
+                                                                                    type="number"
+                                                                                    min="0"
+                                                                                    max="100"
+                                                                                    step="0.01"
+                                                                                    aria-label={`Suspension chance for ${getProfileDisplayName(member)}`}
+                                                                                    value={attendanceRiskEdits[member.id] ?? String(riskPercent)}
+                                                                                    onChange={(event) => setAttendanceRiskEdits((previous) => ({
+                                                                                      ...previous,
+                                                                                      [member.id]: event.target.value,
+                                                                                    }))}
+                                                                                    className="h-9"
+                                                                                  />
+                                                                                  <Button
+                                                                                    type="button"
+                                                                                    size="sm"
+                                                                                    variant="secondary"
+                                                                                    disabled={attendanceRiskSavingUserId === member.id}
+                                                                                    onClick={() => void saveAttendanceRisk(member.id)}
+                                                                                  >
+                                                                                    {attendanceRiskSavingUserId === member.id ? "Saving…" : "Save"}
+                                                                                  </Button>
+                                                                                </div>
+                                                                              </td>
+                                                                            </tr>
+                                                                          )
+                                                                        })}
+                                                                    </tbody>
+                                                                  </table>
+                                                                </div>
+                                                              )}
+                                                            </div>
+                                                          )}
                                                           {active === "leader-announcements" && isManagementRole && (
                                                             <div
                                                               className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}
@@ -1829,6 +2018,16 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   <p className={`text-xs leading-relaxed ${theme.textSecondary}`}>
                                                                     Booking and cancellation close 3 hours before a session starts. If you have any problems, please talk to a club leader.
                                                                   </p>
+                                                                  {profile.role === "member" && (
+                                                                    <p className={`mt-2 text-xs ${theme.textSecondary}`}>
+                                                                      Attendance suspension chance: {attendanceRiskByMember[profile.id]?.risk_percent ?? 0}% for each new session booking. A failed check suspends only that session; only one uncompleted suspension is active at a time. Present attendance lowers your chance, and it resets monthly.
+                                                                    </p>
+                                                                  )}
+                                                                  {profile.role === "member" && attendanceRiskLoadError && (
+                                                                    <p role="alert" className="mt-2 text-xs text-rose-400">
+                                                                      Could not load your attendance booking status: {attendanceRiskLoadError}
+                                                                    </p>
+                                                                  )}
                                                                 </Card>
 
                                                                 <div className="mb-4">
@@ -1840,7 +2039,8 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   const booked = bookedSessionIds.has(String(s.id))
                                                   const ruleSet = getSessionBookingRules(s, sessionBookingCount(s.id), new Date())
                                                   const hasTimeConflict = hasMemberSessionTimeConflict(s, bookings, profile.id, scheduleById)
-                                                  const disabled = booked || pendingId === String(s.id) || ruleSet.isBookingBlocked || ruleSet.isFull || hasTimeConflict
+                                                  const attendanceSuspended = attendanceRiskByMember[profile.id]?.suspended_session_ids.includes(String(s.id)) ?? false
+                                                  const disabled = booked || pendingId === String(s.id) || ruleSet.isBookingBlocked || ruleSet.isFull || hasTimeConflict || attendanceSuspended
                                                   return (
                                                     <Card key={s.id} className={`flex flex-col gap-3 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm sm:flex-row sm:items-center sm:justify-between`}>
                                                       <div>
@@ -1851,6 +2051,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                         <p className={`text-xs ${theme.textMuted} mt-1 whitespace-pre-line`}>
                                                           {getSessionBookingNotes(s, sessionBookingCount(s.id))}
                                                         </p>
+                                                        {attendanceSuspended && (
+                                                          <p className="mt-2 text-xs font-medium text-rose-400">
+                                                            Booking suspended for this session due to attendance. Contact a club leader if you have questions.
+                                                          </p>
+                                                        )}
                                                       </div>
                                                       <Button
                                                         size="sm"
@@ -1869,7 +2074,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                         }}
                                                         className={`font-mono text-xs uppercase px-4 py-2 border-none rounded-sm ${disabled ? "bg-zinc-700 text-white" : "bg-[var(--member-accent-fill)] text-black font-bold"}`}
                                                       >
-                                                        {booked ? "Claimed" : hasTimeConflict ? "Time Clash" : ruleSet.isFull ? "Session Full" : ruleSet.isBookingBlocked ? "Booking Closed" : "Join Session"}
+                                                        {booked ? "Claimed" : attendanceSuspended ? "Suspended" : hasTimeConflict ? "Time Clash" : ruleSet.isFull ? "Session Full" : ruleSet.isBookingBlocked ? "Booking Closed" : "Join Session"}
                                                       </Button>
                                                     </Card>
                                                   )

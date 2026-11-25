@@ -68,6 +68,25 @@ select option {
 	border-radius: 9999px;
 }
 
+.member-dashboard button.attendance-member-name {
+	border: 0;
+	border-radius: 0;
+	background-color: transparent;
+	padding: 0;
+}
+
+.member-dashboard button.attendance-member-name:hover:not(:disabled) {
+	border-color: transparent;
+	background-color: transparent;
+}
+
+.member-dashboard button.attendance-member-name:focus-visible {
+	outline: none;
+	text-decoration: underline;
+	text-decoration-thickness: 2px;
+	text-underline-offset: 3px;
+}
+
 .member-dashboard .member-accent-hue-picker {
 	appearance: none;
 	height: 0.75rem;

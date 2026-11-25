@@ -160,6 +160,16 @@ function getMemberDisplayName(member: Profile | null | undefined) {
   return `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || member.full_name || member.email || "Member"
 }
 
+function getAttendanceMemberDisplayName(record: AttendanceRecord, member: Profile | undefined) {
+  const profileName = member
+    ? `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() || member.full_name?.trim()
+    : ""
+  if (profileName) return profileName
+
+  const savedName = record.user_name?.trim()
+  return savedName && !savedName.includes("@") ? savedName : "Name unavailable"
+}
+
 function parseImageUrls(value: string | null | undefined): string[] {
   if (!value) return []
   const trimmed = value.trim()
@@ -1071,7 +1081,7 @@ export function StaffDashboard({
       id: existingRecord?.id ?? `temp-${Date.now()}`,
       session_id: String(booking.session_id ?? ""),
       user_id: String(booking.user_id ?? ""),
-      user_name: member ? String((`${member.first_name ?? ""} ${member.last_name ?? ""}`).trim() || (member.email ?? "")) : "Unknown",
+      user_name: member ? getMemberDisplayName(member) : "Unknown",
       user_level: String(member?.level ?? "Unknown"),
       status,
       marked_at: now,
@@ -1707,32 +1717,24 @@ export function StaffDashboard({
 
           {/* Member Filter */}
           <div className="mb-4">
-            <Label className="text-xs text-muted-foreground mb-2 block">Filter by Member</Label>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={selectedMemberFilter === null ? "secondary" : "outline"}
-                size="sm"
-                className="text-xs"
-                onClick={() => setSelectedMemberFilter(null)}
-              >
-                All Members
-              </Button>
+            <Label htmlFor="attendance-member-filter" className="text-xs text-muted-foreground mb-2 block">Filter by Member</Label>
+            <Select
+              id="attendance-member-filter"
+              value={selectedMemberFilter ?? "all"}
+              onChange={(event) => setSelectedMemberFilter(event.target.value === "all" ? null : event.target.value)}
+              className="max-w-sm"
+            >
+              <option value="all">All Members</option>
               {members.map((member) => {
-                const hasRecords = attendanceRecords.some(r => r.user_id === member.id)
+                const hasRecords = attendanceRecords.some((record) => String(record.user_id) === String(member.id))
                 if (!hasRecords) return null
                 return (
-                  <Button
-                    key={member.id}
-                    variant={selectedMemberFilter === member.id ? "secondary" : "outline"}
-                    size="sm"
-                    className="text-xs"
-                    onClick={() => setSelectedMemberFilter(member.id)}
-                  >
-                    {member.full_name || member.email}
-                  </Button>
+                  <option key={member.id} value={member.id}>
+                    {getMemberDisplayName(member)}
+                  </option>
                 )
               })}
-            </div>
+            </Select>
           </div>
 
           {/* BY SESSION VIEW */}
@@ -1855,7 +1857,7 @@ export function StaffDashboard({
                                   <button
                                     type="button"
                                     onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
-                                    className="break-words text-left text-sm font-medium text-zinc-100 underline-offset-2 hover:underline"
+                                    className="attendance-member-name break-words text-left text-sm font-medium text-zinc-100 underline-offset-2 hover:underline"
                                   >
                                     {displayName}
                                   </button>
@@ -1915,7 +1917,7 @@ export function StaffDashboard({
                                         <button
                                           type="button"
                                           onClick={() => setSelectedAttendanceMemberId(member?.id ?? null)}
-                                          className="text-left p-0 m-0 underline-offset-2 hover:underline"
+                                          className="attendance-member-name text-left p-0 m-0 underline-offset-2 hover:underline"
                                         >
                                           {displayName}
                                         </button>
@@ -2044,18 +2046,18 @@ export function StaffDashboard({
                           const session = schedule.find(s => String(s.id) === String(record.session_id))
                           const member = members.find((m) => String(m.id) === String(record.user_id))
                           const bookingNote = bookings.find((booking) => String(booking.session_id) === String(record.session_id) && String(booking.user_id) === String(record.user_id))?.notes
+                          const memberName = getAttendanceMemberDisplayName(record, member)
                           return (
                             <tr key={record.id} className={member?.role === "teacher" ? "border-l border-emerald-500/30 bg-emerald-500/[0.04] hover:bg-emerald-500/[0.06]" : "hover:bg-zinc-900"}>
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2">
-                                  <p className="font-medium text-zinc-100">{record.user_name}</p>
+                                  <p className="font-medium text-zinc-100">{memberName}</p>
                                   {member?.role === "teacher" && (
                                     <span className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.16em] text-emerald-200">
                                       Teacher
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-xs text-zinc-400">{record.user_id}</p>
                               </td>
                               <td className="px-4 py-3 text-xs text-zinc-400">
                                 {member?.role === "teacher" ? (

@@ -64,6 +64,22 @@ async function notifyAttendanceUpdate(
   }
 }
 
+async function updateAttendanceBookingRisk(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  attendance: { id: string | number; user_id: string; session_id: string; status: string },
+) {
+  const { error } = await supabase.rpc("apply_attendance_booking_risk_event", {
+    p_attendance_id: String(attendance.id),
+    p_user_id: attendance.user_id,
+    p_session_id: String(attendance.session_id),
+    p_status: attendance.status,
+  })
+  if (error) {
+    console.error("Attendance booking risk update failed:", error)
+    throw error
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
@@ -105,6 +121,19 @@ export async function POST(request: NextRequest) {
     const database = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY)
       ? await createServiceClient()
       : supabase
+    const { error: riskTableError } = await supabase
+      .from("attendance_booking_risk")
+      .select("user_id")
+      .limit(0)
+    if (riskTableError?.code === "PGRST205") {
+      return NextResponse.json({
+        error: "Attendance booking eligibility isn't configured. Apply supabase/migration/20261125090000_attendance_booking_risk.sql before saving attendance.",
+      }, { status: 503 })
+    }
+    if (riskTableError) {
+      console.error("Attendance booking risk schema check failed:", riskTableError)
+      return NextResponse.json({ error: riskTableError.message || "Unable to verify attendance booking eligibility." }, { status: 500 })
+    }
     const markedAt = new Date().toISOString()
 
     if (attendanceId) {
@@ -127,6 +156,7 @@ export async function POST(request: NextRequest) {
         .select()
         .single()
       if (error) throw error
+      await updateAttendanceBookingRisk(supabase, data)
       const email = previous
         ? await notifyAttendanceUpdate(supabase, previous.user_id, String(previous.session_id), previous.status, status, status === "absent" ? absenceTemplate : attendanceTemplate)
         : { status: "not_needed" as const }
@@ -156,6 +186,7 @@ export async function POST(request: NextRequest) {
         .select()
         .single()
       if (error) throw error
+      await updateAttendanceBookingRisk(supabase, data)
       const email = await notifyAttendanceUpdate(supabase, userId, sessionId, existing.status, status, status === "absent" ? absenceTemplate : attendanceTemplate)
       return NextResponse.json({ data, email })
     }
@@ -174,6 +205,7 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
     if (error) throw error
+    await updateAttendanceBookingRisk(supabase, data)
 
     const email = await notifyAttendanceUpdate(supabase, userId, sessionId, undefined, status, status === "absent" ? absenceTemplate : attendanceTemplate)
     return NextResponse.json({ data, email })
