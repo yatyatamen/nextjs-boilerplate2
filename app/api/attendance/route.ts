@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
-import { sendAttendanceUpdateEmail } from "@/lib/supabase/email"
+import { formatSessionTime } from "@/lib/scheduling"
+import { getAutoEmailConfig, sendAttendanceUpdateEmail } from "@/lib/supabase/email"
 import type { EmailTemplate } from "@/lib/email-templates"
 
 const ATTENDANCE_ROLES = new Set(["staff", "teacher", "leader"])
@@ -36,6 +37,10 @@ async function notifyAttendanceUpdate(
   ) return { status: "not_needed" as const }
 
   try {
+    const deliveryKey = nextStatus === "absent" ? "absence" : "attendance_update"
+    const deliverySettings = await getAutoEmailConfig(supabase)
+    if (!deliverySettings[deliveryKey]) return { status: "disabled" as const }
+
     const [{ data: member, error: memberError }, { data: session, error: sessionError }] = await Promise.all([
       supabase.from("profiles").select("email, full_name").eq("id", userId).maybeSingle(),
       supabase.from("schedule").select("title, date, time").eq("id", sessionId).maybeSingle(),
@@ -51,7 +56,7 @@ async function notifyAttendanceUpdate(
       memberName: member?.full_name?.trim() || "Member",
       sessionTitle: session?.title || "session",
       sessionDate: session?.date || "TBD",
-      sessionTime: session?.time || "TBD",
+      sessionTime: formatSessionTime(session?.time),
       status: nextStatus,
       template,
     })

@@ -55,6 +55,9 @@ export type ScheduleSession = {
   coach: string | null
   notes: string | null
   visibility_tiers?: string[] | null
+  is_event?: boolean
+  publish_at?: string | null
+  published_at?: string | null
 }
 
 export type Booking = {

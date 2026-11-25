@@ -1,6 +1,14 @@
 import nodemailer from "nodemailer"
 import { randomUUID } from "node:crypto"
-import { applyTemplateText, getEmailTemplateConfig, mergeEmailTemplateConfig, type EmailTemplate, type EmailTemplateKey } from "@/lib/email-templates"
+import {
+  applyTemplateText,
+  getEmailTemplateConfig,
+  mergeEmailDeliveryConfig,
+  mergeEmailTemplateConfig,
+  type EmailDeliveryConfig,
+  type EmailTemplate,
+  type EmailTemplateKey,
+} from "@/lib/email-templates"
 import { createClient } from "@/lib/supabase/server"
 
 const smtpUser = process.env.SMTP_USER?.trim() || process.env.GMAIL_USER?.trim() || process.env.EMAIL_USER?.trim()
@@ -22,6 +30,17 @@ const transporter = smtpUser && smtpPassword
       },
     })
   : null
+
+export async function getAutoEmailConfig(database?: Awaited<ReturnType<typeof createClient>>): Promise<EmailDeliveryConfig> {
+  const supabase = database ?? await createClient()
+  const { data, error } = await supabase
+    .from("auto_email_settings")
+    .select("enabled_emails")
+    .eq("id", true)
+    .maybeSingle()
+  if (error) throw new Error(`Unable to load automatic email settings: ${error.message}`)
+  return mergeEmailDeliveryConfig(data?.enabled_emails)
+}
 
 async function getSavedEmailTemplate(key: EmailTemplateKey, fallback?: EmailTemplate) {
   try {
@@ -234,6 +253,7 @@ export async function sendSessionBookingCancellationEmail({
   sessionDate,
   sessionTime,
   template,
+  templateKey = "booking_cancellation",
 }: {
   to: string
   memberName: string
@@ -241,8 +261,9 @@ export async function sendSessionBookingCancellationEmail({
   sessionDate: string
   sessionTime: string
   template?: EmailTemplate
+  templateKey?: "booking_cancellation" | "booking_admin_cancellation"
 }) {
-  const selectedTemplate = await getSavedEmailTemplate("booking_cancellation", template)
+  const selectedTemplate = await getSavedEmailTemplate(templateKey, template)
   const replacements = { memberName, sessionTitle, sessionDate, sessionTime }
   const subject = applyTemplateText(selectedTemplate.subject, replacements)
   const text = applyTemplateText(selectedTemplate.body, replacements)

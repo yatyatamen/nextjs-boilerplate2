@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const canDelete =
       profile?.role === "staff" ||
       profile?.role === "admin" ||
-      (profile?.role === "leader" && type === "schedule")
+      (["leader", "teacher"].includes(profile?.role ?? "") && type === "schedule")
     if (profileError || !canDelete) {
       return NextResponse.json({ error: "Only staff can delete published items" }, { status: 403 })
     }

@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
+import { formatSessionTime } from "@/lib/scheduling"
 import { getMemberLevel, isSessionVisibleToLevel } from "../../../lib/session-visibility"
 import type { EmailTemplate } from "@/lib/email-templates"
 import {
+  getAutoEmailConfig,
   sendAnnouncementEmail,
   sendAssessmentEmail,
   sendSessionAlertEmail,
@@ -62,6 +64,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "A valid email event and recipient are required" }, { status: 400 })
     }
 
+    const deliveryKey = event === "session_alert_batch" ? "session_alert" : event
+    const deliverySettings = await getAutoEmailConfig(supabase)
+    if (!deliverySettings[deliveryKey]) {
+      return NextResponse.json({
+        data: event === "session_alert_batch"
+          ? { disabled: true, sent: 0, failed: 0, attempted: 0 }
+          : { disabled: true },
+      })
+    }
+
     if (event === "session_alert_batch") {
       const sessionId = requiredString(body?.sessionId).trim()
       if (!sessionId) {
@@ -76,7 +88,7 @@ export async function POST(request: Request) {
       }
 
       const [{ data: session, error: sessionError }, { data: members, error: membersError }] = await Promise.all([
-        database.from("schedule").select("title, date, time, visibility_tiers").eq("id", sessionId).maybeSingle(),
+        database.from("schedule").select("title, date, time, visibility_tiers, is_event, publish_at, published_at").eq("id", sessionId).maybeSingle(),
         database.from("profiles").select("email, role, level"),
       ])
 
@@ -87,6 +99,12 @@ export async function POST(request: Request) {
       }
       if (!session) {
         return NextResponse.json({ error: "Session not found" }, { status: 404 })
+      }
+      if (session.is_event) {
+        return NextResponse.json({ error: "Optional events do not send session alerts." }, { status: 409 })
+      }
+      if (!session.published_at) {
+        return NextResponse.json({ error: "Scheduled session alerts are sent when the session is published." }, { status: 409 })
       }
       if (!Array.isArray(session.visibility_tiers) || session.visibility_tiers.some((tier) => typeof tier !== "string")) {
         console.error("Session alert blocked because saved visibility ranks are missing or invalid.", { sessionId })
@@ -106,7 +124,7 @@ export async function POST(request: Request) {
           to: recipient.email!.trim(),
           title: requiredString(session.title) || "Training Session",
           date: requiredString(session.date) || "TBD",
-          time: requiredString(session.time) || "TBD",
+          time: formatSessionTime(session.time),
           template,
         })
         if (result.ok) sent += 1
@@ -137,7 +155,7 @@ export async function POST(request: Request) {
       }
 
       const [{ data: session, error: sessionError }, { data: recipient, error: recipientError }] = await Promise.all([
-        database.from("schedule").select("visibility_tiers").eq("id", sessionId).maybeSingle(),
+        database.from("schedule").select("visibility_tiers, is_event, publish_at, published_at").eq("id", sessionId).maybeSingle(),
         database.from("profiles").select("role, level").eq("email", to).maybeSingle(),
       ])
 
@@ -148,6 +166,12 @@ export async function POST(request: Request) {
       }
       if (!session) {
         return NextResponse.json({ error: "Session not found" }, { status: 404 })
+      }
+      if (session.is_event) {
+        return NextResponse.json({ error: "Optional events do not send session alerts." }, { status: 409 })
+      }
+      if (!session.published_at) {
+        return NextResponse.json({ error: "Scheduled session alerts are sent when the session is published." }, { status: 409 })
       }
       if (
         !isSessionVisibleToLevel(
@@ -172,7 +196,7 @@ export async function POST(request: Request) {
         to,
         title: requiredString(body?.sessionTitle),
         date: requiredString(body?.sessionDate),
-        time: requiredString(body?.sessionTime),
+        time: formatSessionTime(requiredString(body?.sessionTime)),
         template,
       })
     } else if (event === "assessment") {

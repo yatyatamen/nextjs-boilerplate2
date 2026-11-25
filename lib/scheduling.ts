@@ -94,6 +94,10 @@ export function parseSessionStart(dateValue: string | null | undefined, timeValu
   return createSessionDateTime(sessionDate, normalizedHour, minute)
 }
 
+export function formatSessionTime(timeValue: string | null | undefined) {
+  return timeValue?.trim() || "No specific time"
+}
+
 export function parseSessionEnd(dateValue: string | null | undefined, timeValue: string | null | undefined): Date | null {
   const sessionDate = parseSessionDate(dateValue)
   if (!sessionDate) return null
@@ -144,6 +148,17 @@ export function isSessionEnded(
   return Boolean(end && now >= end)
 }
 
+export function isSchedulePublished(
+  schedule: { publish_at?: string | null; published_at?: string | null } | null | undefined,
+  now = new Date(),
+) {
+  if (schedule?.published_at) return true
+  if (schedule?.published_at === null) return false
+  if (!schedule?.publish_at) return true
+  const publishTime = Date.parse(schedule.publish_at)
+  return Number.isFinite(publishTime) && publishTime <= now.getTime()
+}
+
 export function getSessionBookingRules(
   session: { date?: string | null; time?: string | null; max_capacity?: number | string | null; notes?: string | null },
   currentCount = 0,
@@ -155,11 +170,8 @@ export function getSessionBookingRules(
   const start = parseSessionStart(session.date, session.time)
   const ended = isSessionEnded(session, now)
   const isFull = limit !== null && currentCount >= limit
-  const bookingCutoff = start ? new Date(start.getTime() - 3 * 60 * 60 * 1000) : null
-  const cancellationCutoff = start ? new Date(start.getTime() - 3 * 60 * 60 * 1000) : null
-
-  const bookingBlocked = ended || (!!start && !!bookingCutoff && now >= bookingCutoff)
-  const cancellationBlocked = !!start && !!cancellationCutoff && now >= cancellationCutoff
+  const bookingBlocked = ended || (!!start && now >= start)
+  const cancellationBlocked = !!start && now >= start
 
   const sessionNotes = [
     session.notes?.trim() || "Session details will be provided by staff.",
@@ -176,11 +188,11 @@ export function getSessionBookingRules(
       : ended
         ? "This session has ended and is no longer available for booking."
         : bookingBlocked
-        ? "Booking is no longer available within 3 hours of the session start. Please talk to the club leaders if you need help."
+      ? "Booking closes when the session starts. Please talk to the club leaders if you need help."
         : null,
     isCancellationBlocked: cancellationBlocked,
     cancellationBlockReason: cancellationBlocked
-      ? "Cancellation is disabled within 3 hours of the session start. Please talk to the club leaders if you need help."
+      ? "Cancellation closes when the session starts. Please talk to the club leaders if you need help."
       : null,
     sessionNotes,
   }

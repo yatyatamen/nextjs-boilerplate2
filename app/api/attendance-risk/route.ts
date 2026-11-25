@@ -55,9 +55,8 @@ export async function GET() {
       .select("user_id, risk_percent, month_start")
     let checkQuery = supabase
       .from("attendance_booking_risk_checks")
-      .select("user_id, session_id, month_start")
+      .select("user_id, session_id, risk_percent, month_start")
       .eq("allowed", false)
-      .eq("month_start", monthStart)
     let eventQuery = supabase
       .from("attendance_booking_risk_events")
       .select("user_id, status")
@@ -83,9 +82,15 @@ export async function GET() {
     if (eventsError) throw eventsError
 
     const blockedSessions = new Map<string, string[]>()
+    const blockedSessionRiskPercents = new Map<string, Record<string, number>>()
     for (const check of checks ?? []) {
       const userId = String(check.user_id)
-      blockedSessions.set(userId, [...(blockedSessions.get(userId) ?? []), String(check.session_id)])
+      const sessionId = String(check.session_id)
+      blockedSessions.set(userId, [...(blockedSessions.get(userId) ?? []), sessionId])
+      blockedSessionRiskPercents.set(userId, {
+        ...(blockedSessionRiskPercents.get(userId) ?? {}),
+        [sessionId]: Number(check.risk_percent),
+      })
     }
 
     const reasonsByUser = new Map<string, string[]>()
@@ -102,6 +107,7 @@ export async function GET() {
       risk_percent: risk.month_start === monthStart ? Number(risk.risk_percent) : 0,
       month_start: monthStart,
       suspended_session_ids: blockedSessions.get(String(risk.user_id)) ?? [],
+      suspended_session_risk_percent_by_id: blockedSessionRiskPercents.get(String(risk.user_id)) ?? {},
       suspension_reasons: reasonsByUser.get(String(risk.user_id)) ?? [],
     }))
 
@@ -111,6 +117,7 @@ export async function GET() {
         risk_percent: 0,
         month_start: monthStart,
         suspended_session_ids: blockedSessions.get(userData.user.id) ?? [],
+        suspended_session_risk_percent_by_id: blockedSessionRiskPercents.get(userData.user.id) ?? {},
         suspension_reasons: reasonsByUser.get(userData.user.id) ?? [],
       })
     }
@@ -146,8 +153,8 @@ export async function PATCH(request: NextRequest) {
       .eq("id", userData.user.id)
       .maybeSingle()
     if (profileError) throw profileError
-    if (profile?.role !== "leader") {
-      return NextResponse.json({ error: "Only leaders can change attendance risk." }, { status: 403 })
+    if (profile?.role !== "leader" && profile?.role !== "staff") {
+      return NextResponse.json({ error: "Only leaders and staff can change attendance risk." }, { status: 403 })
     }
 
     const { data, error } = await supabase.rpc("set_attendance_booking_risk", {

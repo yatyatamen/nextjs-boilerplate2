@@ -19,7 +19,7 @@
                                                   Resource,
                                                 } from "@/lib/types"
 import { LEVELS } from "@/lib/types"
-import { getSessionBookingRules, getSessionBookingNotes, isSessionEnded, parseSessionStart } from "@/lib/scheduling"
+import { formatSessionTime, getSessionBookingRules, getSessionBookingNotes, isSchedulePublished, isSessionEnded, parseSessionStart } from "@/lib/scheduling"
 import { isSessionVisibleToLevel } from "@/lib/session-visibility"
 import { getEmailTemplateConfig } from "@/lib/email-templates"
                                                 import {
@@ -56,6 +56,7 @@ type AttendanceRiskEntry = {
   risk_percent: number
   month_start: string
   suspended_session_ids: string[]
+  suspended_session_risk_percent_by_id?: Record<string, number>
   suspension_reasons: string[]
 }
 
@@ -274,6 +275,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   const [active, setActive] = useState("overview")
                                                   const [schedule, setSchedule] = useState<ScheduleSession[]>(initialSchedule)
                                                   const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">("list")
+                                                  const [currentTime, setCurrentTime] = useState(() => new Date())
                                                   const [bookings, setBookings] = useState<Booking[]>(initialBookings)
                                                   const [bookingCounts, setBookingCounts] = useState<Record<string, number>>({})
                                                   const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
@@ -370,6 +372,18 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   const [shopPriceMin, setShopPriceMin] = useState<number | "">("")
                                                   const [shopPriceMax, setShopPriceMax] = useState<number | "">("")
                                                   const [shopLayout, setShopLayout] = useState<"large" | "list" | "compact">("compact")
+                                                  const [isPhoneViewport, setIsPhoneViewport] = useState(false)
+
+                                                  useEffect(() => {
+                                                    const mediaQuery = window.matchMedia("(max-width: 639px)")
+                                                    const updateViewport = () => setIsPhoneViewport(mediaQuery.matches)
+                                                    updateViewport()
+                                                    mediaQuery.addEventListener("change", updateViewport)
+                                                    return () => mediaQuery.removeEventListener("change", updateViewport)
+                                                  }, [])
+
+                                                  const activeGearLayout = isPhoneViewport ? "compact" : gearLayout
+                                                  const activeShopLayout = isPhoneViewport ? "compact" : shopLayout
 
                                                   // Confirmation & Toast Hooks
                                                   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
@@ -381,6 +395,24 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   const isTeacher = profile.role === "teacher"
                                                   const isLeader = profile.role === "leader"
                                                   const isManagementRole = isStaff || isTeacher || isLeader
+                                                  const bookingRiskPercent = attendanceRiskByMember[profile.id]?.risk_percent ?? 0
+                                                  const bookingRiskStatus = bookingRiskPercent === 0
+                                                    ? {
+                                                        message: "No active risk — keep it up!",
+                                                        cardClass: "border-emerald-500/40 bg-emerald-500/5",
+                                                        textClass: "text-emerald-400",
+                                                      }
+                                                    : bookingRiskPercent < 50
+                                                      ? {
+                                                          message: "Low risk of suspension",
+                                                          cardClass: "border-amber-500/40 bg-amber-500/5",
+                                                          textClass: "text-amber-400",
+                                                        }
+                                                      : {
+                                                          message: "Danger zone — high risk of suspension",
+                                                          cardClass: "border-red-500/40 bg-red-500/5",
+                                                          textClass: "text-red-400",
+                                                        }
                                                   const canCustomizeButtonHue = profile.role === "member" || isLeader || isTeacher
                                                   const canManageAttendance = isStaff || isLeader || isTeacher
                                                   const canUseManagementShopAndGear = isStaff || isTeacher
@@ -390,12 +422,17 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                     return true
                                                   })
                                                   const visibleDashboardNav = isManagementRole
-                                                    ? [...dashboardNav, ...LEADER_MANAGEMENT_NAV.filter((item) => item.key !== "leader-attendance-risk" || isLeader)]
+                                                    ? [...dashboardNav, ...LEADER_MANAGEMENT_NAV.filter((item) => item.key !== "leader-attendance-risk" || isLeader || isStaff)]
                                                     : dashboardNav
                                                   const dashboardStyle: MemberDashboardStyle = {
                                                     colorScheme: isDarkMode ? "dark" : "light",
                                                     "--member-accent-hue": buttonThemeHue,
                                                   }
+
+                                                  useEffect(() => {
+                                                    const interval = window.setInterval(() => setCurrentTime(new Date()), 30_000)
+                                                    return () => window.clearInterval(interval)
+                                                  }, [])
 
                                                   useEffect(() => {
                                                     if (profile.role !== "member" && profile.role !== "leader") return
@@ -603,10 +640,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   )
                                                   const visibleSchedule = useMemo(
                                                     () => schedule.filter((session) =>
+                                                      isSchedulePublished(session, currentTime) &&
                                                       !isSessionEnded(session) &&
-                                                      (canSeeAllSessions || isSessionVisibleToLevel(session.visibility_tiers, profile.level)),
+                                                      (session.is_event || canSeeAllSessions || isSessionVisibleToLevel(session.visibility_tiers, profile.level)),
                                                     ),
-                                                    [schedule, canSeeAllSessions, profile.level],
+                                                    [schedule, canSeeAllSessions, profile.level, currentTime],
                                                   )
 
                                                   const visibleBookings = useMemo(() => bookings.filter((b) => {
@@ -704,7 +742,6 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                     })
                                                   }, [shopItemsState, shopFilter, shopSearch, shopPriceMin, shopPriceMax])
 
-                                                  const bookedSessionIds = useMemo(() => new Set(visibleBookings.map((b) => String(b.session_id))), [visibleBookings])
                                                   const memberUpcomingSessions = useMemo(() => {
                                                     const myBookedSessionIds = new Set(
                                                       visibleBookings
@@ -747,6 +784,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                     let bookingClosed = 0
 
                                                     for (const session of visibleSchedule) {
+                                                      if (session.is_event) continue
                                                       const sessionId = String(session.id)
                                                       if (memberBookedSessionIds.has(sessionId)) {
                                                         booked += 1
@@ -1430,6 +1468,10 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   
 
                                                   async function book(session: ScheduleSession) {
+                                                    if (session.is_event) {
+                                                      showToast("This is an optional event and does not require booking.")
+                                                      return
+                                                    }
                                                     const note = bookingNoteDraft.trim()
                                                     const currentBookingCount = sessionBookingCount(session.id)
                                                     const ruleSet = getSessionBookingRules(session, currentBookingCount, new Date())
@@ -1491,11 +1533,29 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                   }
 
                                                   function renderMemberScheduleSession(session: ScheduleSession) {
-                                                    const booked = bookedSessionIds.has(String(session.id))
+                                                    if (session.is_event) {
+                                                      return (
+                                                        <Card key={session.id} className={`flex flex-col gap-2 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                          <div className="flex flex-wrap items-center justify-between gap-2">
+                                                            <p className={`text-xs font-bold uppercase tracking-wider ${theme.textSecondary}`}>Optional event · open to everyone · no booking required</p>
+                                                            <Badge className="border border-amber-500/30 bg-amber-500/10 text-amber-200">Event</Badge>
+                                                          </div>
+                                                          <p className={`text-sm font-bold ${theme.headingColor}`}>
+                                                            {formatDate(session.date)} · {formatSessionTime(session.time)}
+                                                          </p>
+                                                          <p className={`text-[13px] font-semibold ${theme.textSecondary}`}>{session.title || "Club event"}</p>
+                                                          {session.notes && (
+                                                            <p className={`whitespace-pre-line text-xs ${theme.textMuted}`}>{session.notes}</p>
+                                                          )}
+                                                        </Card>
+                                                      )
+                                                    }
+                                                    const booked = memberBookedSessionIds.has(String(session.id))
                                                     const ruleSet = getSessionBookingRules(session, sessionBookingCount(session.id), new Date())
                                                     const hasTimeConflict = hasMemberSessionTimeConflict(session, bookings, profile.id, scheduleById)
                                                     const riskEntry = attendanceRiskByMember[profile.id]
                                                     const attendanceSuspended = riskEntry?.suspended_session_ids.includes(String(session.id)) ?? false
+                                                    const sessionRiskPercent = riskEntry?.suspended_session_risk_percent_by_id?.[String(session.id)]
                                                     const disabled = booked || pendingId === String(session.id) || ruleSet.isBookingBlocked || ruleSet.isFull || hasTimeConflict || attendanceSuspended
                                                     const suspensionReason = riskEntry?.suspension_reasons.length
                                                       ? riskEntry.suspension_reasons.join(", ")
@@ -1513,7 +1573,9 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                           </p>
                                                           {attendanceSuspended && (
                                                             <p className="mt-2 text-xs font-medium text-rose-400">
-                                                              Booking suspended for this session because of {suspensionReason}. Current suspension chance: {(riskEntry?.risk_percent ?? 0).toFixed(2)}%. Contact a club leader if you have questions.
+                                                              Booking suspended for this session because of {suspensionReason}. Suspension chance of this session: {(sessionRiskPercent ?? riskEntry?.risk_percent ?? 0).toFixed(2)}%.
+                                                              <br />
+                                                              Contact a club leader if you have questions.
                                                             </p>
                                                           )}
                                                         </div>
@@ -1565,11 +1627,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
 
                                                   async function cancel(booking: Booking) {
                                                     const sessionDetail = booking.session_id ? scheduleById.get(String(booking.session_id)) : null
-                                                    const sessionInfo = sessionDetail ? `${formatDate(sessionDetail.date)} at ${sessionDetail.time || "TBD"}` : "this session"
+                                                    const sessionInfo = sessionDetail ? `${formatDate(sessionDetail.date)} at ${formatSessionTime(sessionDetail.time)}` : "this session"
                                                     const currentBookingCount = sessionDetail ? sessionBookingCount(sessionDetail.id) : 0
                                                     const ruleSet = sessionDetail ? getSessionBookingRules(sessionDetail, currentBookingCount, new Date()) : null
                                                     if (ruleSet?.isCancellationBlocked) {
-                                                      alert(ruleSet.cancellationBlockReason || "Cancellation is disabled within 3 hours of the session start. Please talk to the club leaders if you need help.")
+                                                      alert(ruleSet.cancellationBlockReason || "Cancellation closes when the session starts. Please talk to the club leaders if you need help.")
                                                       return
                                                     }
                                                     
@@ -1842,15 +1904,21 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 initialBookings={leaderBookings}
                                                                 initialAttendanceRecords={attendanceList}
                                                                 embeddedSection="attendance"
+                                                                onAttendanceRecordSaved={(record) => {
+                                                                  setAttendanceList((previous) => [
+                                                                    record,
+                                                                    ...previous.filter((entry) => String(entry.id) !== String(record.id)),
+                                                                  ])
+                                                                }}
                                                               />
                                                             </div>
                                                           )}
-                                                          {active === "leader-attendance-risk" && isLeader && (
+                                                          {active === "leader-attendance-risk" && (isLeader || isStaff) && (
                                                             <div className={`leader-management w-full rounded-sm p-4 ${theme.bg} ${theme.textPrimary}`}>
                                                               <div className="mb-5">
-                                                                <h2 className={`text-lg font-bold ${theme.headingColor}`}>Session Booking Eligibility</h2>
+                                                                <h2 className={`text-lg font-bold ${theme.headingColor}`}>Member Booking Eligibility</h2>
                                                                 <p className={`mt-1 text-sm ${theme.textMuted}`}>
-                                                                  Late arrival adds 10–20 points, absence adds 15–30, and a staff-added missed sign-up adds 10–20. Present attendance removes 15–30. The score is a per-session suspension chance, resets monthly, and is capped between 0% and 100%. Only one uncompleted session can be suspended at a time.
+                                                                  Review and adjust each member’s suspension chance. Late arrival adds 10–20 points, absence adds 15–30, and a staff-added missed sign-up adds 10–20. Present attendance removes 15–30. The score resets monthly and is capped between 0% and 100%.
                                                                 </p>
                                                               </div>
                                                               {attendanceRiskLoadError && (
@@ -1876,7 +1944,12 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     <tbody className="divide-y divide-zinc-800">
                                                                       {allProfiles
                                                                         .filter((member) => member.role === "member")
-                                                                        .sort((left, right) => getProfileDisplayName(left).localeCompare(getProfileDisplayName(right)))
+                                                                        .sort((left, right) => {
+                                                                          const riskDifference =
+                                                                            (attendanceRiskByMember[right.id]?.risk_percent ?? 0)
+                                                                            - (attendanceRiskByMember[left.id]?.risk_percent ?? 0)
+                                                                          return riskDifference || getProfileDisplayName(left).localeCompare(getProfileDisplayName(right))
+                                                                        })
                                                                         .map((member) => {
                                                                           const risk = attendanceRiskByMember[member.id]
                                                                           const riskPercent = risk?.risk_percent ?? 0
@@ -1970,19 +2043,25 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                               </Card>
 
                                                               {profile.role === "member" && (
-                                                                <Card className={`p-5 border ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
+                                                                <Card className={`rounded-sm border p-5 ${bookingRiskStatus.cardClass}`}>
                                                                   <div className="flex items-start gap-3">
-                                                                    <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-[var(--member-accent)]" />
+                                                                    <ShieldAlert className={`mt-0.5 h-5 w-5 shrink-0 ${bookingRiskStatus.textClass}`} />
                                                                     <div>
                                                                       <p className={`text-xs font-bold uppercase tracking-wider ${theme.textSecondary}`}>
                                                                         Booking suspension chance
                                                                       </p>
-                                                                      <p className={`mt-1 text-2xl font-bold ${theme.headingColor}`}>
-                                                                        {(attendanceRiskByMember[profile.id]?.risk_percent ?? 0).toFixed(2)}%
+                                                                      <p className={`mt-1 text-2xl font-bold ${bookingRiskStatus.textClass}`}>
+                                                                        {bookingRiskPercent.toFixed(2)}%
                                                                       </p>
-                                                                      <p className={`mt-2 text-xs leading-relaxed ${theme.textMuted}`}>
-                                                                        Absence raises your chance by 15–30%, late arrival by 10–20%, and being added after forgetting to sign up by 10–20%. Present attendance lowers it by 15–30%. Each new booking has this chance of being suspended for one session; the rate cannot go below 0% and resets monthly.
+                                                                      <p className={`mt-1 text-sm font-semibold ${bookingRiskStatus.textClass}`} role="status">
+                                                                        {bookingRiskStatus.message}
                                                                       </p>
+                                                                      <ul className={`mt-2 list-disc space-y-1 pl-4 text-xs leading-relaxed ${theme.textMuted}`}>
+                                                                        <li>Absent: +15–30%</li>
+                                                                        <li>Late arrival: +10–20%</li>
+                                                                        <li>Forgot to sign up: +10–20%</li>
+                                                                        <li>Present: −15–30%</li>
+                                                                      </ul>
                                                                     </div>
                                                                   </div>
                                                                 </Card>
@@ -2028,7 +2107,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     {memberUpcomingSessions.length > 0 ? (
                                                                       <>
                                                                         <p className={`text-sm font-semibold mt-1 ${theme.textPrimary}`}>{memberUpcomingSessions[0].title || "Untitled Session"}</p>
-                                                                        <p className={`text-xs ${theme.textSecondary}`}>{formatDate(memberUpcomingSessions[0].date)} · {memberUpcomingSessions[0].time || "TBD"}</p>
+                                                                        <p className={`text-xs ${theme.textSecondary}`}>{formatDate(memberUpcomingSessions[0].date)} · {formatSessionTime(memberUpcomingSessions[0].time)}</p>
                                                                       </>
                                                                     ) : (
                                                                       <p className={`text-sm ${theme.textSecondary} mt-1`}>No upcoming booked sessions</p>
@@ -2041,14 +2120,18 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                               <div className="grid gap-4">
                                                                 {latestGeneralAnnouncement && (
                                                                   <Card className={`p-6 bg-gradient-to-br from-[var(--member-accent)]/10 to-[var(--member-accent)]/5 border border-[var(--member-accent)]/30 rounded-sm`}>
-                                                                    <div className="flex items-start gap-4">
-                                                                      <div className={`flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--member-accent-fill)]/20`}>
-                                                                        <Megaphone className="h-6 w-6 text-[var(--member-accent)]" />
+                                                                    <div>
+                                                                      <div className="flex items-start gap-4">
+                                                                        <div className={`flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--member-accent-fill)]/20`}>
+                                                                          <Megaphone className="h-6 w-6 text-[var(--member-accent)]" />
+                                                                        </div>
+                                                                        <div className="min-w-0 flex-1">
+                                                                          <p className="text-xs font-semibold text-[var(--member-accent)] uppercase tracking-wide">Latest Announcement</p>
+                                                                          <h3 className={`mt-2 text-2xl font-bold ${theme.headingColor}`}>{latestGeneralAnnouncement.title}</h3>
+                                                                        </div>
                                                                       </div>
-                                                                      <div className="flex-1">
-                                                                        <p className="text-xs font-semibold text-[var(--member-accent)] uppercase tracking-wide">Latest Announcement</p>
-                                                                        <h3 className={`mt-2 text-2xl font-bold ${theme.headingColor}`}>{latestGeneralAnnouncement.title}</h3>
-                                                                        <p className={`mt-3 text-base leading-relaxed ${theme.textPrimary} whitespace-pre-line`}>
+                                                                      <div className="mt-4">
+                                                                        <p className={`text-base leading-relaxed ${theme.textPrimary} whitespace-pre-line`}>
                                                                           {latestGeneralAnnouncement.content}
                                                                         </p>
                                                                         <p className={`mt-3 text-xs ${theme.textSecondary}`}>
@@ -2061,14 +2144,18 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
 
                                                                 {latestFeatureAnnouncement && (
                                                                   <Card className={`p-6 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/30 rounded-sm`}>
-                                                                    <div className="flex items-start gap-4">
-                                                                      <div className={`flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500/15`}>
-                                                                        <Megaphone className="h-6 w-6 text-emerald-500" />
+                                                                    <div>
+                                                                      <div className="flex items-start gap-4">
+                                                                        <div className={`flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500/15`}>
+                                                                          <Megaphone className="h-6 w-6 text-emerald-500" />
+                                                                        </div>
+                                                                        <div className="min-w-0 flex-1">
+                                                                          <p className="text-xs font-semibold text-emerald-500 uppercase tracking-wide">Website Feature Update</p>
+                                                                          <h3 className={`mt-2 text-2xl font-bold ${theme.headingColor}`}>{latestFeatureAnnouncement.title}</h3>
+                                                                        </div>
                                                                       </div>
-                                                                      <div className="flex-1">
-                                                                        <p className="text-xs font-semibold text-emerald-500 uppercase tracking-wide">Website Feature Update</p>
-                                                                        <h3 className={`mt-2 text-2xl font-bold ${theme.headingColor}`}>{latestFeatureAnnouncement.title}</h3>
-                                                                        <p className={`mt-3 text-base leading-relaxed ${theme.textPrimary} whitespace-pre-line`}>
+                                                                      <div className="mt-4">
+                                                                        <p className={`text-base leading-relaxed ${theme.textPrimary} whitespace-pre-line`}>
                                                                           {latestFeatureAnnouncement.content}
                                                                         </p>
                                                                         <p className={`mt-3 text-xs ${theme.textSecondary}`}>
@@ -2089,11 +2176,11 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 <>
                                                                 <Card className={`mb-4 p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                   <p className={`text-xs leading-relaxed ${theme.textSecondary}`}>
-                                                                    Booking and cancellation close 3 hours before a session starts. If you have any problems, please talk to a club leader.
+                                                                    Booking and cancellation close when the session starts. If you have any problems, please talk to a club leader.
                                                                   </p>
                                                                   {profile.role === "member" && (
                                                                     <p className={`mt-2 text-xs ${theme.textSecondary}`}>
-                                                                      Attendance suspension chance: {(attendanceRiskByMember[profile.id]?.risk_percent ?? 0).toFixed(2)}% per new booking. Absence, late arrival, or being added after forgetting to sign up increases the chance; present attendance lowers it. A failed check suspends one session, and the chance resets monthly.
+                                                                      Attendance suspension chance: {(attendanceRiskByMember[profile.id]?.risk_percent ?? 0).toFixed(2)}%. Absence, late arrival, or being added after forgetting to sign up increases the chance; present attendance lowers it. The chance resets monthly.
                                                                     </p>
                                                                   )}
                                                                   {profile.role === "member" && attendanceRiskLoadError && (
@@ -2126,10 +2213,24 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 </div>
 
                                                                 {scheduleViewMode === "calendar" ? (
-                                                                  <ScheduleCalendar sessions={visibleSchedule} renderSession={renderMemberScheduleSession} />
+                                                                  <ScheduleCalendar
+                                                                    sessions={visibleSchedule}
+                                                                    renderSession={renderMemberScheduleSession}
+                                                                    getBookingStatus={(session) => {
+                                                                      if (session.is_event) return "not-booked"
+                                                                      if (attendanceRiskByMember[profile.id]?.suspended_session_ids.includes(String(session.id))) return "suspended"
+                                                                      return memberBookedSessionIds.has(String(session.id)) ? "booked" : "not-booked"
+                                                                    }}
+                                                                  />
                                                                 ) : (
                                                                   <div className="flex flex-col gap-3">
-                                                                    {visibleSchedule.map(renderMemberScheduleSession)}
+                                                                    {visibleSchedule.filter((session) => !session.is_event).length === 0 ? (
+                                                                      <Card className={`p-5 text-sm ${theme.textMuted}`}>
+                                                                        No bookable sessions are currently available.
+                                                                      </Card>
+                                                                    ) : (
+                                                                      visibleSchedule.filter((session) => !session.is_event).map(renderMemberScheduleSession)
+                                                                    )}
                                                                   </div>
                                                                 )}
                                                                 </>
@@ -2166,10 +2267,10 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     <div className="space-y-2 rounded-sm border border-zinc-800/60 bg-zinc-950/40 p-3">
                                                                       <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-[var(--member-accent)]">Booking Policy</p>
                                                                       <p className="text-xs leading-relaxed text-zinc-200">
-                                                                        Booking policy: members can only book before 3 hours remain until the session start. Please talk to the club leaders if you need help.
+                                                                        Booking policy: members can book until the session starts. Please talk to the club leaders if you need help.
                                                                       </p>
                                                                       <p className="text-xs leading-relaxed text-zinc-200">
-                                                                        Cancellation policy: bookings cannot be cancelled within 3 hours of the session start. Please talk to the club leaders if you need help.
+                                                                        Cancellation policy: bookings can be cancelled until the session starts. Please talk to the club leaders if you need help.
                                                                       </p>
                                                                     </div>
 
@@ -2233,7 +2334,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                           <p className={`text-sm font-bold ${theme.headingColor} uppercase`}>{s ? formatDate(s.date) : "Training Interval"} {s?.time && `· ${s.time}`}</p>
                                                                           {s?.title && <p className={`text-xs font-mono ${theme.textSecondary} mt-0.5`}>Focus: {s.title}</p>}
                                                                           {cancellationBlocked && (
-                                                                            <p className={`mt-1 text-xs ${theme.textMuted}`}>Cancellation closes 3 hours before the session starts.</p>
+                                                                            <p className={`mt-1 text-xs ${theme.textMuted}`}>Cancellation closes when the session starts.</p>
                                                                           )}
                                                                         </div>
                                                                         <Button
@@ -2370,7 +2471,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     <Card key={`roster-${session.id}`} className={`p-4 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                       <div className="mb-3">
                                                                         <h3 className={`text-sm font-bold ${theme.headingColor}`}>{session.title || "Training Session"}</h3>
-                                                                        <p className={`text-xs ${theme.textMuted}`}>{formatDate(session.date)} · {session.time || "TBD"}</p>
+                                                                        <p className={`text-xs ${theme.textMuted}`}>{formatDate(session.date)} · {formatSessionTime(session.time)}</p>
                                                                       </div>
                                                                       {sessionBookings.length === 0 ? (
                                                                         <p className={`text-xs ${theme.textMuted}`}>No bookings for this session.</p>
@@ -2566,9 +2667,9 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                       <button
                                                                         key={option.value}
                                                                         type="button"
-                                                                        aria-pressed={gearLayout === option.value}
+                                                                          aria-pressed={activeGearLayout === option.value}
                                                                         onClick={() => setGearLayout(option.value)}
-                                                                        className={`rounded-sm px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] transition ${gearLayout === option.value ? "bg-[var(--member-accent-fill)] text-black font-bold" : "text-zinc-300 hover:bg-zinc-800"}`}
+                                                                          className={`${option.value === "compact" ? "inline-flex" : "hidden sm:inline-flex"} rounded-sm px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] transition ${activeGearLayout === option.value ? "bg-[var(--member-accent-fill)] text-black font-bold" : "text-zinc-300 hover:bg-zinc-800"}`}
                                                                       >
                                                                         {option.label}
                                                                       </button>
@@ -2605,7 +2706,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg}`}>
                                                                   <p className={`text-sm ${theme.textSecondary}`}>No equipment guides match that filter.</p>
                                                                 </Card>
-                                                              ) : gearLayout === "large" ? (
+                                                              ) : activeGearLayout === "large" ? (
                                                                 <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                                                                   {filteredGearGuides.map((g) => {
                                                                     const galleryImages = mergeImageLists(g.image_url, (g as any).pic_url, (g as any).image_urls)
@@ -2681,7 +2782,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     )
                                                                   })}
                                                                 </div>
-                                                              ) : gearLayout === "list" ? (
+                                                              ) : activeGearLayout === "list" ? (
                                                                 <div className="flex flex-col gap-3">
                                                                   {filteredGearGuides.map((g) => {
                                                                     const galleryImages = mergeImageLists(g.image_url, (g as any).pic_url, (g as any).image_urls)
@@ -2868,9 +2969,9 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                       <button
                                                                         key={option.value}
                                                                         type="button"
-                                                                        aria-pressed={shopLayout === option.value}
+                                                                          aria-pressed={activeShopLayout === option.value}
                                                                         onClick={() => setShopLayout(option.value)}
-                                                                        className={`rounded-sm px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] transition ${shopLayout === option.value ? "bg-[var(--member-accent-fill)] text-black font-bold" : "text-zinc-300 hover:bg-zinc-800"}`}
+                                                                          className={`${option.value === "compact" ? "inline-flex" : "hidden sm:inline-flex"} rounded-sm px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.18em] transition ${activeShopLayout === option.value ? "bg-[var(--member-accent-fill)] text-black font-bold" : "text-zinc-300 hover:bg-zinc-800"}`}
                                                                       >
                                                                         {option.label}
                                                                       </button>
@@ -2916,7 +3017,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                 <Card className={`p-6 ${theme.cardBorder} ${theme.cardBg}`}>
                                                                   <p className={`text-sm ${theme.textSecondary}`}>No shop items match that filter.</p>
                                                                 </Card>
-                                                              ) : shopLayout === "large" ? (
+                                                              ) : activeShopLayout === "large" ? (
                                                                 <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                                                                   {filteredShopItems.map((item) => {
                                                                     const galleryImages = mergeImageLists((item as any).image_url, item.pic_url, (item as any).picUrl, item.image_urls)
@@ -2967,7 +3068,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                     )
                                                                   })}
                                                                 </div>
-                                                              ) : shopLayout === "list" ? (
+                                                              ) : activeShopLayout === "list" ? (
                                                                 <div className="flex flex-col gap-3">
                                                                   {filteredShopItems.map((item) => {
                                                                     const galleryImages = mergeImageLists((item as any).image_url, item.pic_url, (item as any).picUrl, item.image_urls)
@@ -3084,9 +3185,9 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                             <div className="flex flex-col gap-6">
                                                               <Card className={`overflow-hidden p-0 ${theme.cardBorder} ${theme.cardBg} rounded-sm`}>
                                                                 <div className="grid gap-0 md:grid-cols-[1.2fr_0.8fr]">
-                                                                  <div className="p-6">
+                                                                  <div className="p-4 sm:p-6">
                                                                     <h3 className="text-2xl font-bold uppercase tracking-wide text-[var(--member-accent)]">About Wolves Badminton Club</h3>
-                                                                    <p className={`text-base ${theme.textSecondary} leading-relaxed mt-3 font-mono`}>
+                                                                    <p className={`text-sm sm:text-base ${theme.textSecondary} leading-relaxed mt-3 font-mono`}>
                                                                       Wolves Badminton Club is dedicated to developing student-athletes and competitive players through structured training, technical skill-building, and tournament prep. We focus on continuous athletic progression, on-court agility, and game strategy to help every member reach their full potential. Beyond competitive play, we foster a welcoming space for social sessions, friendly open-court matches, and fun recreational games. Whether you are aiming for team selection or simply looking to stay active, build lasting friendships, and enjoy the sport, our club offers a supportive community for players of all experience levels.
                                                                     </p>
                                                                   </div>

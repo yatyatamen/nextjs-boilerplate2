@@ -16,8 +16,40 @@ export type EmailTemplate = {
 }
 
 export type EmailTemplateConfig = Record<EmailTemplateKey, EmailTemplate>
+export type EmailDeliveryConfig = Record<EmailTemplateKey, boolean>
 
-const BOOKING_POLICY_TEXT = "Bookings and cancellations close 3 hours before the session starts. Please talk to the club leaders if you need help."
+export const DEFAULT_EMAIL_DELIVERY_CONFIG: EmailDeliveryConfig = {
+  booking_confirmation: true,
+  booking_reminder: true,
+  booking_cancellation: true,
+  booking_admin_cancellation: true,
+  announcement: true,
+  session_alert: true,
+  assessment: true,
+  attendance_update: true,
+  absence: true,
+  shop_update: true,
+}
+
+export const EMAIL_DELIVERY_OPTIONS: Array<{
+  key: EmailTemplateKey
+  label: string
+  description: string
+}> = [
+  { key: "booking_confirmation", label: "Booking confirmation", description: "Sent after a member books a session." },
+  { key: "booking_reminder", label: "Booking reminder", description: "Sent when a booked session starts within 24 hours." },
+  { key: "booking_cancellation", label: "Booking cancellation", description: "Sent when a member cancels their booking." },
+  { key: "booking_admin_cancellation", label: "Admin cancellation", description: "Sent when staff removes a member from a booking." },
+  { key: "announcement", label: "Announcements", description: "Sent to members when an announcement is posted." },
+  { key: "session_alert", label: "New session alerts", description: "Sent when a new session is published." },
+  { key: "assessment", label: "Assessment updates", description: "Sent when a member assessment is posted." },
+  { key: "attendance_update", label: "Late attendance updates", description: "Sent when attendance is marked late." },
+  { key: "absence", label: "Absence notices", description: "Sent when attendance is marked absent." },
+  { key: "shop_update", label: "Shop updates", description: "Sent when a new shop item is posted." },
+]
+
+const BOOKING_POLICY_TEXT = "Bookings and cancellations close when the session starts. Please talk to the club leaders if you need help."
+const PREVIOUS_BOOKING_POLICY_TEXT = "Bookings and cancellations close 3 hours before the session starts. Please talk to the club leaders if you need help."
 const LEGACY_BOOKING_POLICY_TEXT = "Bookings cannot be made within 6 hours of the session start, and cancellations are not allowed within 24 hours of the session start."
 const BOOKING_REMINDER_SUBJECT = "Reminder: {sessionTitle} is coming up soon"
 
@@ -80,12 +112,17 @@ export function mergeEmailTemplateConfig(value: unknown): EmailTemplateConfig {
     let subject = typeof template?.subject === "string" ? template.subject : DEFAULT_EMAIL_TEMPLATES[key].subject
     if (key === "booking_confirmation") {
       body = body.replace(LEGACY_BOOKING_POLICY_TEXT, BOOKING_POLICY_TEXT)
+      body = body.replace(PREVIOUS_BOOKING_POLICY_TEXT, BOOKING_POLICY_TEXT)
       if (!body.includes(BOOKING_POLICY_TEXT)) {
         body = `${body.trim()}\n\n${BOOKING_POLICY_TEXT}`
       }
     }
-    if (key === "booking_reminder" && !body.includes(BOOKING_POLICY_TEXT)) {
-      body = `${body.trim()}\n\n${BOOKING_POLICY_TEXT}`
+    if (key === "booking_reminder") {
+      body = body.replace(LEGACY_BOOKING_POLICY_TEXT, BOOKING_POLICY_TEXT)
+      body = body.replace(PREVIOUS_BOOKING_POLICY_TEXT, BOOKING_POLICY_TEXT)
+      if (!body.includes(BOOKING_POLICY_TEXT)) {
+        body = `${body.trim()}\n\n${BOOKING_POLICY_TEXT}`
+      }
     }
     if (key === "booking_reminder" && subject === "Reminder: {sessionTitle} starts in 24 hours") {
       subject = BOOKING_REMINDER_SUBJECT
@@ -95,6 +132,17 @@ export function mergeEmailTemplateConfig(value: unknown): EmailTemplateConfig {
       body,
     }]
   })) as EmailTemplateConfig
+}
+
+export function mergeEmailDeliveryConfig(value: unknown): EmailDeliveryConfig {
+  const stored = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+  const keys = Object.keys(DEFAULT_EMAIL_DELIVERY_CONFIG) as EmailTemplateKey[]
+  return Object.fromEntries(keys.map((key) => [
+    key,
+    typeof stored[key] === "boolean" ? stored[key] : DEFAULT_EMAIL_DELIVERY_CONFIG[key],
+  ])) as EmailDeliveryConfig
 }
 
 export function getStoredEmailTemplates(): Partial<Record<EmailTemplateKey, Partial<EmailTemplate>>> {

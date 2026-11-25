@@ -13,24 +13,40 @@ function getErrorMessage(error: unknown) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
-    if (typeof body?.date !== "string" || !body.date.trim() || typeof body?.time !== "string" || !body.time.trim()) {
-      return NextResponse.json({ error: "A session date and time are required" }, { status: 400 })
+    const time = body?.time == null
+      ? null
+      : typeof body.time === "string" ? body.time.trim() || null : undefined
+    if (typeof body?.date !== "string" || !body.date.trim() || time === undefined) {
+      return NextResponse.json({ error: "A session date is required, and the time must be text when provided." }, { status: 400 })
     }
 
+    const publishAtValue = typeof body?.publish_at === "string" ? body.publish_at.trim() : ""
+    const publishAt = publishAtValue ? new Date(publishAtValue) : null
+    if (publishAtValue && (!publishAt || !Number.isFinite(publishAt.getTime()))) {
+      return NextResponse.json({ error: "The scheduled post time is invalid" }, { status: 400 })
+    }
+
+    const isEvent = body.is_event === true
     const capacity = body.max_capacity == null || body.max_capacity === ""
       ? null
       : Number(body.max_capacity)
-    if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1)) {
+    if (!isEvent && capacity !== null && (!Number.isInteger(capacity) || capacity < 1)) {
       return NextResponse.json({ error: "Capacity must be a positive whole number" }, { status: 400 })
     }
 
-    const visibilityTiers = Array.isArray(body.visibility_tiers)
-      ? body.visibility_tiers.map((tier: unknown) => {
-          if (typeof tier !== "string") return null
-          return LEVELS.find((level) => level.toLowerCase() === tier.trim().toLowerCase()) ?? null
-        })
-      : null
-    if (!visibilityTiers || visibilityTiers.some((tier: string | null) => tier === null)) {
+    let visibilityTiers: string[]
+    if (isEvent) {
+      visibilityTiers = [...LEVELS]
+    } else if (Array.isArray(body.visibility_tiers)) {
+      const requestedTiers = body.visibility_tiers.map((tier: unknown) => {
+        if (typeof tier !== "string") return null
+        return LEVELS.find((level) => level.toLowerCase() === tier.trim().toLowerCase()) ?? null
+      })
+      if (requestedTiers.some((tier: string | null) => tier === null)) {
+        return NextResponse.json({ error: "Visible member levels are invalid" }, { status: 400 })
+      }
+      visibilityTiers = requestedTiers.filter((tier: string | null): tier is string => tier !== null)
+    } else {
       return NextResponse.json({ error: "Visible member levels are invalid" }, { status: 400 })
     }
 
@@ -46,10 +62,12 @@ export async function POST(request: NextRequest) {
       .eq("id", authData.user.id)
       .single()
     const role = String(profile?.role ?? "").trim().toLowerCase()
-    if (profileError || !["staff", "leader", "admin"].includes(role)) {
+    if (profileError || !["staff", "leader", "teacher", "admin"].includes(role)) {
       return NextResponse.json({ error: "Schedule access denied" }, { status: 403 })
     }
 
+    const now = new Date()
+    const publishImmediately = !publishAt || publishAt <= now
     let database = supabase
     try {
       database = await createServiceClient()
@@ -60,19 +78,45 @@ export async function POST(request: NextRequest) {
       .from("schedule")
       .insert({
         date: body.date.trim(),
-        time: body.time.trim(),
+        time,
+        is_event: isEvent,
+        publish_at: !publishImmediately && publishAt ? publishAt.toISOString() : null,
+        published_at: isEvent && publishImmediately ? now.toISOString() : null,
         max_level: typeof body.max_level === "string"
           ? body.max_level
           : typeof body.level === "string" ? body.level : null,
-        max_capacity: capacity,
+        max_capacity: isEvent ? null : capacity,
         visibility_tiers: [...new Set(visibilityTiers)],
         coach: typeof body.coach === "string" ? body.coach : null,
-        title: typeof body.title === "string" ? body.title : "Training Session",
+        title: typeof body.title === "string" ? body.title : isEvent ? "Club Event" : "Training Session",
         notes: typeof body.notes === "string" ? body.notes : null,
       })
       .select()
       .single()
     if (error) throw error
+
+    if (!isEvent && publishImmediately) {
+      const { error: snapshotError } = await database.rpc("snapshot_attendance_booking_risk_for_session", {
+        p_session_id: String(data.id),
+      })
+      if (snapshotError) {
+        if (snapshotError.code === "PGRST202" || snapshotError.code === "PGRST205") {
+          return NextResponse.json({
+            error: "Session-specific booking eligibility is not configured. Apply supabase/migration/20261125130000_session_booking_eligibility_snapshots.sql, then retry.",
+          }, { status: 503 })
+        }
+        throw snapshotError
+      }
+
+      const { data: publishedSession, error: publishError } = await database
+        .from("schedule")
+        .update({ published_at: now.toISOString() })
+        .eq("id", data.id)
+        .select()
+        .single()
+      if (publishError) throw publishError
+      return NextResponse.json({ data: publishedSession })
+    }
 
     return NextResponse.json({ data })
   } catch (error) {

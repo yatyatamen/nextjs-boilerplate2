@@ -10,7 +10,7 @@ const TABLES = {
 type UpdateType = keyof typeof TABLES
 
 const ALLOWED_FIELDS: Record<UpdateType, string[]> = {
-  schedule: ["title", "date", "time", "max_capacity", "max_level", "coach", "notes", "visibility_tiers"],
+  schedule: ["title", "date", "time", "max_capacity", "max_level", "coach", "notes", "visibility_tiers", "is_event", "publish_at"],
   shop_item: ["name", "category", "price", "description", "pic_url", "image_urls", "stock", "unit"],
   gear_guide: ["title", "category", "description", "specs", "recommended_for_tier", "link", "image_url", "pic_url", "image_urls"],
 }
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     const canUpdate =
       profile?.role === "staff" ||
       profile?.role === "admin" ||
-      (profile?.role === "leader" && type === "schedule")
+      (["leader", "teacher"].includes(profile?.role ?? "") && type === "schedule")
     if (profileError || !canUpdate) {
       return NextResponse.json({ error: "Only staff can update published items" }, { status: 403 })
     }
@@ -56,6 +56,19 @@ export async function POST(request: Request) {
     const updates = Object.fromEntries(
       Object.entries(payload).filter(([key]) => allowedFields.has(key)),
     )
+
+    if (type === "schedule" && typeof updates.time === "string" && !updates.time.trim()) {
+      updates.time = null
+    }
+
+    if (type === "schedule" && "is_event" in updates && typeof updates.is_event !== "boolean") {
+      return NextResponse.json({ error: "Schedule item type must be a boolean" }, { status: 400 })
+    }
+    if (type === "schedule" && "publish_at" in updates) {
+      if (updates.publish_at !== null && (typeof updates.publish_at !== "string" || !Number.isFinite(Date.parse(updates.publish_at)))) {
+        return NextResponse.json({ error: "The scheduled post time is invalid" }, { status: 400 })
+      }
+    }
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No editable fields were provided" }, { status: 400 })
@@ -66,6 +79,20 @@ export async function POST(request: Request) {
       database = await createServiceClient()
     } catch {
       // Use the authenticated client when the service role is unavailable.
+    }
+
+    if (type === "schedule" && "publish_at" in updates) {
+      const { data: currentSchedule, error: currentScheduleError } = await database
+        .from("schedule")
+        .select("published_at")
+        .eq("id", id)
+        .maybeSingle()
+      if (currentScheduleError) throw currentScheduleError
+      if (currentSchedule?.published_at) {
+        return NextResponse.json({ error: "A published schedule item cannot be rescheduled." }, { status: 409 })
+      }
+      updates.publish_at = updates.publish_at || new Date().toISOString()
+      updates.published_at = null
     }
 
     const { data, error } = await database

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createServiceClient } from "@/lib/supabase/server"
-import { getSessionBookingRules, parseSessionStart } from "@/lib/scheduling"
+import { formatSessionTime, getSessionBookingRules, parseSessionStart } from "@/lib/scheduling"
 import { isSessionVisibleToLevel } from "@/lib/session-visibility"
-import { sendSessionBookingCancellationEmail, sendSessionBookingConfirmationEmail, sendSessionBookingReminderEmail } from "@/lib/supabase/email"
+import {
+  getAutoEmailConfig,
+  sendSessionBookingCancellationEmail,
+  sendSessionBookingConfirmationEmail,
+  sendSessionBookingReminderEmail,
+} from "@/lib/supabase/email"
 import type { EmailTemplate } from "@/lib/email-templates"
 
 const ATTENDANCE_RISK_REASON_LABELS: Record<string, string> = {
@@ -71,7 +76,7 @@ export async function POST(request: NextRequest) {
 
     const { data: session, error: sessionError } = await supabase
       .from("schedule")
-      .select("id, title, date, time, max_level, notes, visibility_tiers")
+      .select("id, title, date, time, max_level, notes, visibility_tiers, is_event, publish_at, published_at")
       .eq("id", sessionId)
       .maybeSingle()
 
@@ -82,6 +87,12 @@ export async function POST(request: NextRequest) {
 
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 })
+    }
+    if (session.is_event) {
+      return NextResponse.json({ error: "This is an optional event and does not require booking." }, { status: 409 })
+    }
+    if (!session.published_at) {
+      return NextResponse.json({ error: "This session is scheduled to be posted later and is not available yet." }, { status: 409 })
     }
 
     const { data: memberProfile, error: memberProfileError } = await supabase
@@ -177,7 +188,7 @@ export async function POST(request: NextRequest) {
           || attendanceRiskError.code === "PGRST205"
         return NextResponse.json({
           error: migrationMissing
-            ? "Attendance booking eligibility isn't configured. Apply supabase/migration/20261125090000_attendance_booking_risk.sql, then retry."
+            ? "Attendance booking eligibility isn't configured. Apply supabase/migration/20261125090000_attendance_booking_risk.sql, supabase/migration/20261125120000_scheduled_events_and_email_controls.sql, and supabase/migration/20261125130000_session_booking_eligibility_snapshots.sql, then retry."
             : "Unable to check attendance booking eligibility.",
         }, { status: 500 })
       }
@@ -199,7 +210,7 @@ export async function POST(request: NextRequest) {
           ? suspensionReasons.join(", ")
           : "your leader-adjusted suspension chance"
         return NextResponse.json({
-          error: `This session is suspended because of ${reasonText}. Your current suspension chance is ${riskPercent}%. You can choose another session or contact a leader.`,
+          error: `This session is suspended because of ${reasonText}. Your suspension chance when this session was published was ${riskPercent}%. You can choose another session or contact a leader.`,
           attendance_risk: {
             user_id: userData.user.id,
             risk_percent: riskPercent,
@@ -234,35 +245,57 @@ export async function POST(request: NextRequest) {
 
     const recipient = profile?.email?.trim() || userData.user.email?.trim() || ""
     const memberName = profile?.full_name || "Member"
-    let confirmationStatus: "accepted" | "failed" | "skipped" = "skipped"
+    let deliverySettings = null
+    let deliverySettingsError: string | undefined
+    try {
+      deliverySettings = await getAutoEmailConfig(supabase)
+    } catch (error) {
+      deliverySettingsError = error instanceof Error ? error.message : "Unable to load automatic email settings."
+      console.error("Booking email settings lookup failed:", error)
+    }
+    let confirmationStatus: "accepted" | "failed" | "skipped" | "disabled" = "skipped"
     let confirmationError: string | undefined
     let reminderStatus: "accepted" | "failed" | "disabled" | "not_due" | "skipped" = "skipped"
     let reminderError: string | undefined
 
     if (recipient) {
-      const confirmation = await sendSessionBookingConfirmationEmail({
-        to: recipient,
-        memberName,
-        sessionTitle: session.title || "session",
-        sessionDate: session.date || "TBD",
-        sessionTime: session.time || "TBD",
-      })
-      confirmationStatus = confirmation.ok ? "accepted" : "failed"
-      if (!confirmation.ok) confirmationError = confirmation.error
+      if (!deliverySettings) {
+        confirmationStatus = "failed"
+        confirmationError = deliverySettingsError
+      } else if (!deliverySettings.booking_confirmation) {
+        confirmationStatus = "disabled"
+      } else {
+        const confirmation = await sendSessionBookingConfirmationEmail({
+          to: recipient,
+          memberName,
+          sessionTitle: session.title || "session",
+          sessionDate: session.date || "TBD",
+          sessionTime: formatSessionTime(session.time),
+        })
+        confirmationStatus = confirmation.ok ? "accepted" : "failed"
+        if (!confirmation.ok) confirmationError = confirmation.error
+      }
 
       const start = parseSessionStart(session.date, session.time)
       const timeUntilStart = start ? start.getTime() - Date.now() : null
       const withinOneDay = timeUntilStart !== null && timeUntilStart <= 24 * 60 * 60 * 1000 && timeUntilStart > 0
       if (withinOneDay) {
-        const reminder = await sendSessionBookingReminderEmail({
-          to: recipient,
-          memberName,
-          sessionTitle: session.title || "session",
-          sessionDate: session.date || "TBD",
-          sessionTime: session.time || "TBD",
-        })
-        reminderStatus = reminder.ok ? "accepted" : "failed"
-        if (!reminder.ok) reminderError = reminder.error
+        if (!deliverySettings) {
+          reminderStatus = "failed"
+          reminderError = deliverySettingsError
+        } else if (!deliverySettings.booking_reminder) {
+          reminderStatus = "disabled"
+        } else {
+          const reminder = await sendSessionBookingReminderEmail({
+            to: recipient,
+            memberName,
+            sessionTitle: session.title || "session",
+            sessionDate: session.date || "TBD",
+            sessionTime: formatSessionTime(session.time),
+          })
+          reminderStatus = reminder.ok ? "accepted" : "failed"
+          if (!reminder.ok) reminderError = reminder.error
+        }
       } else {
         reminderStatus = "not_due"
       }
@@ -356,7 +389,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    let email: { status: "accepted" | "failed" | "skipped"; error?: string } = { status: "skipped" }
+    let email: { status: "accepted" | "failed" | "skipped" | "disabled"; error?: string } = { status: "skipped" }
     if (session) {
       const { data: recipientProfile } = isAdminRemoval && booking.user_id
         ? await supabase
@@ -369,15 +402,29 @@ export async function DELETE(request: NextRequest) {
         ? recipientProfile?.email?.trim() || ""
         : profile?.email?.trim() || userData.user.email?.trim() || ""
       if (recipient) {
-        const result = await sendSessionBookingCancellationEmail({
-          to: recipient,
-          memberName: (isAdminRemoval ? recipientProfile?.full_name : profile?.full_name)?.trim() || "Member",
-          sessionTitle: session.title || "session",
-          sessionDate: session.date || "TBD",
-          sessionTime: session.time || "TBD",
-          template: isAdminRemoval ? adminCancellationTemplate : cancellationTemplate,
-        })
-        email = result.ok ? { status: "accepted" } : { status: "failed", error: result.error }
+        try {
+          const deliverySettings = await getAutoEmailConfig(supabase)
+          const deliveryKey = isAdminRemoval ? "booking_admin_cancellation" : "booking_cancellation"
+          if (!deliverySettings[deliveryKey]) {
+            email = { status: "disabled" }
+          } else {
+            const result = await sendSessionBookingCancellationEmail({
+              to: recipient,
+              memberName: (isAdminRemoval ? recipientProfile?.full_name : profile?.full_name)?.trim() || "Member",
+              sessionTitle: session.title || "session",
+              sessionDate: session.date || "TBD",
+              sessionTime: formatSessionTime(session.time),
+              template: isAdminRemoval ? adminCancellationTemplate : cancellationTemplate,
+              templateKey: deliveryKey,
+            })
+            email = result.ok ? { status: "accepted" } : { status: "failed", error: result.error }
+          }
+        } catch (settingsError) {
+          email = {
+            status: "failed",
+            error: settingsError instanceof Error ? settingsError.message : "Unable to load automatic email settings.",
+          }
+        }
       } else {
         email = { status: "failed", error: "No email address is available on the account or profile." }
       }

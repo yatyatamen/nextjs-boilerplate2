@@ -27,11 +27,15 @@ import type {
   Resource,
 } from "@/lib/types"
 import { ALL_ROLE_AND_TIER_OPTIONS, LEVELS, ROLES } from "@/lib/types"
-import { isSessionEnded, parseSessionStart } from "@/lib/scheduling"
+import { formatSessionTime, isSessionEnded, parseSessionStart } from "@/lib/scheduling"
 import {
+  DEFAULT_EMAIL_DELIVERY_CONFIG,
+  EMAIL_DELIVERY_OPTIONS,
   getEmailTemplateConfig,
+  mergeEmailDeliveryConfig,
   mergeEmailTemplateConfig,
   saveEmailTemplateConfig,
+  type EmailDeliveryConfig,
   type EmailTemplateConfig,
 } from "@/lib/email-templates"
 import {
@@ -47,6 +51,7 @@ import {
   BookOpen,
   Ticket,
   UserCheck,
+  ShieldAlert,
   Image,
   MoreHorizontal,
   XCircle,
@@ -65,6 +70,13 @@ function formatDate(date: string | null) {
   }
   if (Number.isNaN(d.getTime())) return date
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+}
+
+function toLocalDateTimeInputValue(value: string | null | undefined) {
+  if (!value) return ""
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ""
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
 }
 
 function normalizeMultilineText(value: string | null | undefined) {
@@ -86,6 +98,7 @@ const NAV: NavItem[] = [
   { key: "schedule", label: "Schedule", icon: CalendarDays },
   { key: "bookings", label: "Bookings", icon: Ticket },
   { key: "attendance", label: "Attendance", icon: UserCheck },
+  { key: "attendance-risk", label: "Booking Eligibility", icon: ShieldAlert },
   { key: "resources", label: "Resources", icon: BookOpen },
   { key: "announcements", label: "Announcements", icon: Megaphone },
   { key: "email-templates", label: "Email Templates", icon: Megaphone },
@@ -94,7 +107,7 @@ const NAV: NavItem[] = [
   { key: "assessments", label: "Assessments", icon: ClipboardList },
   { key: "comments", label: "Comments", icon: MessageSquareText },
 ]
-const LEADER_NAV = NAV.filter((item) => item.key === "schedule" || item.key === "attendance" || item.key === "announcements")
+const LEADER_NAV = NAV.filter((item) => item.key === "schedule" || item.key === "attendance" || item.key === "attendance-risk" || item.key === "announcements")
 const ALL_TIERS = [...LEVELS]
 const TIME_SLOTS = ["3:20-4:30 PM", "3:20-4:45 PM", "3:20-5:00 PM", "3:20-5:15 PM"] as const
 const ATTENDANCE_FILTERS = ["all", "present", "absent", "late"] as const
@@ -108,6 +121,13 @@ type ManualAttendanceRosterEntry = {
   session_id: string
   user_id: string
   created_at: string
+}
+type AttendanceRiskEntry = {
+  user_id: string
+  risk_percent: number
+  month_start: string
+  suspended_session_ids: string[]
+  suspension_reasons: string[]
 }
 
 function SectionHeader({ title, desc }: { title: string; desc: string }) {
@@ -250,6 +270,7 @@ export function StaffDashboard({
   initialMessages = [],
   embeddedSection,
   onScheduleChange,
+  onAttendanceRecordSaved,
 }: {
   profile: Profile
   initialMembers: Profile[]
@@ -264,6 +285,7 @@ export function StaffDashboard({
   initialMessages?: SupportTicket[]
   embeddedSection?: "schedule" | "attendance" | "announcements" | "shop" | "gear" | "assessments"
   onScheduleChange?: (change: { type: "upsert"; session: ScheduleSession } | { type: "delete"; id: string }) => void
+  onAttendanceRecordSaved?: (record: AttendanceRecord) => void
 }) {
   const supabase = createClient()
   const isLeader = profile.role === "leader"
@@ -296,6 +318,11 @@ export function StaffDashboard({
   const [manualAttendanceRosterError, setManualAttendanceRosterError] = useState<string | null>(null)
   const [manualAttendanceMemberBySession, setManualAttendanceMemberBySession] = useState<Record<string, string>>({})
   const [manualAttendanceSavingSession, setManualAttendanceSavingSession] = useState<string | null>(null)
+  const [attendanceRiskByMember, setAttendanceRiskByMember] = useState<Record<string, AttendanceRiskEntry>>({})
+  const [attendanceRiskEdits, setAttendanceRiskEdits] = useState<Record<string, string>>({})
+  const [attendanceRiskLoading, setAttendanceRiskLoading] = useState(false)
+  const [attendanceRiskLoadError, setAttendanceRiskLoadError] = useState<string | null>(null)
+  const [attendanceRiskSavingUserId, setAttendanceRiskSavingUserId] = useState<string | null>(null)
   const [resources, setResources] = useState<Resource[]>([])
   const [newResourceTitle, setNewResourceTitle] = useState("")
   const [newResourceUrl, setNewResourceUrl] = useState("")
@@ -314,6 +341,10 @@ export function StaffDashboard({
   const [assessmentSearch, setAssessmentSearch] = useState("")
   const [announcementSearch, setAnnouncementSearch] = useState("")
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplateConfig>(() => getEmailTemplateConfig())
+  const [autoEmailSettings, setAutoEmailSettings] = useState<EmailDeliveryConfig>(() => ({ ...DEFAULT_EMAIL_DELIVERY_CONFIG }))
+  const [autoEmailSettingsLoading, setAutoEmailSettingsLoading] = useState(true)
+  const [autoEmailSettingsSaving, setAutoEmailSettingsSaving] = useState(false)
+  const [autoEmailSettingsError, setAutoEmailSettingsError] = useState<string | null>(null)
   const [showNoAnnouncement, setShowNoAnnouncement] = useState(false)
   const [showNoFeatureAnnouncement, setShowNoFeatureAnnouncement] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -351,6 +382,34 @@ export function StaffDashboard({
   }, [active])
 
   useEffect(() => {
+    if (active !== "attendance-risk") return
+
+    let isMounted = true
+    setAttendanceRiskLoading(true)
+    void fetch("/api/attendance-risk", { credentials: "same-origin", cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(result.error || "Unable to load member suspension rates.")
+        const entries = Array.isArray(result.data) ? result.data as AttendanceRiskEntry[] : []
+        if (!isMounted) return
+        setAttendanceRiskByMember(Object.fromEntries(entries.map((entry) => [entry.user_id, entry])))
+        setAttendanceRiskEdits(Object.fromEntries(entries.map((entry) => [entry.user_id, String(entry.risk_percent)])))
+        setAttendanceRiskLoadError(null)
+      })
+      .catch((error) => {
+        console.error("Member attendance risk load failed:", error)
+        if (isMounted) {
+          setAttendanceRiskLoadError(error instanceof Error ? error.message : "Unable to load member suspension rates.")
+        }
+      })
+      .finally(() => {
+        if (isMounted) setAttendanceRiskLoading(false)
+      })
+
+    return () => { isMounted = false }
+  }, [active])
+
+  useEffect(() => {
     let mounted = true
 
     async function loadEmailTemplates() {
@@ -373,16 +432,47 @@ export function StaffDashboard({
   }, [])
 
   useEffect(() => {
-    const nextStart = schedule
-      .map((session) => parseSessionStart(session.date, session.time))
-      .filter((start): start is Date => Boolean(start && start > currentTime))
+    if (profile.role !== "staff") return
+    let mounted = true
+    setAutoEmailSettingsLoading(true)
+
+    void fetch("/api/auto-email-settings", { credentials: "same-origin", cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(result.error || "Unable to load automatic email settings.")
+        if (mounted) {
+          setAutoEmailSettings(mergeEmailDeliveryConfig(result.data))
+          setAutoEmailSettingsError(null)
+        }
+      })
+      .catch((error) => {
+        console.error("Automatic email settings load failed:", error)
+        if (mounted) {
+          setAutoEmailSettingsError(error instanceof Error ? error.message : "Unable to load automatic email settings.")
+        }
+      })
+      .finally(() => {
+        if (mounted) setAutoEmailSettingsLoading(false)
+      })
+
+    return () => { mounted = false }
+  }, [profile.role])
+
+  useEffect(() => {
+    const transitions = schedule.flatMap((session) => {
+      const sessionStart = parseSessionStart(session.date, session.time)
+      const publishTime = !session.published_at && session.publish_at ? new Date(session.publish_at) : null
+      return [sessionStart, publishTime]
+        .filter((time): time is Date => Boolean(time && !Number.isNaN(time.getTime()) && time > currentTime))
+    })
+    const nextTransition = transitions
       .sort((left, right) => left.getTime() - right.getTime())[0]
 
-    if (!nextStart) return
+    if (!nextTransition) return
 
     const timeout = window.setTimeout(
       () => setCurrentTime(new Date()),
-      nextStart.getTime() - currentTime.getTime(),
+      nextTransition.getTime() - currentTime.getTime(),
     )
     return () => window.clearTimeout(timeout)
   }, [schedule, currentTime])
@@ -392,12 +482,35 @@ export function StaffDashboard({
     return start && start.getFullYear() === currentTime.getFullYear() && start <= currentTime
   }).length
 
+  async function saveAutoEmailSettings() {
+    setAutoEmailSettingsSaving(true)
+    setAutoEmailSettingsError(null)
+    try {
+      const response = await fetch("/api/auto-email-settings", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled_emails: autoEmailSettings }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || "Unable to save automatic email settings.")
+      setAutoEmailSettings(mergeEmailDeliveryConfig(result.data))
+      showToast("Automatic email settings saved.")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save automatic email settings."
+      setAutoEmailSettingsError(message)
+      showToast(message)
+    } finally {
+      setAutoEmailSettingsSaving(false)
+    }
+  }
+
   async function sendConfiguredEmail(
     event: "announcement" | "session_alert" | "assessment" | "shop_update",
     to: string,
     payload: Record<string, string>,
     showFailureToast = true,
-  ): Promise<{ ok: boolean; error?: string }> {
+  ): Promise<{ ok: boolean; skipped?: boolean; error?: string }> {
     try {
       const response = await fetch("/api/email", {
         method: "POST",
@@ -405,13 +518,17 @@ export function StaffDashboard({
         body: JSON.stringify({ event, to, template: emailTemplates[event], ...payload }),
       })
 
+      const result = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const result = await response.json().catch(() => ({}))
         console.error(`Failed to send ${event} email:`, result.error)
         if (showFailureToast) showToast(`Email failed: ${result.error || "Unable to send email"}`)
         return { ok: false, error: result.error || "Unable to send email" }
       }
 
+      if (result.data?.disabled) {
+        if (showFailureToast) showToast(`${event.replace(/_/g, " ")} emails are turned off.`)
+        return { ok: false, skipped: true }
+      }
       return { ok: true }
     } catch (error) {
       console.error(`Failed to send ${event} email:`, error)
@@ -426,28 +543,35 @@ export function StaffDashboard({
     deliveries: Array<{ to: string; payload: Record<string, string> }>,
   ) {
     let sent = 0
+    let skipped = 0
     let firstError: string | undefined
     for (const delivery of deliveries) {
       const result = await sendConfiguredEmail(event, delivery.to, delivery.payload, false)
       if (result.ok) sent += 1
+      else if (result.skipped) skipped += 1
       else firstError ||= result.error
     }
-    return { sent, failed: deliveries.length - sent, attempted: deliveries.length, error: firstError }
+    return { sent, failed: deliveries.length - sent - skipped, skipped, attempted: deliveries.length, error: firstError }
   }
 
   function showEmailBatchResult(
     action: string,
-    result: { sent: number; failed: number; attempted: number; error?: string },
+    result: { sent: number; failed: number; attempted: number; skipped?: number; disabled?: boolean; error?: string },
     eligibleRecipientLabel?: string,
   ) {
     const failureSummary = result.failed > 0 ? `; ${result.failed} failed` : ""
+    const skippedSummary = result.disabled
+      ? "; email type is turned off"
+      : result.skipped
+        ? `; ${result.skipped} skipped because email is turned off`
+        : ""
     const recipientSummary = result.attempted === 0
       ? `; no eligible ${eligibleRecipientLabel ?? "recipients"}`
       : eligibleRecipientLabel
         ? ` for ${result.attempted} ${eligibleRecipientLabel}`
         : ` (${result.sent}/${result.attempted} accepted)`
     const errorSummary = result.error ? `; ${result.error.slice(0, 140)}` : ""
-    showToast(`${action}: ${result.sent} email${result.sent === 1 ? "" : "s"} accepted by mail server${recipientSummary}${failureSummary}${errorSummary}`)
+    showToast(`${action}: ${result.sent} email${result.sent === 1 ? "" : "s"} accepted by mail server${recipientSummary}${failureSummary}${skippedSummary}${errorSummary}`)
   }
 
   const displayName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || profile.email || "Staff"
@@ -1155,7 +1279,9 @@ export function StaffDashboard({
           return { saved: false, emailSent: true, error: result.error || `HTTP ${response.status}` }
         } else {
           if (result.data) {
-            setAttendanceRecords((prev) => prev.map((record) => record.id === existingRecord.id ? result.data as AttendanceRecord : record))
+            const savedRecord = result.data as AttendanceRecord
+            setAttendanceRecords((prev) => prev.map((record) => record.id === existingRecord.id ? savedRecord : record))
+            onAttendanceRecordSaved?.(savedRecord)
           }
           const emailSent = result.email?.status !== "failed"
           return { saved: true, emailSent }
@@ -1193,6 +1319,7 @@ export function StaffDashboard({
       if (response.ok && result.data) {
         const inserted = result.data as AttendanceRecord
         setAttendanceRecords((prev) => prev.map((r) => (r.id === nextRecord.id ? inserted : r)))
+        onAttendanceRecordSaved?.(inserted)
         const emailSent = result.email?.status !== "failed"
         return { saved: true, emailSent }
       } else {
@@ -1258,6 +1385,48 @@ export function StaffDashboard({
     }
   }
 
+  async function saveAttendanceRisk(userId: string) {
+    const riskPercent = Number(attendanceRiskEdits[userId])
+    if (!Number.isFinite(riskPercent) || riskPercent < 0 || riskPercent > 100) {
+      showToast("Enter a suspension chance between 0 and 100.")
+      return
+    }
+
+    setAttendanceRiskSavingUserId(userId)
+    setAttendanceRiskLoadError(null)
+    try {
+      const response = await fetch("/api/attendance-risk", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, risk_percent: riskPercent }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || !result.data) {
+        throw new Error(result.error || "Unable to update member suspension chance.")
+      }
+
+      const saved = result.data as { user_id: string; risk_percent: number; month_start: string }
+      setAttendanceRiskByMember((previous) => ({
+        ...previous,
+        [userId]: {
+          ...previous[userId],
+          ...saved,
+          suspended_session_ids: previous[userId]?.suspended_session_ids ?? [],
+          suspension_reasons: previous[userId]?.suspension_reasons ?? [],
+        },
+      }))
+      setAttendanceRiskEdits((previous) => ({ ...previous, [userId]: String(saved.risk_percent) }))
+      showToast(`Suspension chance for ${getMemberDisplayName(members.find((member) => member.id === userId))} saved.`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update member suspension chance."
+      setAttendanceRiskLoadError(message)
+      showToast(message)
+    } finally {
+      setAttendanceRiskSavingUserId(null)
+    }
+  }
+
   const selectedAttendanceMember = members.find(
     (member) => String(member.id) === String(selectedAttendanceMemberId),
   )
@@ -1276,25 +1445,36 @@ export function StaffDashboard({
       badgeLabel={isLeader ? "Leader" : "Staff"}
     >
       {selectedAttendanceMemberId && (
-        <div className="fixed inset-0 z-40 flex items-start justify-center pt-20">
+        <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto p-4 sm:pt-20">
           <div className="absolute inset-0 bg-black/60" onClick={() => setSelectedAttendanceMemberId(null)} />
-          <Card className="relative z-50 mx-4 w-full max-w-2xl border border-zinc-200 bg-white p-5 text-zinc-900 shadow-2xl">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="text-lg font-semibold text-zinc-900">{getMemberDisplayName(selectedAttendanceMember)}</h3>
-                <p className="mt-1 text-sm text-zinc-600">{selectedAttendanceMember?.email || "Email unavailable"}</p>
+          <Card
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="attendance-member-title"
+            className="relative z-50 my-auto max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto border border-zinc-200 bg-white p-4 text-zinc-900 shadow-2xl sm:p-5"
+          >
+            <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 id="attendance-member-title" className="break-words text-lg font-semibold text-zinc-900">{getMemberDisplayName(selectedAttendanceMember)}</h3>
+                <p className="mt-1 break-all text-sm text-zinc-600">{selectedAttendanceMember?.email || "Email unavailable"}</p>
               </div>
-              <button type="button" onClick={() => setSelectedAttendanceMemberId(null)} className="text-sm font-medium text-zinc-700 hover:text-black">Close</button>
+              <button
+                type="button"
+                onClick={() => setSelectedAttendanceMemberId(null)}
+                className="shrink-0 rounded border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-black"
+              >
+                Close
+              </button>
             </div>
             <div className="space-y-2">
               {selectedMemberAttendanceRecords.map((r) => (
-                <div key={r.id} className="flex items-center justify-between gap-4 rounded border border-zinc-200 bg-zinc-50 p-3">
-                  <div>
+                <div key={r.id} className="flex min-w-0 flex-col gap-2 rounded border border-zinc-200 bg-zinc-50 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <div className="min-w-0">
                     <div className="text-sm font-medium text-zinc-900">{r.user_level} · <span className="capitalize">{r.status}</span></div>
-                    <div className="mt-1 text-xs text-zinc-600">{schedule.find((session) => String(session.id) === String(r.session_id))?.title || `Session ${r.session_id}`}</div>
-                    {r.notes && <div className="mt-1 text-xs text-amber-800">Note: {r.notes}</div>}
+                    <div className="mt-1 break-words text-xs text-zinc-600">{schedule.find((session) => String(session.id) === String(r.session_id))?.title || `Session ${r.session_id}`}</div>
+                    {r.notes && <div className="mt-1 break-words text-xs text-amber-800">Note: {r.notes}</div>}
                   </div>
-                  <div className="shrink-0 text-right text-xs text-zinc-600">{r.marked_at ? new Date(r.marked_at).toLocaleString() : "Not marked"}</div>
+                  <div className="break-words text-left text-xs text-zinc-600 sm:shrink-0 sm:text-right">{r.marked_at ? new Date(r.marked_at).toLocaleString() : "Not marked"}</div>
                 </div>
               ))}
               {selectedMemberAttendanceRecords.length === 0 && (
@@ -1323,14 +1503,18 @@ export function StaffDashboard({
           <div className="grid gap-6">
             {latestGeneralAnnouncement && (
               <Card className="p-6 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/20 text-primary">
-                    <Megaphone className="h-6 w-6" />
+                <div>
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/20 text-primary">
+                      <Megaphone className="h-6 w-6" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-primary uppercase tracking-wide">Latest Announcement</p>
+                      <h3 className="mt-2 text-2xl font-bold text-foreground">{latestGeneralAnnouncement.title}</h3>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-xs font-semibold text-primary uppercase tracking-wide">Latest Announcement</p>
-                    <h3 className="mt-2 text-2xl font-bold text-foreground">{latestGeneralAnnouncement.title}</h3>
-                    <p className="mt-3 text-base leading-relaxed text-foreground/80 whitespace-pre-line">
+                  <div className="mt-4">
+                    <p className="text-base leading-relaxed text-foreground/80 whitespace-pre-line">
                       {latestGeneralAnnouncement.content}
                     </p>
                     <p className="mt-3 text-xs text-muted-foreground">
@@ -1343,14 +1527,18 @@ export function StaffDashboard({
 
             {latestFeatureAnnouncement && (
               <Card className="p-6 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/25">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-500">
-                    <Megaphone className="h-6 w-6" />
+                <div>
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-500">
+                      <Megaphone className="h-6 w-6" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-emerald-500 uppercase tracking-wide">Website Feature Update</p>
+                      <h3 className="mt-2 text-2xl font-bold text-foreground">{latestFeatureAnnouncement.title}</h3>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-xs font-semibold text-emerald-500 uppercase tracking-wide">Website Feature Update</p>
-                    <h3 className="mt-2 text-2xl font-bold text-foreground">{latestFeatureAnnouncement.title}</h3>
-                    <p className="mt-3 text-base leading-relaxed text-foreground/80 whitespace-pre-line">
+                  <div className="mt-4">
+                    <p className="text-base leading-relaxed text-foreground/80 whitespace-pre-line">
                       {latestFeatureAnnouncement.content}
                     </p>
                     <p className="mt-3 text-xs text-muted-foreground">
@@ -1509,6 +1697,14 @@ export function StaffDashboard({
                 throw new Error("The session was saved, but its visible ranks were not returned. No alert emails were sent.")
               }
               setSchedule((prev) => sortSessions([...prev, createdSession]))
+              if (createdSession.is_event) {
+                showToast("Optional event posted to the calendar. No booking or session alert is needed.")
+                return
+              }
+              if (createdSession.publish_at && Date.parse(createdSession.publish_at) > Date.now() && !createdSession.published_at) {
+                showToast(`Session scheduled to post at ${new Date(createdSession.publish_at).toLocaleString()} Toronto time.`)
+                return
+              }
               const emailResponse = await fetch("/api/email", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1521,6 +1717,10 @@ export function StaffDashboard({
               const emailResult = await emailResponse.json().catch(() => ({}))
               if (!emailResponse.ok || !emailResult.data) {
                 showToast(`Session posted; alert emails failed: ${emailResult.error || "Unable to send session alert"}`)
+                return
+              }
+              if (emailResult.data.disabled) {
+                showToast("Session posted; new session alert emails are turned off.")
                 return
               }
               showEmailBatchResult("Session posted", emailResult.data, "eligible members")
@@ -1561,19 +1761,30 @@ export function StaffDashboard({
                     </Card>
                   ) : (
                     activeSessions.map((s) => (
-                      <Card key={s.id} className="flex items-start justify-between gap-3 p-4">
-                        <div className="flex items-start gap-3">
+                      <Card key={s.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex min-w-0 items-start gap-3">
                           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                             <CalendarDays className="h-5 w-5" />
                           </span>
-                          <div>
-                            <h4 className="font-semibold text-foreground">{s.title ?? "Untitled Session"}</h4>
-                            <p className="text-sm font-medium text-muted-foreground mt-0.5">
-                              {formatDate(s.date)} · <span>{s.time ?? "TBD"}</span> · {s.max_capacity ? `${s.max_capacity} members max` : "No member limit"}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="break-words font-semibold text-foreground">{s.title ?? "Untitled Session"}</h4>
+                              {s.is_event && <Badge className="border border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-200">Optional event</Badge>}
+                              {s.publish_at && Date.parse(s.publish_at) > currentTime.getTime() && !s.published_at && (
+                                <Badge className="border border-sky-500/30 bg-sky-500/10 text-[10px] text-sky-200">Scheduled post</Badge>
+                              )}
+                            </div>
+                            <p className="mt-0.5 break-words text-sm font-medium text-muted-foreground">
+                              {formatDate(s.date)} · <span>{formatSessionTime(s.time)}</span> · {s.max_capacity ? `${s.max_capacity} members max` : "No member limit"}
                             </p>
+                            {s.publish_at && Date.parse(s.publish_at) > currentTime.getTime() && !s.published_at && (
+                              <p className="mt-1 text-xs text-sky-300">
+                                Posts {new Date(s.publish_at).toLocaleString()} Toronto time
+                              </p>
+                            )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex shrink-0 justify-end gap-2 sm:items-center">
                           <EditScheduleButton session={s} onSave={(updates) => updateScheduleItem(s.id, updates)} />
                           <Button size="sm" variant="outline" onClick={() => confirmDelete("schedule item", async () => { await deleteScheduleItem(s.id) })} className="text-xs">
                             Delete
@@ -1588,14 +1799,14 @@ export function StaffDashboard({
                       <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Archived Sessions</p>
                       <div className="flex flex-col gap-2">
                         {archivedSessions.map((s) => (
-                          <Card key={s.id} className="flex items-center justify-between gap-3 p-3 opacity-75">
-                            <div>
-                              <p className="font-medium text-foreground">{s.title ?? "Untitled Session"}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {formatDate(s.date)} · {s.time ?? "TBD"} · {s.max_capacity ? `${s.max_capacity} members max` : "No member limit"}
+                          <Card key={s.id} className="flex flex-col gap-2 p-3 opacity-75 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <p className="break-words font-medium text-foreground">{s.title ?? "Untitled Session"}</p>
+                              <p className="break-words text-xs text-muted-foreground">
+                                {formatDate(s.date)} · {formatSessionTime(s.time)} · {s.max_capacity ? `${s.max_capacity} members max` : "No member limit"}
                               </p>
                             </div>
-                            <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Ended</span>
+                            <span className="shrink-0 self-end text-[10px] uppercase tracking-[0.15em] text-muted-foreground sm:self-auto">Ended</span>
                           </Card>
                         ))}
                       </div>
@@ -1614,13 +1825,13 @@ export function StaffDashboard({
         <div>
           <SectionHeader title="Session Bookings" desc="   " />
           <div className="mt-6 flex flex-col gap-4">
-            {schedule.length === 0 ? (
+            {schedule.filter((session) => !session.is_event).length === 0 ? (
               <Card className="p-6 text-center">
                 <p className="text-muted-foreground">No sessions created yet.</p>
               </Card>
             ) : (
               (() => {
-                const sortedSessions = getActiveSessions(schedule)
+                const sortedSessions = getActiveSessions(schedule.filter((session) => !session.is_event))
                   .sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime())
                 return sortedSessions.map((session) => {
                   const sessionBookings = bookings
@@ -1644,7 +1855,7 @@ export function StaffDashboard({
                       <div className="mb-3">
                         <h4 className="font-semibold text-foreground">{session.title ?? "Untitled Session"}</h4>
                         <p className="text-sm text-muted-foreground mt-1">
-                          {formatDate(session.date)} · {session.time ?? "TBD"} • Tiers: {tierText}
+                          {formatDate(session.date)} · {formatSessionTime(session.time)} • Tiers: {tierText}
                         </p>
                       </div>
                       {bookedMembers.length === 0 ? (
@@ -1765,20 +1976,26 @@ export function StaffDashboard({
             </Button>
           </div>
 
-          {/* Filter Buttons */}
-          <div className="mb-4 flex flex-wrap gap-2">
-            {ATTENDANCE_FILTERS.map((filterOpt) => (
-              <Button
-                key={filterOpt}
-                variant={attendanceFilter === filterOpt ? "secondary" : "outline"}
-                size="sm"
-                className="uppercase tracking-widest text-[10px]"
-                onClick={() => setAttendanceFilter(filterOpt)}
-              >
-                {filterOpt === "all" ? "All" : filterOpt === "absent" ? "Miss" : filterOpt.charAt(0).toUpperCase() + filterOpt.slice(1)}
-              </Button>
-            ))}
-          </div>
+          {/* Saved attendance is reviewed in All Records; session view is for unmarked members. */}
+          {attendanceViewMode === "all-records" ? (
+            <div className="mb-4 flex flex-wrap gap-2">
+              {ATTENDANCE_FILTERS.map((filterOpt) => (
+                <Button
+                  key={filterOpt}
+                  variant={attendanceFilter === filterOpt ? "secondary" : "outline"}
+                  size="sm"
+                  className="uppercase tracking-widest text-[10px]"
+                  onClick={() => setAttendanceFilter(filterOpt)}
+                >
+                  {filterOpt === "all" ? "All" : filterOpt === "absent" ? "Miss" : filterOpt.charAt(0).toUpperCase() + filterOpt.slice(1)}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <p className="mb-4 text-sm text-muted-foreground">
+              By Session shows members whose attendance is not saved yet. Saved records are in All Records.
+            </p>
+          )}
 
           <div className="mb-4 grid gap-3 md:grid-cols-5">
             <div>
@@ -1857,12 +2074,12 @@ export function StaffDashboard({
           {/* BY SESSION VIEW */}
           {attendanceViewMode === "by-session" && (
             <>
-              {schedule.length === 0 ? (
+              {schedule.filter((session) => !session.is_event).length === 0 ? (
                 <Card className="p-6 text-center">
                   <p className="text-muted-foreground">No sessions available to mark attendance.</p>
                 </Card>
               ) : (
-                schedule.map((session) => {
+                schedule.filter((session) => !session.is_event).map((session) => {
                   const sessionBookings = bookings.filter((b) => b.session_id === session.id)
                   const uniqueBookings = Array.from(
                     new Map(
@@ -1948,13 +2165,12 @@ export function StaffDashboard({
                         return { booking, member, attendance, status, displayName, manuallyAdded }
                       })
                       .filter((row) => {
-                        const matchesStatus = attendanceFilter === "all" || row.status === attendanceFilter
                         const matchesMember = selectedMemberFilter === null || String(row.booking.user_id) === String(selectedMemberFilter)
                         const matchesDay = attendanceDayFilter === "all" || getWeekdayLabel(session.date) === attendanceDayFilter
                         const matchesMonth = attendanceMonthFilter === "all" || getMonthLabel(session.date) === attendanceMonthFilter
                         const matchesTier = attendanceTierFilter === "all" || row.member?.level === attendanceTierFilter
                         const matchesDate = attendanceDateFilter === "all" || session.date === attendanceDateFilter
-                        return matchesStatus && matchesMember && matchesDay && matchesMonth && matchesTier && matchesDate
+                        return !row.attendance && matchesMember && matchesDay && matchesMonth && matchesTier && matchesDate
                       }),
                   )
 
@@ -1963,7 +2179,7 @@ export function StaffDashboard({
                       <div className="mb-3">
                         <h4 className="font-semibold text-foreground">{session.title ?? "Untitled Session"}</h4>
                         <p className="text-sm text-muted-foreground mt-1">
-                          {formatDate(session.date)} · {session.time ?? "TBD"} · {getWeekdayLabel(session.date)}
+                          {formatDate(session.date)} · {formatSessionTime(session.time)} · {getWeekdayLabel(session.date)}
                         </p>
                       </div>
                       <div className="mb-4 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
@@ -2038,7 +2254,14 @@ export function StaffDashboard({
                                   const desired = attendanceSelection[booking.id]
                                   if (!desired) continue
                                   const result = await markAttendance(booking, desired)
-                                  if (result.saved) savedCount += 1
+                                  if (result.saved) {
+                                    savedCount += 1
+                                    setAttendanceSelection((previous) => {
+                                      const next = { ...previous }
+                                      delete next[booking.id]
+                                      return next
+                                    })
+                                  }
                                   else firstSaveError ||= result.error || "Attendance save failed"
                                   if (result.saved && !result.emailSent) failedEmailCount += 1
                                 }
@@ -2059,7 +2282,9 @@ export function StaffDashboard({
                         </Button>
                       </div>
                       {rows.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No matching attendance rows for this filter.</p>
+                        <p className="text-sm text-muted-foreground">
+                          No unmarked members match these filters. Saved attendance is available in All Records.
+                        </p>
                       ) : (
                         <>
                           <div className="space-y-2 md:hidden">
@@ -2313,6 +2538,102 @@ export function StaffDashboard({
         </div>
       )}
 
+      {active === "attendance-risk" && (
+        <div>
+          <SectionHeader
+            title="Booking Eligibility"
+            desc="Review and adjust each member’s attendance-based suspension chance. Changes apply to future session bookings."
+          />
+          <Card className="mb-4 border border-amber-500/25 bg-amber-500/5 p-4 text-sm text-muted-foreground">
+            Late arrival adds 10–20%, absence adds 15–30%, and adding a player who forgot to sign up adds 10–20%. Present attendance lowers the chance by 15–30%. Rates are capped from 0% to 100% and reset monthly.
+          </Card>
+          {attendanceRiskLoadError && (
+            <Card role="alert" className="mb-4 border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-300">
+              {attendanceRiskLoadError}
+            </Card>
+          )}
+          {attendanceRiskLoading ? (
+            <Card className="p-6 text-center text-muted-foreground">Loading member suspension rates...</Card>
+          ) : members.filter((member) => member.role === "member").length === 0 ? (
+            <Card className="p-6 text-center text-muted-foreground">No member profiles are available.</Card>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950">
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b border-zinc-800 bg-zinc-900 text-zinc-300">
+                  <tr>
+                    <th className="px-4 py-3">Member</th>
+                    <th className="px-4 py-3">Suspension chance</th>
+                    <th className="px-4 py-3">Eligibility / reason</th>
+                    <th className="px-4 py-3">Change chance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {members
+                    .filter((member) => member.role === "member")
+                    .sort((left, right) => {
+                      const riskDifference =
+                        (attendanceRiskByMember[right.id]?.risk_percent ?? 0)
+                        - (attendanceRiskByMember[left.id]?.risk_percent ?? 0)
+                      return riskDifference || getMemberDisplayName(left).localeCompare(getMemberDisplayName(right))
+                    })
+                    .map((member) => {
+                      const risk = attendanceRiskByMember[member.id]
+                      const riskPercent = risk?.risk_percent ?? 0
+                      const suspendedSessions = (risk?.suspended_session_ids ?? [])
+                        .map((sessionId) => schedule.find((session) => String(session.id) === sessionId))
+                        .filter((session): session is ScheduleSession => Boolean(session && !isSessionEnded(session)))
+                      const reason = risk?.suspension_reasons?.length
+                        ? risk.suspension_reasons.join(", ")
+                        : "Leader/staff-adjusted rate"
+
+                      return (
+                        <tr key={member.id} className="hover:bg-zinc-900/70">
+                          <td className="px-4 py-3 font-medium text-zinc-100">{getMemberDisplayName(member)}</td>
+                          <td className="px-4 py-3 text-zinc-200">{riskPercent.toFixed(2)}%</td>
+                          <td className="px-4 py-3 text-xs">
+                            {suspendedSessions.length > 0 ? (
+                              <span className="text-rose-300">
+                                Suspended for {suspendedSessions.map((session) => `${formatDate(session.date)} · ${session.title || "Session"}`).join(", ")}
+                                <span className="mt-1 block text-zinc-400">Risk factors: {reason}</span>
+                              </span>
+                            ) : (
+                              <span className="text-emerald-300">Can book</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex min-w-56 items-center gap-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                aria-label={`Suspension chance for ${getMemberDisplayName(member)}`}
+                                value={attendanceRiskEdits[member.id] ?? String(riskPercent)}
+                                onChange={(event) => setAttendanceRiskEdits((previous) => ({
+                                  ...previous,
+                                  [member.id]: event.target.value,
+                                }))}
+                              />
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={attendanceRiskSavingUserId === member.id}
+                                onClick={() => void saveAttendanceRisk(member.id)}
+                              >
+                                {attendanceRiskSavingUserId === member.id ? "Saving..." : "Save"}
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {active === "resources" && (
         <div>
           <SectionHeader title="Assessment PDFs" desc=" " />
@@ -2390,6 +2711,53 @@ export function StaffDashboard({
       {active === "email-templates" && (
         <div className="space-y-6">
           <SectionHeader title="Auto Email Templates" desc="Customize the message content for each automatic email type. These are the templates used for live club communication." />
+          <Card className="p-5">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-foreground">Automatic email delivery</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Turn each email type on or off. Scheduled session alerts use this setting when they publish.
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={() => void saveAutoEmailSettings()}
+                disabled={autoEmailSettingsLoading || autoEmailSettingsSaving}
+                className="bg-[#40938c] text-black font-bold"
+              >
+                {autoEmailSettingsLoading ? "Loading..." : autoEmailSettingsSaving ? "Saving..." : "Save email choices"}
+              </Button>
+            </div>
+            {autoEmailSettingsError && (
+              <p role="alert" className="mb-4 rounded border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-300">
+                {autoEmailSettingsError}
+              </p>
+            )}
+            <div className="grid gap-2 sm:grid-cols-2">
+              {EMAIL_DELIVERY_OPTIONS.map(({ key, label, description }) => (
+                <label key={key} className="flex items-start justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                  <span>
+                    <span className="block text-sm font-medium text-foreground">{label}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">{description}</span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={autoEmailSettings[key]}
+                      disabled={autoEmailSettingsLoading || autoEmailSettingsSaving}
+                      onChange={(event) => setAutoEmailSettings((previous) => ({
+                        ...previous,
+                        [key]: event.target.checked,
+                      }))}
+                      aria-label={`${label} email ${autoEmailSettings[key] ? "on" : "off"}`}
+                      className="h-4 w-4 accent-[#40938c]"
+                    />
+                    {autoEmailSettings[key] ? "On" : "Off"}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </Card>
           <EmailTemplatesEditor
             value={emailTemplates}
             onChange={setEmailTemplates}
@@ -2890,6 +3258,8 @@ function EditScheduleButton({
   const [time, setTime] = useState(session.time ?? "")
   const [maxCapacity, setMaxCapacity] = useState(String(session.max_capacity ?? ""))
   const [notes, setNotes] = useState(session.notes ?? "")
+  const [isEvent, setIsEvent] = useState(Boolean(session.is_event))
+  const [publishAt, setPublishAt] = useState(toLocalDateTimeInputValue(session.publish_at))
   const [confirmLoading, setConfirmLoading] = useState(false)
   const { toast, showToast } = useToast()
 
@@ -2908,6 +3278,8 @@ function EditScheduleButton({
         time,
         max_capacity: maxCapacity ? Number(maxCapacity) : null,
         notes,
+        is_event: isEvent,
+        ...(!session.published_at ? { publish_at: publishAt ? new Date(publishAt).toISOString() : null } : {}),
       })
       setIsOpen(false)
       showToast("✓ Session saved!")
@@ -2931,20 +3303,33 @@ function EditScheduleButton({
       {isOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
           <Card className="w-full max-w-lg border border-zinc-800 bg-white p-5 text-black shadow-2xl">
-            <h3 className="text-base font-semibold">Edit session</h3>
+            <h3 className="text-base font-semibold">Edit schedule item</h3>
             <form onSubmit={submitEditor} className="mt-4 flex flex-col gap-3" style={{ colorScheme: "light" }}>
               <label className="flex flex-col gap-1 text-xs font-medium"><span>Title</span><Input className="bg-white text-zinc-900" value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium">
+                <span>Item type</span>
+                <Select className="bg-white text-zinc-900" value={isEvent ? "event" : "session"} onChange={(e) => setIsEvent(e.target.value === "event")}>
+                  <option value="session">Bookable session</option>
+                  <option value="event">Optional event (no booking)</option>
+                </Select>
+              </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="flex flex-col gap-1 text-xs font-medium"><span>Date</span><Input className="bg-white text-zinc-900" type="date" value={date ?? ""} onChange={(e) => setDate(e.target.value)} required /></label>
-                <label className="flex flex-col gap-1 text-xs font-medium"><span>Time</span><Select className="bg-white text-zinc-900" value={time} onChange={(e) => setTime(e.target.value)}>
-                  <option value="">Select time slot</option>
+                <label className="flex flex-col gap-1 text-xs font-medium"><span>Time</span>                <Select className="bg-white text-zinc-900" value={time} onChange={(e) => setTime(e.target.value)}>
+                  <option value="">No specific time (date only)</option>
                   {TIME_SLOTS.map((slot) => (
                     <option className="bg-white text-zinc-900" key={slot} value={slot}>{slot}</option>
                   ))}
                 </Select></label>
-                <label className="flex flex-col gap-1 text-xs font-medium"><span>Member limit</span><Input className="bg-white text-zinc-900" type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="No limit" /></label>
+                {!isEvent && (
+                  <label className="flex flex-col gap-1 text-xs font-medium"><span>Member limit</span><Input className="bg-white text-zinc-900" type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="No limit" /></label>
+                )}
+                <label className="col-span-2 flex flex-col gap-1 text-xs font-medium">
+                  <span>{session.published_at ? "Published" : "Publish at (Toronto time; leave blank to post now)"}</span>
+                  <Input className="bg-white text-zinc-900" type="datetime-local" value={publishAt} disabled={Boolean(session.published_at)} onChange={(e) => setPublishAt(e.target.value)} />
+                </label>
               </div>
-              <label className="flex flex-col gap-1 text-xs font-medium"><span>Notes</span><Textarea className="bg-white text-zinc-900" value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+              <label className="flex flex-col gap-1 text-xs font-medium"><span>{isEvent ? "Event details" : "Notes"}</span><Textarea className="bg-white text-zinc-900" value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
               <div className="mt-2 flex justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => setIsOpen(false)} className="border-black bg-white text-black hover:bg-zinc-100">Cancel</Button>
                 <Button type="submit" size="sm" disabled={confirmLoading} className="bg-[#40938c] text-black font-bold">
@@ -2966,10 +3351,12 @@ function ScheduleForm({
   onCreate: (payload: {
     title: string
     date: string
-    time: string
+    time: string | null
     max_capacity: number | null
     visibility_tiers: string[]
     notes: string
+    is_event: boolean
+    publish_at: string | null
   }) => Promise<void>
 }) {
   const { confirmState, showConfirmation, closeConfirmation } = useConfirmation()
@@ -2978,9 +3365,12 @@ function ScheduleForm({
   const [title, setTitle] = useState("")
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
+  const [noTimeSpan, setNoTimeSpan] = useState(false)
   const [maxCapacity, setMaxCapacity] = useState("")
   const [selectedTiers, setSelectedTiers] = useState<string[]>([...ALL_TIERS])
   const [notes, setNotes] = useState("")
+  const [isEvent, setIsEvent] = useState(false)
+  const [publishAt, setPublishAt] = useState("")
 
   const toggleTier = (tier: string) => {
     setSelectedTiers((prev) =>
@@ -2991,28 +3381,40 @@ function ScheduleForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!date) return
-    
+    const requestedPublishAt = publishAt ? new Date(publishAt) : null
+    if (requestedPublishAt && Number.isNaN(requestedPublishAt.getTime())) {
+      showToast("Choose a valid post date and time.")
+      return
+    }
+    const willPublishLater = Boolean(requestedPublishAt && requestedPublishAt.getTime() > Date.now())
+
+    const scheduleDateTime = noTimeSpan ? `${formatDate(date)} (date only)` : `${formatDate(date)} at ${time}`
     showConfirmation(
-      "Create New Session?",
-      `Schedule session for ${formatDate(date)} at ${time || "TBD"}? Visible ranks: ${selectedTiers.length ? selectedTiers.join(", ") : "none"}.`,
+      isEvent ? "Create Optional Event?" : "Create New Session?",
+      `${isEvent ? "Add optional event" : "Schedule session"} for ${scheduleDateTime}? ${willPublishLater ? `It will be posted on ${requestedPublishAt?.toLocaleString()} Toronto time.` : "It will be posted now."}`,
       async () => {
         setConfirmLoading(true)
         try {
           await onCreate({
             title,
             date,
-            time,
+            time: noTimeSpan ? null : time,
             max_capacity: maxCapacity ? Number(maxCapacity) : null,
             visibility_tiers: selectedTiers,
             notes,
+            is_event: isEvent,
+            publish_at: requestedPublishAt?.toISOString() ?? null,
           })
           setTitle("")
           setDate("")
           setTime("")
+          setNoTimeSpan(false)
           setMaxCapacity("")
           setNotes("")
+          setIsEvent(false)
+          setPublishAt("")
           closeConfirmation()
-          showToast("✓ Session posted successfully!")
+          showToast(willPublishLater ? "✓ Schedule post saved for later." : isEvent ? "✓ Optional event posted." : "✓ Session posted successfully!")
         } catch (error) {
           closeConfirmation()
           showToast(error instanceof Error ? error.message : "Unable to save session")
@@ -3031,8 +3433,15 @@ function ScheduleForm({
           onSubmit={handleSubmit}
         >
           <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <Label htmlFor="s-title">Session Title</Label>
-            <Input id="s-title" placeholder="  Free play section" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <Label htmlFor="s-title">{isEvent ? "Event Title" : "Session Title"}</Label>
+            <Input id="s-title" placeholder={isEvent ? "Tournament, fundraiser, club event..." : "Free play session"} value={title} onChange={(e) => setTitle(e.target.value)} required />
+          </div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Label htmlFor="s-type">Schedule Item Type</Label>
+            <Select id="s-type" value={isEvent ? "event" : "session"} onChange={(e) => setIsEvent(e.target.value === "event")}>
+              <option value="session">Bookable session</option>
+              <option value="event">Optional event — no booking required</option>
+            </Select>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="s-date">Date</Label>
@@ -3046,19 +3455,43 @@ function ScheduleForm({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="s-time">Time Span</Label>
-            <Select id="s-time" value={time} onChange={(e) => setTime(e.target.value)} required>
-              <option value="">Select time slot</option>
-              {TIME_SLOTS.map((slot) => (
-                <option key={slot} value={slot}>{slot}</option>
-              ))}
-            </Select>
+            <Label>Time Span</Label>
+            <label htmlFor="s-no-time-span" className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                id="s-no-time-span"
+                type="checkbox"
+                checked={noTimeSpan}
+                onChange={(event) => setNoTimeSpan(event.target.checked)}
+                className="h-4 w-4 accent-[#40938c]"
+              />
+              No time span (date only)
+            </label>
+            {noTimeSpan ? (
+              <p className="text-xs text-muted-foreground">
+                Bookable sessions close for booking and cancellation at midnight at the start of this date (Toronto time).
+              </p>
+            ) : (
+              <Select id="s-time" value={time} onChange={(e) => setTime(e.target.value)} required>
+                <option value="">Select time slot</option>
+                {TIME_SLOTS.map((slot) => (
+                  <option key={slot} value={slot}>{slot}</option>
+                ))}
+              </Select>
+            )}
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="s-capacity">Member Limit</Label>
-            <Input id="s-capacity" type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="No limit" />
+            <Label htmlFor="s-publish-at">Publish At (Toronto time)</Label>
+            <Input id="s-publish-at" type="datetime-local" value={publishAt} onChange={(e) => setPublishAt(e.target.value)} />
+            <p className="text-xs text-muted-foreground">Leave blank to publish immediately.</p>
           </div>
-          <div className="flex flex-col gap-2 sm:col-span-2 border border-zinc-800 p-3 rounded bg-zinc-950/40">
+          {!isEvent && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="s-capacity">Member Limit</Label>
+              <Input id="s-capacity" type="number" min={1} value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="No limit" />
+            </div>
+          )}
+          {!isEvent && (
+            <div className="flex flex-col gap-2 sm:col-span-2 border border-zinc-800 p-3 rounded bg-zinc-950/40">
             <Label className="text-[#40938c] font-bold">Select Visible Ranks</Label>
             <p className="text-xs text-muted-foreground">
               Selected member levels can see this session and receive its email alert. Staff, teachers, and leaders can always see all sessions.
@@ -3080,9 +3513,10 @@ function ScheduleForm({
             ))}
           </div>
         </div>
+        )}
         <div className="flex flex-col gap-1.5 sm:col-span-2">
-          <Label htmlFor="s-notes">Session Notes</Label>
-          <Textarea id="s-notes" placeholder=" Description..." value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <Label htmlFor="s-notes">{isEvent ? "Event Details" : "Session Notes"}</Label>
+          <Textarea id="s-notes" placeholder={isEvent ? "Details for members attending this event..." : "Session details..."} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         <div className="sm:col-span-2">
           <Button type="submit" disabled={confirmLoading} className="bg-[#40938c] text-black font-bold">
