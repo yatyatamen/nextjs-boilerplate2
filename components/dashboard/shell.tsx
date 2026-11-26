@@ -66,7 +66,7 @@ export function DashboardShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="sticky top-0 z-30 lg:static lg:z-auto">
+        <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md lg:static lg:z-auto lg:bg-transparent lg:backdrop-blur-0">
           {/* Header */}
           <header className="flex items-center justify-between gap-3 border-b border-border bg-background/85 px-4 py-3 backdrop-blur sm:px-6 lg:sticky lg:top-0 lg:z-20">
             <div className="flex items-center gap-3">
