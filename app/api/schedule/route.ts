@@ -13,11 +13,20 @@ function getErrorMessage(error: unknown) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
+    const requestedDate = typeof body?.date === "string" ? body.date.trim() : ""
+    const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+      ? new Date(`${requestedDate}T00:00:00.000Z`)
+      : null
     const time = body?.time == null
       ? null
       : typeof body.time === "string" ? body.time.trim() || null : undefined
-    if (typeof body?.date !== "string" || !body.date.trim() || time === undefined) {
-      return NextResponse.json({ error: "A session date is required, and the time must be text when provided." }, { status: 400 })
+    if (
+      !parsedDate ||
+      !Number.isFinite(parsedDate.getTime()) ||
+      parsedDate.toISOString().slice(0, 10) !== requestedDate ||
+      time === undefined
+    ) {
+      return NextResponse.json({ error: "A valid session date is required, and the time must be text when provided." }, { status: 400 })
     }
 
     const publishAtValue = typeof body?.publish_at === "string" ? body.publish_at.trim() : ""
@@ -74,10 +83,24 @@ export async function POST(request: NextRequest) {
     } catch {
       // Use the authenticated client when the service role is unavailable.
     }
+    const { data: existingSessions, error: existingSessionsError } = await database
+      .from("schedule")
+      .select("date")
+    if (existingSessionsError) throw existingSessionsError
+
+    const occupiedDates = new Set((existingSessions ?? [])
+      .map((session) => String(session.date ?? "").slice(0, 10)))
+    let sessionDate = requestedDate
+    while (occupiedDates.has(sessionDate)) {
+      const nextDate = new Date(`${sessionDate}T00:00:00.000Z`)
+      nextDate.setUTCDate(nextDate.getUTCDate() + 1)
+      sessionDate = nextDate.toISOString().slice(0, 10)
+    }
+
     const { data, error } = await database
       .from("schedule")
       .insert({
-        date: body.date.trim(),
+        date: sessionDate,
         time,
         is_event: isEvent,
         publish_at: !publishImmediately && publishAt ? publishAt.toISOString() : null,
@@ -94,6 +117,8 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
     if (error) throw error
+
+    const dateShiftedFrom = sessionDate === requestedDate ? null : requestedDate
 
     if (!isEvent && publishImmediately) {
       const { error: snapshotError } = await database.rpc("snapshot_attendance_booking_risk_for_session", {
@@ -115,10 +140,10 @@ export async function POST(request: NextRequest) {
         .select()
         .single()
       if (publishError) throw publishError
-      return NextResponse.json({ data: publishedSession })
+      return NextResponse.json({ data: publishedSession, date_shifted_from: dateShiftedFrom })
     }
 
-    return NextResponse.json({ data })
+    return NextResponse.json({ data, date_shifted_from: dateShiftedFrom })
   } catch (error) {
     console.error("Schedule create failed:", error)
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })

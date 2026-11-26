@@ -1710,16 +1710,20 @@ export function StaffDashboard({
                 throw new Error(result.error || "Unable to save session")
               }
               const createdSession = result.data as ScheduleSession
+              const dateShiftedFrom = typeof result.date_shifted_from === "string" ? result.date_shifted_from : null
+              const dateShiftMessage = dateShiftedFrom
+                ? `The selected date was occupied, so this session moved from ${formatDate(dateShiftedFrom)} to ${formatDate(createdSession.date)}. `
+                : ""
               if (!Array.isArray(createdSession.visibility_tiers)) {
                 throw new Error("The session was saved, but its visible ranks were not returned. No alert emails were sent.")
               }
               setSchedule((prev) => sortSessions([...prev, createdSession]))
               if (createdSession.is_event) {
-                showToast("Optional event posted to the calendar. No booking or session alert is needed.")
+                showToast(`${dateShiftMessage}Optional event posted to the calendar. No booking or session alert is needed.`)
                 return
               }
               if (createdSession.publish_at && Date.parse(createdSession.publish_at) > Date.now() && !createdSession.published_at) {
-                showToast(`Session scheduled to post at ${new Date(createdSession.publish_at).toLocaleString()} Toronto time.`)
+                showToast(`${dateShiftMessage}Session scheduled to post at ${new Date(createdSession.publish_at).toLocaleString()} Toronto time.`)
                 return
               }
               const emailResponse = await fetch("/api/email", {
@@ -1733,14 +1737,18 @@ export function StaffDashboard({
               })
               const emailResult = await emailResponse.json().catch(() => ({}))
               if (!emailResponse.ok || !emailResult.data) {
-                showToast(`Session posted; alert emails failed: ${emailResult.error || "Unable to send session alert"}`)
+                showToast(`${dateShiftMessage}Session posted; alert emails failed: ${emailResult.error || "Unable to send session alert"}`)
                 return
               }
               if (emailResult.data.disabled) {
-                showToast("Session posted; new session alert emails are turned off.")
+                showToast(`${dateShiftMessage}Session posted; new session alert emails are turned off.`)
                 return
               }
-              showEmailBatchResult("Session posted", emailResult.data, "eligible members")
+              showEmailBatchResult(
+                dateShiftedFrom ? `Session moved to ${formatDate(createdSession.date)} and posted` : "Session posted",
+                emailResult.data,
+                "eligible members",
+              )
             }}
           />
           <div className="mt-4 flex gap-2">
