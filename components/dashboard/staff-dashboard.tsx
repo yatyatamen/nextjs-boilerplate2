@@ -2173,6 +2173,14 @@ export function StaffDashboard({
                     })
                   }
 
+                  const hasUnmarkedRosterMembers = Array.from(sessionRosterRows.values()).some(({ booking }) =>
+                    !attendanceRecords.some(
+                      (record) => String(record.session_id) === String(booking.session_id)
+                        && String(record.user_id) === String(booking.user_id),
+                    ),
+                  )
+                  if (sessionRosterRows.size > 0 && !hasUnmarkedRosterMembers) return null
+
                   const rows = sortAttendanceRows(
                     Array.from(sessionRosterRows.values())
                       .map(({ booking, manuallyAdded }) => {
@@ -2289,10 +2297,6 @@ export function StaffDashboard({
                                   }
                                   else firstSaveError ||= result.error || "Attendance save failed"
                                   if (result.saved && !result.emailSent) failedEmailCount += 1
-                                }
-                                if (savedCount > 0) {
-                                  setAttendanceFilter("all")
-                                  setAttendanceViewMode("all-records")
                                 }
                                 const failedCount = toSave.length - savedCount
                                 if (failedCount > 0) {
