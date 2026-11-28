@@ -2194,12 +2194,12 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   <p className={`text-xs leading-relaxed ${theme.textSecondary}`}>
                                                                     Booking and cancellation close when the session starts. If you have any problems, please talk to a club leader.
                                                                   </p>
-                                                                  {profile.role === "member" && (
+                                                                  {(profile.role === "member" || profile.role === "leader") && (
                                                                     <p className={`mt-2 text-xs ${theme.textSecondary}`}>
                                                                       Attendance suspension chance: {(attendanceRiskByMember[profile.id]?.risk_percent ?? 0).toFixed(2)}%. Absence, late arrival, or being added after forgetting to sign up increases the chance; present attendance lowers it. The chance resets monthly.
                                                                     </p>
                                                                   )}
-                                                                  {profile.role === "member" && attendanceRiskLoadError && (
+                                                                  {(profile.role === "member" || profile.role === "leader") && attendanceRiskLoadError && (
                                                                     <p role="alert" className="mt-2 text-xs text-rose-400">
                                                                       Could not load your attendance booking status: {attendanceRiskLoadError}
                                                                     </p>

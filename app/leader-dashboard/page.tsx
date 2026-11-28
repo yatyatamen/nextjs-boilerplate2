@@ -57,6 +57,10 @@ export default async function LeaderDashboardPage() {
     created_at: entry.created_at,
     is_manual_roster: true,
   }))
+  const leaderRoster = [
+    ...(allProfiles.data ?? []).filter((entry: Profile) => entry.id !== profile.id),
+    profile,
+  ]
 
   return (
     <MemberDashboard
@@ -68,7 +72,7 @@ export default async function LeaderDashboardPage() {
       assessments={assessments.data ?? []}
       attendanceRecords={attendance.data ?? []}
       gearGuides={(gearGuides.data ?? []).filter((item: any) => !(item.is_hidden === true || item.hidden === true || item.visible === false))}
-      allProfiles={allProfiles.data ?? []}
+      allProfiles={leaderRoster}
       leaderBookings={leaderBookings.data ?? []}
       supportTickets={supportTickets.data ?? []}
     />
