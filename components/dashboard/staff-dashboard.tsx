@@ -2578,7 +2578,7 @@ export function StaffDashboard({
             desc="Review and adjust member and leader attendance-based suspension chances. Changes apply to future session bookings."
           />
           <Card className="mb-4 border border-amber-500/25 bg-amber-500/5 p-4 text-sm text-muted-foreground">
-            Late arrival adds 10–20%, absence adds 15–30%, and adding a player who forgot to sign up adds 10–20%. Present attendance lowers the chance by 15–30%. Rates are capped from 0% to 100% and reset monthly.
+            Late arrival adds 10–20%, absence adds 15–30%, and adding a player who forgot to sign up adds 10–20%. Present attendance lowers the chance by 15–30%, except for manually added players; marking them present does not lower their chance. Rates are capped from 0% to 100% and reset monthly.
           </Card>
           {attendanceRiskLoadError && (
             <Card role="alert" className="mb-4 border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-300">

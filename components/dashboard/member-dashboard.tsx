@@ -1934,7 +1934,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                               <div className="mb-5">
                                                                 <h2 className={`text-lg font-bold ${theme.headingColor}`}>Member Booking Eligibility</h2>
                                                                 <p className={`mt-1 text-sm ${theme.textMuted}`}>
-                                                                  Review and adjust member and leader suspension chances. Late arrival adds 10–20 points, absence adds 15–30, and a staff-added missed sign-up adds 10–20. Present attendance removes 15–30. The score resets monthly and is capped between 0% and 100%.
+                                                                  Review and adjust member and leader suspension chances. Late arrival adds 10–20 points, absence adds 15–30, and a staff-added missed sign-up adds 10–20. Present attendance removes 15–30 except for manually added players, whose chance does not decrease for being marked present. The score resets monthly and is capped between 0% and 100%.
                                                                 </p>
                                                               </div>
                                                               {attendanceRiskLoadError && (
@@ -2196,7 +2196,7 @@ const LEADER_MANAGEMENT_NAV: NavItem[] = [
                                                                   </p>
                                                                   {(profile.role === "member" || profile.role === "leader") && (
                                                                     <p className={`mt-2 text-xs ${theme.textSecondary}`}>
-                                                                      Attendance suspension chance: {(attendanceRiskByMember[profile.id]?.risk_percent ?? 0).toFixed(2)}%. Absence, late arrival, or being added after forgetting to sign up increases the chance; present attendance lowers it. The chance resets monthly.
+                                                                      Attendance suspension chance: {(attendanceRiskByMember[profile.id]?.risk_percent ?? 0).toFixed(2)}%. Absence, late arrival, or being added after forgetting to sign up increases the chance. Present attendance lowers it, except when manually added to the attendance roster. The chance resets monthly.
                                                                     </p>
                                                                   )}
                                                                   {(profile.role === "member" || profile.role === "leader") && attendanceRiskLoadError && (
