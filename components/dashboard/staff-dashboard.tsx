@@ -2290,6 +2290,10 @@ export function StaffDashboard({
                                   else firstSaveError ||= result.error || "Attendance save failed"
                                   if (result.saved && !result.emailSent) failedEmailCount += 1
                                 }
+                                if (savedCount > 0) {
+                                  setAttendanceFilter("all")
+                                  setAttendanceViewMode("all-records")
+                                }
                                 const failedCount = toSave.length - savedCount
                                 if (failedCount > 0) {
                                   const errorMessage = `${savedCount} attendance saved; ${failedCount} failed: ${firstSaveError}`
